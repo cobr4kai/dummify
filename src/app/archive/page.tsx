@@ -47,7 +47,7 @@ export default async function ArchivePage({
             </p>
             <CardTitle>Search by day, topic, or keyword</CardTitle>
             <CardDescription>
-              Use the archive when you want the long tail of papers beyond the featured daily brief.
+              Search the real papers that were actually published to the homepage, including older days.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -125,7 +125,7 @@ export default async function ArchivePage({
       {papers.length === 0 ? (
         <EmptyState
           title="No papers match this archive view."
-          description="Try loosening the search filters or seeding demo data first."
+          description="Try loosening the search filters or publishing papers to the homepage first."
         />
       ) : (
         <section className="grid gap-4">

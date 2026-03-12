@@ -27,6 +27,23 @@ export async function getAnnouncementDays(limit = 90) {
   return days.map((day) => day.announcementDay);
 }
 
+async function getArchiveAnnouncementDays(limit = 90) {
+  const days = await prisma.paper.findMany({
+    where: {
+      isDemoData: false,
+      publishedItems: {
+        some: {},
+      },
+    },
+    select: { announcementDay: true },
+    distinct: ["announcementDay"],
+    orderBy: { announcementDay: "desc" },
+    take: limit,
+  });
+
+  return days.map((day) => day.announcementDay);
+}
+
 export async function getDailyBrief(options: {
   announcementDay?: string | null;
   category?: string | "all";
@@ -128,6 +145,10 @@ export async function getArchiveResults(options: {
 
   const papers = await prisma.paper.findMany({
     where: {
+      isDemoData: false,
+      publishedItems: {
+        some: announcementDay !== "all" ? { announcementDay } : {},
+      },
       ...(announcementDay !== "all" ? { announcementDay } : {}),
       ...(category !== "all"
         ? {
@@ -181,7 +202,7 @@ export async function getArchiveResults(options: {
   return {
     papers: filtered,
     categories: await getCategoryConfigs(),
-    days: await getAnnouncementDays(),
+    days: await getArchiveAnnouncementDays(),
     settings,
   };
 }
