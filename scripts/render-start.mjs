@@ -1,8 +1,10 @@
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import process from "node:process";
 
 const port = process.env.PORT ?? "10000";
+const require = createRequire(import.meta.url);
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL ?? "";
@@ -12,6 +14,16 @@ async function main() {
     await run(process.execPath, [path.resolve("scripts/bootstrap-db.mjs")]);
   } else {
     console.log("Skipping bootstrap-db because DATABASE_URL is not a local SQLite file URL.");
+  }
+
+  if (shouldRunBootstrapBackfill()) {
+    console.log("Running configured one-time bootstrap backfill before starting the web server.");
+    await run(process.execPath, [
+      require.resolve("tsx/dist/cli.mjs"),
+      path.resolve("scripts/bootstrap-backfill.ts"),
+    ]);
+  } else {
+    console.log("Skipping one-time bootstrap backfill because no range is configured.");
   }
 
   await run(
@@ -67,4 +79,11 @@ function run(command, args, options = {}) {
 
     child.on("error", reject);
   });
+}
+
+function shouldRunBootstrapBackfill() {
+  return Boolean(
+    process.env.PAPERBRIEF_BOOTSTRAP_BACKFILL_FROM?.trim() ||
+      process.env.PAPERBRIEF_BOOTSTRAP_BACKFILL_TO?.trim(),
+  );
 }

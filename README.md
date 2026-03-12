@@ -264,6 +264,12 @@ Operational notes:
 - `DATABASE_URL` defaults to `file:/var/data/paperbrief.db` in the blueprint.
 - `PAPERBRIEF_CACHE_DIR` defaults to `/var/data/paperbrief-cache` in the blueprint and seeds the initial app setting.
 - the startup command bootstraps SQLite migrations on the mounted disk before `next start`
+- you can opt into a one-time historical bootstrap backfill by setting:
+  - `PAPERBRIEF_BOOTSTRAP_BACKFILL_FROM=2026-03-11`
+  - `PAPERBRIEF_BOOTSTRAP_BACKFILL_TO=2026-03-11`
+  - `PAPERBRIEF_BOOTSTRAP_BACKFILL_RECOMPUTE_BRIEFS=true`
+  - optionally `PAPERBRIEF_BOOTSTRAP_BACKFILL_CATEGORIES=cs.AI,cs.LG,cs.CL,cs.MA`
+  - the web startup path records completion in the production SQLite database and skips repeats on later deploys against the same disk
 - health checks use `GET /api/health`
 - Render cron schedules are expressed in UTC, so the provided jobs approximate the Pacific-time cadence but will shift by one hour across DST boundaries unless you update the schedules seasonally
 - this SQLite-plus-disk setup is intended for a single web service instance, not horizontal scaling
@@ -285,6 +291,11 @@ See [.env.example](/C:/Users/manee/OneDrive/Desktop/dummify/.env.example).
 - `CRON_SECRET`
 - `ENABLE_LOCAL_CRON`
 - `PAPERBRIEF_CACHE_DIR`
+- `PAPERBRIEF_BOOTSTRAP_BACKFILL_FROM`
+- `PAPERBRIEF_BOOTSTRAP_BACKFILL_TO`
+- `PAPERBRIEF_BOOTSTRAP_BACKFILL_RECOMPUTE_BRIEFS`
+- `PAPERBRIEF_BOOTSTRAP_BACKFILL_CATEGORIES`
+- `PAPERBRIEF_BOOTSTRAP_BACKFILL_KEY`
 
 ## Tests
 

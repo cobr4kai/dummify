@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "start:render": "node scripts/render-start.mjs",
+    "bootstrap:backfill": "tsx scripts/bootstrap-backfill.ts",
     "cron:primary": "node scripts/render-trigger-cron.mjs primary",
     "cron:reconcile": "node scripts/render-trigger-cron.mjs reconcile",
     "lint": "eslint .",
