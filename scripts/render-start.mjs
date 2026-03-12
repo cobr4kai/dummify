@@ -18,7 +18,7 @@ async function main() {
 
   console.log("Checking one-time bootstrap backfill tasks before starting the web server.");
   await run(process.execPath, [
-    require.resolve("tsx/dist/cli.mjs"),
+    require.resolve("tsx/cli"),
     path.resolve("scripts/bootstrap-backfill.ts"),
   ]);
 
