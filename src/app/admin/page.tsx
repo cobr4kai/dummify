@@ -14,6 +14,10 @@ import {
 import { requireAdmin } from "@/lib/auth";
 import { getAdminSnapshot } from "@/lib/search/service";
 import { env } from "@/lib/env";
+import {
+  hasPdfBackedBrief,
+  prioritizePapersWithPdfBackedBriefs,
+} from "@/lib/technical/brief-status";
 import { formatLongDateTime, formatShortDate } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
@@ -53,12 +57,12 @@ export default async function AdminPage({
   const latestRun = snapshot.runs[0] ?? null;
   const homePagePaperIds = snapshot.publishedPaperIds.length > 0
     ? snapshot.publishedPaperIds
-    : snapshot.editionPapers
+    : prioritizePapersWithPdfBackedBriefs(snapshot.editionPapers)
         .slice(0, snapshot.settings.genAiFeaturedCount)
         .map((paper) => paper.id);
   const homePageSet = new Set(homePagePaperIds);
   const homePageBriefReadyCount = snapshot.editionPapers.filter(
-    (paper) => homePageSet.has(paper.id) && paper.technicalBriefs.length > 0,
+    (paper) => homePageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
   ).length;
   const homePageMissingBriefCount = Math.max(
     homePagePaperIds.length - homePageBriefReadyCount,
@@ -187,7 +191,7 @@ export default async function AdminPage({
                 <CardTitle>What visitors see right now</CardTitle>
                 <CardDescription>
                   This tracks the papers currently live on the homepage for the selected edition and
-                  whether their executive briefs are already attached.
+                  whether their PDF-backed executive briefs are already attached.
                 </CardDescription>
               </div>
               <Badge
@@ -219,7 +223,7 @@ export default async function AdminPage({
               </div>
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  Briefs ready
+                  PDF briefs ready
                 </p>
                 <p className="mt-2 font-serif text-3xl">
                   {homePageBriefReadyCount}/{homePagePaperIds.length}
@@ -643,8 +647,10 @@ function getAdminNotice(input: {
         title: "Homepage selection updated",
         description:
           input.briefStatus === "ready"
-            ? "That paper is now part of the curated homepage set and its executive brief is ready."
-            : "That paper is now part of the curated homepage set, but it still needs an executive brief.",
+            ? "That paper is now part of the curated homepage set and its PDF-backed executive brief is ready."
+            : input.briefStatus === "fallback"
+              ? "That paper is now part of the curated homepage set, but PDF extraction fell back to abstract-only mode, so no homepage brief will appear until a full-PDF brief is available."
+              : "That paper is now part of the curated homepage set, but it still needs a PDF-backed executive brief.",
         variant: input.briefStatus === "ready" ? "success" : "highlight",
       };
     case "paper-removed":
@@ -716,3 +722,4 @@ function readCount(value: string | undefined) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
+

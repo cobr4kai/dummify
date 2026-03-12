@@ -2,6 +2,7 @@ import { BriefMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getPublishedPaperCountForDay, getPublishedPaperIdsForDay } from "@/lib/publishing/service";
 import { getAppSettings, getCategoryConfigs } from "@/lib/settings/service";
+import { prioritizePapersWithPdfBackedBriefs } from "@/lib/technical/brief-status";
 import { normalizeSearchText } from "@/lib/utils/strings";
 
 export type SortMode = "score" | "date";
@@ -71,7 +72,10 @@ export async function getDailyBrief(options: {
         take: 1,
       },
       technicalBriefs: {
-        where: { isCurrent: true },
+        where: {
+          isCurrent: true,
+          usedFallbackAbstract: false,
+        },
         orderBy: { updatedAt: "desc" },
         take: 1,
       },
@@ -98,7 +102,7 @@ export async function getDailyBrief(options: {
   const editionPapers =
     publishedPaperIds.length > 0
       ? filtered
-      : filtered.slice(0, settings.genAiFeaturedCount);
+      : prioritizePapersWithPdfBackedBriefs(filtered).slice(0, settings.genAiFeaturedCount);
 
   return {
     papers: editionPapers,

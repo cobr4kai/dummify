@@ -7,10 +7,17 @@ import { getAppSettings } from "@/lib/settings/service";
 import { toJsonInput } from "@/lib/utils/prisma";
 import type { StructuredTechnicalBrief } from "@/lib/types";
 
+export type EnsurePaperTechnicalBriefResult =
+  | "generated"
+  | "existing"
+  | "provider-unavailable"
+  | "paper-missing"
+  | "pdf-required";
+
 export async function ensurePaperTechnicalBrief(
   paperId: string,
-  options: { force?: boolean } = {},
-) {
+  options: { force?: boolean; requirePdf?: boolean } = {},
+): Promise<EnsurePaperTechnicalBriefResult> {
   const existing = await prisma.paperTechnicalBrief.findFirst({
     where: {
       paperId,
@@ -18,13 +25,17 @@ export async function ensurePaperTechnicalBrief(
     },
   });
 
-  if (existing && !options.force) {
-    return false;
+  if (
+    existing &&
+    !options.force &&
+    (!options.requirePdf || !existing.usedFallbackAbstract)
+  ) {
+    return "existing";
   }
 
   const provider = getTechnicalBriefProvider();
   if (!provider) {
-    return false;
+    return "provider-unavailable";
   }
 
   const paper = await prisma.paper.findUnique({
@@ -32,11 +43,15 @@ export async function ensurePaperTechnicalBrief(
   });
 
   if (!paper) {
-    return false;
+    return "paper-missing";
   }
 
   const settings = await getAppSettings();
   const pdfResult = await ensurePaperPdfExtraction(paper, settings.pdfCacheDir);
+  if (options.requirePdf && pdfResult.usedFallbackAbstract) {
+    return "pdf-required";
+  }
+
   const technicalBrief = await provider.generate(paperToSourceRecord(paper), {
     pages: pdfResult.pages,
     sourceBasis: pdfResult.usedFallbackAbstract ? "abstract-fallback" : "full-pdf",
@@ -64,7 +79,7 @@ export async function ensurePaperTechnicalBrief(
     );
   });
 
-  return true;
+  return "generated";
 }
 
 export async function selectGenAiTopPaperIds(

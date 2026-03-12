@@ -134,11 +134,17 @@ export async function runIngestionJob(options: IngestionOptions) {
 
     if (briefProvider) {
       for (const paperId of paperIdsForBriefs) {
-        const generated = await ensurePaperTechnicalBrief(paperId, {
+        const briefResult = await ensurePaperTechnicalBrief(paperId, {
           force: Boolean(options.recomputeBriefs),
+          requirePdf: true,
         });
-        if (generated) {
+        if (briefResult === "generated") {
           briefCount += 1;
+        }
+        if (briefResult === "pdf-required") {
+          logLines.push(
+            `Skipped executive brief for homepage paper ${paperId} because full PDF extraction was unavailable.`,
+          );
         }
       }
     } else {
@@ -393,3 +399,4 @@ async function replaceCurrentScore(
 export function toPaperSourceRecord(paper: Paper) {
   return paperToSourceRecord(paper);
 }
+

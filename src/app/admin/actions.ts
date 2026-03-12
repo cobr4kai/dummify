@@ -171,10 +171,15 @@ export async function togglePublishedPaperAction(formData: FormData) {
     published: nextPublishedState,
   });
 
-  let briefStatus: "ready" | "missing" | undefined;
+  let briefStatus: "ready" | "missing" | "fallback" | undefined;
   if (nextPublishedState) {
-    await ensurePaperTechnicalBrief(paperId);
-    briefStatus = (await getCurrentTechnicalBrief(paperId)) ? "ready" : "missing";
+    await ensurePaperTechnicalBrief(paperId, { requirePdf: true });
+    const currentBrief = await getCurrentTechnicalBrief(paperId);
+    briefStatus = currentBrief
+      ? currentBrief.usedFallbackAbstract
+        ? "fallback"
+        : "ready"
+      : "missing";
   }
 
   revalidateAll();
@@ -199,7 +204,7 @@ function redirectToAdmin(input: {
   upserted?: number;
   generated?: number;
   focusPaperId?: string;
-  briefStatus?: "ready" | "missing";
+  briefStatus?: "ready" | "missing" | "fallback";
 }): never {
   const search = new URLSearchParams();
 

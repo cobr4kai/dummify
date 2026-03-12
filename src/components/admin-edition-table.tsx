@@ -6,6 +6,11 @@ import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  getHomepageBriefState,
+  hasPdfBackedBrief,
+  prioritizePapersWithPdfBackedBriefs,
+} from "@/lib/technical/brief-status";
 import { cn } from "@/lib/utils/cn";
 import { formatShortDate } from "@/lib/utils/dates";
 import { parseJsonValue } from "@/lib/utils/json";
@@ -52,6 +57,7 @@ type AdminEditionTableProps = {
     }>;
     technicalBriefs: Array<{
       oneLineVerdict: string;
+      usedFallbackAbstract: boolean;
     }>;
   }>;
 };
@@ -68,10 +74,12 @@ export function AdminEditionTable({
   const hasCuratedHomepage = publishedPaperIds.length > 0;
   const homePagePaperIds = hasCuratedHomepage
     ? publishedPaperIds
-    : papers.slice(0, featuredCount).map((paper) => paper.id);
+    : prioritizePapersWithPdfBackedBriefs(papers)
+        .slice(0, featuredCount)
+        .map((paper) => paper.id);
   const homePageSet = new Set(homePagePaperIds);
   const homePageBriefReadyCount = papers.filter(
-    (paper) => homePageSet.has(paper.id) && paper.technicalBriefs.length > 0,
+    (paper) => homePageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
   ).length;
   const homePageMissingBriefCount = Math.max(
     homePagePaperIds.length - homePageBriefReadyCount,
@@ -102,7 +110,7 @@ export function AdminEditionTable({
               <Badge
                 variant={homePageMissingBriefCount === 0 ? "success" : "highlight"}
               >
-                Briefs ready {homePageBriefReadyCount}/{homePagePaperIds.length}
+                PDF briefs ready {homePageBriefReadyCount}/{homePagePaperIds.length}
               </Badge>
             </div>
           ) : null}
@@ -141,16 +149,16 @@ export function AdminEditionTable({
             <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
               <p className="text-sm leading-6 text-muted-foreground">
                 {hasCuratedHomepage
-                  ? "The homepage is currently using the curated set below. Rows marked 'On homepage now' are live immediately, and their brief badge tells you whether the executive brief is already attached."
-                  : `The homepage is currently using the top ${featuredCount} papers automatically. Publishing any row switches the homepage into curated mode, so the status badges below show exactly what will be live next.`}
+                  ? "The homepage is currently using the curated set below. Rows marked 'On homepage now' are live immediately, and their brief badge tells you whether a PDF-backed executive brief is already attached."
+                  : `The homepage is currently using the top ${featuredCount} papers automatically, with PDF-backed briefs prioritized first. Publishing any row switches the homepage into curated mode, so the status badges below show exactly what will be live next.`}
               </p>
               {homePageMissingBriefCount > 0 ? (
                 <p className="mt-2 text-sm font-medium text-highlight">
-                  {homePageMissingBriefCount} homepage paper{homePageMissingBriefCount === 1 ? "" : "s"} still need an executive brief.
+                  {homePageMissingBriefCount} homepage paper{homePageMissingBriefCount === 1 ? "" : "s"} still need a PDF-backed executive brief.
                 </p>
               ) : (
                 <p className="mt-2 text-sm font-medium text-success">
-                  Every paper currently visible on the homepage already has an executive brief.
+                  Every paper currently visible on the homepage already has a PDF-backed executive brief.
                 </p>
               )}
             </div>
@@ -170,13 +178,14 @@ export function AdminEditionTable({
                   </tr>
                 </thead>
                 <tbody>
-                  {papers.map((paper, index) => {
+                  {papers.map((paper) => {
                     const score = paper.scores[0];
                     const breakdown = parseJsonValue(score?.breakdown ?? {}, breakdownSchema, {});
-                    const hasBrief = paper.technicalBriefs.length > 0;
+                    const briefState = getHomepageBriefState(paper.technicalBriefs);
+                    const hasPdfBrief = briefState === "pdf-ready";
                     const isPublished = publishedSet.has(paper.id);
                     const isOnHomepage = homePageSet.has(paper.id);
-                    const isAutoHomepagePaper = !hasCuratedHomepage && index < featuredCount;
+                    const isAutoHomepagePaper = !hasCuratedHomepage && isOnHomepage;
                     const isFocused = focusPaperId === paper.id;
                     const sourceLabel = hasCuratedHomepage
                       ? isPublished
@@ -185,18 +194,24 @@ export function AdminEditionTable({
                       : isAutoHomepagePaper
                         ? "Auto fallback"
                         : "Below fallback cut";
-                    const briefLabel = hasBrief
-                      ? "Brief ready"
-                      : isOnHomepage
-                        ? "Brief missing"
-                        : "No brief yet";
+                    const briefLabel = hasPdfBrief
+                      ? "PDF brief ready"
+                      : briefState === "abstract-fallback"
+                        ? "Abstract fallback only"
+                        : isOnHomepage
+                          ? "PDF brief missing"
+                          : "No brief yet";
                     const statusDescription = isOnHomepage
-                      ? hasBrief
-                        ? "This paper is live on the homepage and its executive brief is already attached."
-                        : "This paper is live on the homepage, but its executive brief is still missing."
-                      : hasBrief
-                        ? "A brief already exists, but this paper is not currently live on the homepage."
-                        : "This paper is stored and scored, but it is not currently live on the homepage.";
+                      ? hasPdfBrief
+                        ? "This paper is live on the homepage and its PDF-backed executive brief is already attached."
+                        : briefState === "abstract-fallback"
+                          ? "This paper is live on the homepage, but the last analysis fell back to the abstract, so the homepage is withholding that brief until PDF extraction succeeds."
+                          : "This paper is live on the homepage, but its PDF-backed executive brief is still missing."
+                      : hasPdfBrief
+                        ? "A PDF-backed brief already exists, but this paper is not currently live on the homepage."
+                        : briefState === "abstract-fallback"
+                          ? "Only an abstract fallback brief exists so far, so this paper is not homepage-ready yet."
+                          : "This paper is stored and scored, but it is not currently live on the homepage.";
                     const actionLabel = hasCuratedHomepage
                       ? isPublished
                         ? "Remove from curated page"
@@ -232,7 +247,13 @@ export function AdminEditionTable({
                             </Badge>
                             <Badge
                               variant={
-                                hasBrief ? "success" : isOnHomepage ? "highlight" : "muted"
+                                hasPdfBrief
+                                  ? "success"
+                                  : briefState === "abstract-fallback"
+                                    ? "highlight"
+                                    : isOnHomepage
+                                      ? "highlight"
+                                      : "muted"
                               }
                             >
                               {briefLabel}
@@ -304,7 +325,7 @@ export function AdminEditionTable({
                                 ? "Removes this paper from the curated homepage set."
                                 : hasCuratedHomepage
                                   ? "Adds this paper to the curated homepage set and keeps the current curated mode active."
-                                  : "Starts a curated homepage with this paper and triggers brief generation if needed."}
+                                  : "Starts a curated homepage with this paper and triggers PDF-backed brief generation if needed."}
                             </p>
                           </form>
                         </td>

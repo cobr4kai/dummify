@@ -50,9 +50,6 @@ export function PaperCard({ paper }: PaperCardProps) {
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="highlight">Score {Math.round(score?.totalScore ?? 0)}</Badge>
-          {brief?.usedFallbackAbstract ? (
-            <Badge variant="danger">Abstract fallback</Badge>
-          ) : null}
           {focusTags.slice(0, 4).map((tag) => (
             <Badge key={tag} variant="default">
               {tag}
@@ -120,7 +117,17 @@ export function PaperCard({ paper }: PaperCardProps) {
               </AccordionItem>
             </Accordion>
           </section>
-        ) : null}
+        ) : (
+          <section className="rounded-[24px] border border-highlight/35 bg-highlight/8 px-5 py-4">
+            <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
+              Executive brief status
+            </p>
+            <p className="mt-2 text-sm leading-6 text-foreground/90">
+              Full-PDF analysis is still pending for this paper, so the homepage is intentionally
+              withholding any abstract-only brief.
+            </p>
+          </section>
+        )}
       </div>
     </Card>
   );
