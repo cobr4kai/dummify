@@ -1,0 +1,78 @@
+services:
+  - type: web
+    name: paperbrief-web
+    runtime: node
+    region: oregon
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:render
+    healthCheckPath: /api/health
+    disk:
+      name: paperbrief-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: DATABASE_URL
+        value: file:/var/data/paperbrief.db
+      - key: PAPERBRIEF_CACHE_DIR
+        value: /var/data/paperbrief-cache
+      - key: ENABLE_LOCAL_CRON
+        value: "false"
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_EXTRACTION_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_SYNTHESIS_MODEL
+        value: gpt-5.4
+      - key: OPENAI_ENABLE_PREMIUM_SYNTHESIS
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENALEX_API_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+
+  # These schedules are expressed in UTC because Render cron uses UTC.
+  # They trigger the app's existing secure cron endpoint over the private network.
+  - type: cron
+    name: paperbrief-primary-cron
+    runtime: node
+    region: oregon
+    plan: starter
+    schedule: "15 0 * * 1-5"
+    buildCommand: npm ci
+    startCommand: npm run cron:primary
+    envVars:
+      - key: PAPERBRIEF_HOSTPORT
+        fromService:
+          name: paperbrief-web
+          type: web
+          property: hostport
+      - key: CRON_SECRET
+        fromService:
+          name: paperbrief-web
+          type: web
+          envVarKey: CRON_SECRET
+
+  - type: cron
+    name: paperbrief-reconcile-cron
+    runtime: node
+    region: oregon
+    plan: starter
+    schedule: "45 3 * * 1-5"
+    buildCommand: npm ci
+    startCommand: npm run cron:reconcile
+    envVars:
+      - key: PAPERBRIEF_HOSTPORT
+        fromService:
+          name: paperbrief-web
+          type: web
+          property: hostport
+      - key: CRON_SECRET
+        fromService:
+          name: paperbrief-web
+          type: web
+          envVarKey: CRON_SECRET

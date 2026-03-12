@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Audience {
+  general
+  strategy
+  finance
+  procurement
+}
+
+enum MaturityEstimate {
+  RESEARCH_ONLY
+  NEAR_TERM_PROTOTYPE
+  LIKELY_PRODUCTIZABLE
+  INFRA_PLATFORM_RELEVANT
+}
+
+enum IngestionMode {
+  DAILY
+  HISTORICAL
+}
+
+enum BriefMode {
+  BUSINESS
+  GENAI
+}
+
+enum IngestionStatus {
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum PdfExtractionStatus {
+  PENDING
+  FETCHED
+  EXTRACTED
+  FAILED
+  FALLBACK
+}
+
+enum TriggerSource {
+  SCHEDULED
+  MANUAL
+  API
+  SEED
+}
+
+model Paper {
+  id              String            @id @default(cuid())
+  arxivId         String            @unique
+  version         Int
+  versionedId     String            @default("")
+  title           String
+  abstract        String
+  authorsJson     Json
+  authorsText     String
+  categoriesJson  Json
+  sourceFeedCategoriesJson Json     @default("[]")
+  categoryText    String
+  primaryCategory String?
+  publishedAt     DateTime
+  updatedAt       DateTime
+  announcementDay String
+  announceType    String?
+  comment         String?
+  journalRef      String?
+  doi             String?
+  abstractUrl     String
+  pdfUrl          String?
+  links           Json
+  sourceMetadata  Json
+  sourcePayload   Json
+  searchText      String
+  isDemoData      Boolean           @default(false)
+  firstSeenAt     DateTime          @default(now())
+  lastSeenAt      DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  recordUpdatedAt DateTime          @updatedAt
+  enrichments     PaperEnrichment[]
+  pdfCaches       PaperPdfCache[]
+  scores          PaperScore[]
+  summaries       PaperSummary[]
+  technicalBriefs PaperTechnicalBrief[]
+
+  @@index([announcementDay])
+  @@index([primaryCategory])
+  @@index([publishedAt])
+  @@index([isDemoData])
+}
+
+model PaperScore {
+  id                     String   @id @default(cuid())
+  paperId                String
+  mode                   BriefMode @default(BUSINESS)
+  scoringVersion         String
+  totalScore             Float
+  businessRelevanceScore Float
+  strategyFitScore       Float
+  financeFitScore        Float
+  procurementFitScore    Float
+  breakdown              Json
+  audienceFit            Json
+  focusAreas             Json?
+  weights                Json
+  rationale              String
+  isCurrent              Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  paper                  Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@index([paperId, mode, isCurrent])
+  @@index([totalScore])
+}
+
+model PaperSummary {
+  id                     String            @id @default(cuid())
+  paperId                String
+  audience               Audience
+  oneSentenceSummary     String
+  whyThisMatters         String
+  audienceInterpretation String?
+  whatThisIsNot          String
+  confidenceNotes        Json
+  glossary               Json
+  keyClaims              Json
+  businessConsequences   Json
+  maturityEstimate       MaturityEstimate
+  leadershipQuestions    Json
+  provider               String
+  model                  String?
+  sourceBasis            String
+  isCurrent              Boolean           @default(true)
+  createdAt              DateTime          @default(now())
+  paper                  Paper             @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@index([paperId, audience, isCurrent])
+}
+
+model PaperTechnicalBrief {
+  id                  String   @id @default(cuid())
+  paperId             String
+  oneLineVerdict      String
+  keyStatsJson        Json
+  focusTagsJson       Json
+  whyItMatters        String
+  whatToIgnore        String
+  executiveTakeaway   String
+  bulletsJson         Json
+  performanceImpact   String
+  trainingImpact      String
+  inferenceImpact     String
+  limitationsJson     Json
+  confidenceNotesJson Json
+  evidenceJson        Json
+  provider            String
+  model               String?
+  sourceBasis         String
+  usedFallbackAbstract Boolean @default(false)
+  isCurrent           Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  paper               Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@index([paperId, isCurrent])
+}
+
+model PaperEnrichment {
+  id               String   @id @default(cuid())
+  paperId          String
+  provider         String
+  providerRecordId String?
+  payload          Json
+  isCurrent        Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  paper            Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@index([paperId, provider, isCurrent])
+}
+
+model PaperPdfCache {
+  id                 String              @id @default(cuid())
+  paperId            String
+  sourceUrl          String
+  filePath           String?
+  extractedJsonPath  String?
+  fileSizeBytes      Int?
+  pageCount          Int?
+  extractionStatus   PdfExtractionStatus @default(PENDING)
+  extractionError    String?
+  usedFallbackAbstract Boolean          @default(false)
+  fetchedAt          DateTime?
+  extractedAt        DateTime?
+  isCurrent          Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  paper              Paper               @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@index([paperId, isCurrent])
+}
+
+model IngestionRun {
+  id                 String          @id @default(cuid())
+  mode               IngestionMode
+  status             IngestionStatus
+  triggerSource      TriggerSource
+  categories         Json
+  requestedFrom      DateTime?
+  requestedTo        DateTime?
+  recomputeScores    Boolean         @default(false)
+  recomputeSummaries Boolean         @default(false)
+  fetchedCount       Int             @default(0)
+  upsertedCount      Int             @default(0)
+  failedCount        Int             @default(0)
+  scoreCount         Int             @default(0)
+  summaryCount       Int             @default(0)
+  logLines           Json
+  errorMessage       String?
+  startedAt          DateTime        @default(now())
+  completedAt        DateTime?
+  createdAt          DateTime        @default(now())
+
+  @@index([startedAt])
+  @@index([status])
+}
+
+model CategoryConfig {
+  key          String   @id
+  label        String
+  enabled      Boolean  @default(true)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AppSetting {
+  key         String   @id
+  value       Json
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
