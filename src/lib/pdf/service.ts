@@ -1,12 +1,22 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { WorkerMessageHandler } from "pdfjs-dist/legacy/build/pdf.worker.mjs";
 import { PdfExtractionStatus, type Paper } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { PdfExtractionResult, PdfPageText } from "@/lib/types";
 import { normalizeWhitespace } from "@/lib/utils/strings";
 
 const PDF_CHUNK_MAX_CHARS = 18000;
+const pdfjsGlobal = globalThis as typeof globalThis & {
+  pdfjsWorker?: {
+    WorkerMessageHandler: typeof WorkerMessageHandler;
+  };
+};
+
+if (!pdfjsGlobal.pdfjsWorker) {
+  pdfjsGlobal.pdfjsWorker = { WorkerMessageHandler };
+}
 
 export async function ensurePaperPdfExtraction(
   paper: Pick<Paper, "id" | "arxivId" | "version" | "pdfUrl" | "abstract">,
