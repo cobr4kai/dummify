@@ -2,9 +2,11 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { togglePublishedPaperAction } from "@/app/admin/actions";
+import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils/cn";
 import { formatShortDate } from "@/lib/utils/dates";
 import { parseJsonValue } from "@/lib/utils/json";
 
@@ -36,6 +38,7 @@ type AdminEditionTableProps = {
   selectedDay: string | null;
   featuredCount: number;
   publishedPaperIds: string[];
+  focusPaperId?: string | null;
   papers: Array<{
     id: string;
     title: string;
@@ -58,9 +61,22 @@ export function AdminEditionTable({
   selectedDay,
   featuredCount,
   publishedPaperIds,
+  focusPaperId,
   papers,
 }: AdminEditionTableProps) {
   const publishedSet = new Set(publishedPaperIds);
+  const hasCuratedHomepage = publishedPaperIds.length > 0;
+  const homePagePaperIds = hasCuratedHomepage
+    ? publishedPaperIds
+    : papers.slice(0, featuredCount).map((paper) => paper.id);
+  const homePageSet = new Set(homePagePaperIds);
+  const homePageBriefReadyCount = papers.filter(
+    (paper) => homePageSet.has(paper.id) && paper.technicalBriefs.length > 0,
+  ).length;
+  const homePageMissingBriefCount = Math.max(
+    homePagePaperIds.length - homePageBriefReadyCount,
+    0,
+  );
 
   return (
     <Card>
@@ -73,14 +89,21 @@ export function AdminEditionTable({
             <CardTitle>Curate the published front page</CardTitle>
             <CardDescription>
               Review one announcement day as a score table, then add or remove papers from the
-              published edition without touching code.
+              published edition with explicit homepage and brief status for each row.
             </CardDescription>
           </div>
           {selectedDay ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="success">Published {publishedPaperIds.length}</Badge>
+              <Badge variant={hasCuratedHomepage ? "success" : "default"}>
+                {hasCuratedHomepage ? "Curated homepage" : "Automatic homepage"}
+              </Badge>
               <Badge variant="muted">Scored pool {papers.length}</Badge>
-              <Badge variant="muted">Auto fallback {featuredCount}</Badge>
+              <Badge variant="muted">Live now {homePagePaperIds.length}</Badge>
+              <Badge
+                variant={homePageMissingBriefCount === 0 ? "success" : "highlight"}
+              >
+                Briefs ready {homePageBriefReadyCount}/{homePagePaperIds.length}
+              </Badge>
             </div>
           ) : null}
         </div>
@@ -115,16 +138,27 @@ export function AdminEditionTable({
           </p>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm leading-6 text-muted-foreground">
-              When at least one paper is published for this day, the front page uses that curated
-              set. If you remove them all, the home page falls back to the top {featuredCount} by
-              score.
-            </p>
+            <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+              <p className="text-sm leading-6 text-muted-foreground">
+                {hasCuratedHomepage
+                  ? "The homepage is currently using the curated set below. Rows marked 'On homepage now' are live immediately, and their brief badge tells you whether the executive brief is already attached."
+                  : `The homepage is currently using the top ${featuredCount} papers automatically. Publishing any row switches the homepage into curated mode, so the status badges below show exactly what will be live next.`}
+              </p>
+              {homePageMissingBriefCount > 0 ? (
+                <p className="mt-2 text-sm font-medium text-highlight">
+                  {homePageMissingBriefCount} homepage paper{homePageMissingBriefCount === 1 ? "" : "s"} still need an executive brief.
+                </p>
+              ) : (
+                <p className="mt-2 text-sm font-medium text-success">
+                  Every paper currently visible on the homepage already has an executive brief.
+                </p>
+              )}
+            </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1380px] border-separate border-spacing-y-2 text-sm">
+              <table className="w-full min-w-[1500px] border-separate border-spacing-y-2 text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                    <th className="px-3 py-2">State</th>
+                    <th className="px-3 py-2">Live status</th>
                     <th className="px-3 py-2">Paper</th>
                     <th className="px-3 py-2">Total</th>
                     {scoreColumns.map((column) => (
@@ -136,17 +170,77 @@ export function AdminEditionTable({
                   </tr>
                 </thead>
                 <tbody>
-                  {papers.map((paper) => {
+                  {papers.map((paper, index) => {
                     const score = paper.scores[0];
                     const breakdown = parseJsonValue(score?.breakdown ?? {}, breakdownSchema, {});
+                    const hasBrief = paper.technicalBriefs.length > 0;
                     const isPublished = publishedSet.has(paper.id);
+                    const isOnHomepage = homePageSet.has(paper.id);
+                    const isAutoHomepagePaper = !hasCuratedHomepage && index < featuredCount;
+                    const isFocused = focusPaperId === paper.id;
+                    const sourceLabel = hasCuratedHomepage
+                      ? isPublished
+                        ? "Curated set"
+                        : "Not curated"
+                      : isAutoHomepagePaper
+                        ? "Auto fallback"
+                        : "Below fallback cut";
+                    const briefLabel = hasBrief
+                      ? "Brief ready"
+                      : isOnHomepage
+                        ? "Brief missing"
+                        : "No brief yet";
+                    const statusDescription = isOnHomepage
+                      ? hasBrief
+                        ? "This paper is live on the homepage and its executive brief is already attached."
+                        : "This paper is live on the homepage, but its executive brief is still missing."
+                      : hasBrief
+                        ? "A brief already exists, but this paper is not currently live on the homepage."
+                        : "This paper is stored and scored, but it is not currently live on the homepage.";
+                    const actionLabel = hasCuratedHomepage
+                      ? isPublished
+                        ? "Remove from curated page"
+                        : "Add to curated page"
+                      : "Start curated homepage";
+                    const pendingLabel = isPublished
+                      ? "Removing..."
+                      : isOnHomepage
+                        ? "Publishing and syncing..."
+                        : "Publishing...";
 
                     return (
-                      <tr key={paper.id} className="rounded-[20px] bg-white/70 align-top">
+                      <tr
+                        key={paper.id}
+                        className={cn(
+                          "rounded-[20px] bg-white/70 align-top shadow-sm transition-shadow",
+                          isFocused ? "shadow-[0_0_0_2px_rgba(15,127,132,0.22)]" : null,
+                        )}
+                      >
                         <td className="rounded-l-[20px] px-3 py-4">
-                          <Badge variant={isPublished ? "success" : "muted"}>
-                            {isPublished ? "Published" : "Draft"}
-                          </Badge>
+                          <div className="flex max-w-[220px] flex-col items-start gap-2">
+                            <Badge variant={isOnHomepage ? "success" : "muted"}>
+                              {isOnHomepage ? "On homepage now" : "Off homepage"}
+                            </Badge>
+                            <Badge
+                              variant={
+                                sourceLabel === "Curated set" || sourceLabel === "Auto fallback"
+                                  ? "default"
+                                  : "muted"
+                              }
+                            >
+                              {sourceLabel}
+                            </Badge>
+                            <Badge
+                              variant={
+                                hasBrief ? "success" : isOnHomepage ? "highlight" : "muted"
+                              }
+                            >
+                              {briefLabel}
+                            </Badge>
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              {statusDescription}
+                            </p>
+                          </div>
                         </td>
                         <td className="max-w-[420px] px-3 py-4">
                           <div className="space-y-2">
@@ -154,6 +248,7 @@ export function AdminEditionTable({
                               {paper.primaryCategory ? (
                                 <Badge variant="muted">{paper.primaryCategory}</Badge>
                               ) : null}
+                              {isFocused ? <Badge variant="highlight">Just updated</Badge> : null}
                               <Button asChild size="sm" variant="ghost">
                                 <Link href={`/papers/${paper.id}`}>Open detail</Link>
                               </Button>
@@ -164,9 +259,11 @@ export function AdminEditionTable({
                                 {paper.authorsText}
                               </p>
                             </div>
-                            <p className="text-xs leading-5 text-foreground/80">
-                              {paper.technicalBriefs[0]?.oneLineVerdict ?? score?.rationale ?? "No brief yet."}
-                            </p>
+                            <div className="rounded-[18px] border border-border/70 bg-background/45 px-3 py-2 text-xs leading-5 text-foreground/80">
+                              {paper.technicalBriefs[0]?.oneLineVerdict ??
+                                score?.rationale ??
+                                "No brief or score rationale is available yet."}
+                            </div>
                             <a
                               href={paper.abstractUrl}
                               target="_blank"
@@ -186,7 +283,7 @@ export function AdminEditionTable({
                           </td>
                         ))}
                         <td className="rounded-r-[20px] px-3 py-4">
-                          <form action={togglePublishedPaperAction}>
+                          <form action={togglePublishedPaperAction} className="space-y-2">
                             <input name="announcementDay" type="hidden" value={selectedDay} />
                             <input name="paperId" type="hidden" value={paper.id} />
                             <input
@@ -194,13 +291,21 @@ export function AdminEditionTable({
                               type="hidden"
                               value={isPublished ? "false" : "true"}
                             />
-                            <Button
+                            <AdminSubmitButton
+                              className="w-full"
+                              idleLabel={actionLabel}
+                              pendingLabel={pendingLabel}
                               size="sm"
                               type="submit"
-                              variant={isPublished ? "danger" : "secondary"}
-                            >
-                              {isPublished ? "Remove from page" : "Add to page"}
-                            </Button>
+                              variant={isPublished ? "danger" : isOnHomepage ? "default" : "secondary"}
+                            />
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              {isPublished
+                                ? "Removes this paper from the curated homepage set."
+                                : hasCuratedHomepage
+                                  ? "Adds this paper to the curated homepage set and keeps the current curated mode active."
+                                  : "Starts a curated homepage with this paper and triggers brief generation if needed."}
+                            </p>
                           </form>
                         </td>
                       </tr>

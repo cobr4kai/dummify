@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AdminEditionTable } from "@/components/admin-edition-table";
+import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { PageShell } from "@/components/page-shell";
 import {
   logoutAction,
@@ -20,7 +20,21 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   day?: string;
+  notice?: string;
+  fetched?: string;
+  upserted?: string;
+  generated?: string;
+  brief?: string;
+  focusPaper?: string;
 }>;
+
+type NoticeVariant = "success" | "highlight" | "danger";
+
+type AdminNotice = {
+  title: string;
+  description: string;
+  variant: NoticeVariant;
+} | null;
 
 export default async function AdminPage({
   searchParams,
@@ -33,9 +47,54 @@ export default async function AdminPage({
   const snapshot = await getAdminSnapshot({
     announcementDay: selectedDay,
   });
+  const focusPaperId = typeof params.focusPaper === "string" && params.focusPaper
+    ? params.focusPaper
+    : null;
+  const latestRun = snapshot.runs[0] ?? null;
+  const homePagePaperIds = snapshot.publishedPaperIds.length > 0
+    ? snapshot.publishedPaperIds
+    : snapshot.editionPapers
+        .slice(0, snapshot.settings.genAiFeaturedCount)
+        .map((paper) => paper.id);
+  const homePageSet = new Set(homePagePaperIds);
+  const homePageBriefReadyCount = snapshot.editionPapers.filter(
+    (paper) => homePageSet.has(paper.id) && paper.technicalBriefs.length > 0,
+  ).length;
+  const homePageMissingBriefCount = Math.max(
+    homePagePaperIds.length - homePageBriefReadyCount,
+    0,
+  );
+  const notice = getAdminNotice({
+    notice: typeof params.notice === "string" ? params.notice : null,
+    fetched: readCount(params.fetched),
+    upserted: readCount(params.upserted),
+    generated: readCount(params.generated),
+    briefStatus: typeof params.brief === "string" ? params.brief : null,
+  });
 
   return (
     <PageShell currentPath="/admin">
+      {notice ? (
+        <section className="mb-6">
+          <Card className={getNoticeCardClassName(notice.variant)}>
+            <CardHeader className="gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <Badge variant={notice.variant}>Latest admin action</Badge>
+                  <CardTitle className="mt-3">{notice.title}</CardTitle>
+                  <CardDescription className="mt-2 max-w-3xl">
+                    {notice.description}
+                  </CardDescription>
+                </div>
+                {snapshot.selectedDay ? (
+                  <Badge variant="muted">Edition {formatShortDate(snapshot.selectedDay)}</Badge>
+                ) : null}
+              </div>
+            </CardHeader>
+          </Card>
+        </section>
+      ) : null}
+
       <section className="mb-6 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
         <Card>
           <CardHeader>
@@ -44,7 +103,8 @@ export default async function AdminPage({
             </p>
             <CardTitle>Admin and settings</CardTitle>
             <CardDescription>
-              Configure the single daily briefing pipeline and inspect provider health.
+              Configure the daily briefing pipeline and get explicit feedback as actions run and
+              finish.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
@@ -61,9 +121,13 @@ export default async function AdminPage({
               Latest brief {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
             </Badge>
             <form action={logoutAction}>
-              <Button size="sm" variant="secondary" type="submit">
-                Log out
-              </Button>
+              <AdminSubmitButton
+                idleLabel="Log out"
+                pendingLabel="Logging out..."
+                size="sm"
+                type="submit"
+                variant="secondary"
+              />
             </form>
           </CardContent>
         </Card>
@@ -72,7 +136,7 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Provider and cache status</CardTitle>
             <CardDescription>
-              Runtime model policy and current PDF-backed briefing coverage.
+              Runtime model policy and total briefing coverage across the dataset.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -113,9 +177,86 @@ export default async function AdminPage({
       </section>
 
       <section className="mb-6">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
+                  Homepage readiness
+                </p>
+                <CardTitle>What visitors see right now</CardTitle>
+                <CardDescription>
+                  This tracks the papers currently live on the homepage for the selected edition and
+                  whether their executive briefs are already attached.
+                </CardDescription>
+              </div>
+              <Badge
+                variant={snapshot.publishedPaperIds.length > 0 ? "success" : "default"}
+              >
+                {snapshot.publishedPaperIds.length > 0
+                  ? "Curated homepage live"
+                  : "Automatic homepage live"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Edition mode
+                </p>
+                <p className="mt-2 text-sm leading-6 text-foreground">
+                  {snapshot.publishedPaperIds.length > 0
+                    ? "Curated homepage selection"
+                    : `Automatic top ${snapshot.settings.genAiFeaturedCount} fallback`}
+                </p>
+              </div>
+              <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Papers live now
+                </p>
+                <p className="mt-2 font-serif text-3xl">{homePagePaperIds.length}</p>
+              </div>
+              <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Briefs ready
+                </p>
+                <p className="mt-2 font-serif text-3xl">
+                  {homePageBriefReadyCount}/{homePagePaperIds.length}
+                </p>
+              </div>
+              <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Needs attention
+                </p>
+                <p className="mt-2 font-serif text-3xl">{homePageMissingBriefCount}</p>
+              </div>
+            </div>
+            {latestRun ? (
+              <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={getRunBadgeVariant(latestRun.status)}>
+                    Latest run {latestRun.status.toLowerCase()}
+                  </Badge>
+                  <Badge variant="muted">{latestRun.mode}</Badge>
+                  <Badge variant="muted">{latestRun.triggerSource}</Badge>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-foreground/90">
+                  Started {formatLongDateTime(latestRun.startedAt)}. Fetched {latestRun.fetchedCount},
+                  upserted {latestRun.upsertedCount}, and generated {latestRun.summaryCount} executive
+                  briefs.
+                </p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="mb-6">
         <AdminEditionTable
           days={snapshot.days}
           featuredCount={snapshot.settings.genAiFeaturedCount}
+          focusPaperId={focusPaperId}
           papers={snapshot.editionPapers}
           publishedPaperIds={snapshot.publishedPaperIds}
           selectedDay={snapshot.selectedDay}
@@ -127,7 +268,8 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Run ingestion</CardTitle>
             <CardDescription>
-              Trigger the primary daily brief pipeline or backfill historical paper windows.
+              Trigger the primary daily brief pipeline or backfill historical paper windows. Each
+              button stays busy until the page comes back with updated results.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5 xl:grid-cols-2">
@@ -136,11 +278,12 @@ export default async function AdminPage({
               className="space-y-3 rounded-[24px] border border-border/80 bg-white/60 p-4"
             >
               <p className="text-sm font-semibold text-foreground">Daily refresh</p>
+              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
               <label className="space-y-2 text-sm font-medium">
                 Announcement day
                 <input
                   className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
-                  defaultValue={snapshot.latestDay ?? ""}
+                  defaultValue={snapshot.selectedDay ?? snapshot.latestDay ?? ""}
                   name="announcementDay"
                   type="date"
                 />
@@ -149,13 +292,22 @@ export default async function AdminPage({
                 <input name="recomputeBriefs" type="checkbox" />
                 Recompute executive briefs
               </label>
-              <Button type="submit">Refresh daily brief</Button>
+              <AdminSubmitButton
+                idleLabel="Refresh daily brief"
+                pendingLabel="Refreshing daily brief..."
+                type="submit"
+              />
+              <p className="text-xs leading-5 text-muted-foreground">
+                Use this after changing categories, models, or homepage composition to get fresh
+                coverage for the selected day.
+              </p>
             </form>
             <form
               action={runHistoricalRefreshAction}
               className="space-y-3 rounded-[24px] border border-border/80 bg-white/60 p-4"
             >
               <p className="text-sm font-semibold text-foreground">Historical fetch</p>
+              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
               <label className="space-y-2 text-sm font-medium">
                 From
                 <input
@@ -176,9 +328,16 @@ export default async function AdminPage({
                 <input name="recomputeBriefs" type="checkbox" />
                 Recompute executive briefs
               </label>
-              <Button type="submit" variant="secondary">
-                Run backfill
-              </Button>
+              <AdminSubmitButton
+                idleLabel="Run backfill"
+                pendingLabel="Running backfill..."
+                type="submit"
+                variant="secondary"
+              />
+              <p className="text-xs leading-5 text-muted-foreground">
+                Useful for filling a missing historical window without guessing whether the job is
+                still running.
+              </p>
             </form>
           </CardContent>
         </Card>
@@ -192,6 +351,7 @@ export default async function AdminPage({
           </CardHeader>
           <CardContent>
             <form action={updateCategoriesAction} className="space-y-3">
+              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
               {snapshot.categories.map((category) => (
                 <label
                   key={category.key}
@@ -208,7 +368,11 @@ export default async function AdminPage({
                   />
                 </label>
               ))}
-              <Button type="submit">Save categories</Button>
+              <AdminSubmitButton
+                idleLabel="Save categories"
+                pendingLabel="Saving categories..."
+                type="submit"
+              />
             </form>
           </CardContent>
         </Card>
@@ -224,6 +388,7 @@ export default async function AdminPage({
           </CardHeader>
           <CardContent>
             <form action={updateSettingsAction} className="grid gap-4 sm:grid-cols-2">
+              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
               <label className="space-y-2 text-sm font-medium">
                 Featured count
                 <input
@@ -361,13 +526,21 @@ export default async function AdminPage({
                 </label>
               ))}
               <div className="sm:col-span-2 flex flex-wrap gap-3">
-                <Button type="submit">Save settings</Button>
+                <AdminSubmitButton
+                  idleLabel="Save settings"
+                  pendingLabel="Saving settings..."
+                  type="submit"
+                />
               </div>
             </form>
             <form action={resetSettingsAction} className="mt-3">
-              <Button type="submit" variant="secondary">
-                Reset defaults
-              </Button>
+              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <AdminSubmitButton
+                idleLabel="Reset defaults"
+                pendingLabel="Resetting defaults..."
+                type="submit"
+                variant="secondary"
+              />
             </form>
           </CardContent>
         </Card>
@@ -389,15 +562,13 @@ export default async function AdminPage({
                   className="rounded-[24px] border border-border/80 bg-white/60 p-4"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={run.status === "FAILED" ? "danger" : "default"}>
-                      {run.status}
-                    </Badge>
+                    <Badge variant={getRunBadgeVariant(run.status)}>{run.status}</Badge>
                     <Badge variant="muted">{run.mode}</Badge>
                     <Badge variant="muted">{run.triggerSource}</Badge>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     Started {formatLongDateTime(run.startedAt)}. Fetched {run.fetchedCount},
-                    upserted {run.upsertedCount}, scored {run.scoreCount}, generated{" "}
+                    upserted {run.upsertedCount}, scored {run.scoreCount}, generated {" "}
                     {run.summaryCount} executive briefs.
                   </p>
                   {Array.isArray(run.logLines) && run.logLines.length > 0 ? (
@@ -418,4 +589,130 @@ export default async function AdminPage({
       </section>
     </PageShell>
   );
+}
+
+function getAdminNotice(input: {
+  notice: string | null;
+  fetched?: number;
+  upserted?: number;
+  generated?: number;
+  briefStatus: string | null;
+}): AdminNotice {
+  switch (input.notice) {
+    case "daily-refresh":
+      return {
+        title: "Daily refresh finished",
+        description: buildRunSummary(
+          input,
+          "The selected daily briefing run completed and the homepage/admin state has been refreshed.",
+        ),
+        variant: "success",
+      };
+    case "historical-refresh":
+      return {
+        title: "Historical backfill finished",
+        description: buildRunSummary(
+          input,
+          "The historical ingestion window finished and the refreshed paper pool is now visible in admin.",
+        ),
+        variant: "success",
+      };
+    case "settings-saved":
+      return {
+        title: "Settings saved",
+        description:
+          "Your briefing settings were saved. Future runs and homepage selection will use the updated values.",
+        variant: "success",
+      };
+    case "settings-reset":
+      return {
+        title: "Defaults restored",
+        description:
+          "The admin settings have been reset to the repo defaults for counts, pacing, ranking, and schedule fields.",
+        variant: "highlight",
+      };
+    case "categories-saved":
+      return {
+        title: "Categories updated",
+        description:
+          "Source category toggles were saved. The next ingestion run will use the new enabled category set.",
+        variant: "success",
+      };
+    case "paper-published":
+      return {
+        title: "Homepage selection updated",
+        description:
+          input.briefStatus === "ready"
+            ? "That paper is now part of the curated homepage set and its executive brief is ready."
+            : "That paper is now part of the curated homepage set, but it still needs an executive brief.",
+        variant: input.briefStatus === "ready" ? "success" : "highlight",
+      };
+    case "paper-removed":
+      return {
+        title: "Homepage selection updated",
+        description:
+          "That paper was removed from the curated homepage set. If no curated papers remain, the homepage will fall back to the automatic top list.",
+        variant: "highlight",
+      };
+    default:
+      return null;
+  }
+}
+
+function buildRunSummary(
+  input: {
+    fetched?: number;
+    upserted?: number;
+    generated?: number;
+  },
+  prefix: string,
+) {
+  const parts: string[] = [];
+
+  if (typeof input.fetched === "number") {
+    parts.push(`fetched ${input.fetched}`);
+  }
+
+  if (typeof input.upserted === "number") {
+    parts.push(`upserted ${input.upserted}`);
+  }
+
+  if (typeof input.generated === "number") {
+    parts.push(`generated ${input.generated} executive briefs`);
+  }
+
+  return parts.length > 0 ? `${prefix} This run ${parts.join(", ")}.` : prefix;
+}
+
+function getNoticeCardClassName(variant: NoticeVariant) {
+  if (variant === "success") {
+    return "border-success/40";
+  }
+
+  if (variant === "danger") {
+    return "border-danger/40";
+  }
+
+  return "border-highlight/40";
+}
+
+function getRunBadgeVariant(status: string): NoticeVariant {
+  if (status === "FAILED") {
+    return "danger";
+  }
+
+  if (status === "COMPLETED") {
+    return "success";
+  }
+
+  return "highlight";
+}
+
+function readCount(value: string | undefined) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }

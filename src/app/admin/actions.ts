@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
 import { runIngestionJob } from "@/lib/ingestion/service";
-import { ensurePaperTechnicalBrief } from "@/lib/technical/service";
 import { setPublishedPaperState } from "@/lib/publishing/service";
 import {
   getCategoryConfigs,
@@ -13,6 +12,10 @@ import {
   updateAppSettings,
   updateCategoryConfigs,
 } from "@/lib/settings/service";
+import {
+  ensurePaperTechnicalBrief,
+  getCurrentTechnicalBrief,
+} from "@/lib/technical/service";
 
 export async function logoutAction() {
   await clearAdminSession();
@@ -21,30 +24,39 @@ export async function logoutAction() {
 
 export async function runDailyRefreshAction(formData: FormData) {
   await requireAdmin("/admin");
-  const day = formData.get("announcementDay");
+  const announcementDay = readString(formData.get("announcementDay"));
+  const selectedDay = readString(formData.get("selectedDay"));
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
-  await runIngestionJob({
+  const result = await runIngestionJob({
     mode: "DAILY",
     triggerSource: TriggerSource.MANUAL,
-    announcementDay: typeof day === "string" && day ? day : undefined,
+    announcementDay,
     recomputeBriefs,
   });
 
   revalidateAll();
+  redirectToAdmin({
+    selectedDay: announcementDay ?? selectedDay,
+    notice: "daily-refresh",
+    fetched: result.fetchedCount,
+    upserted: result.upsertedCount,
+    generated: result.summaryCount,
+  });
 }
 
 export async function runHistoricalRefreshAction(formData: FormData) {
   await requireAdmin("/admin");
-  const from = formData.get("from");
-  const to = formData.get("to");
+  const from = readString(formData.get("from"));
+  const to = readString(formData.get("to"));
+  const selectedDay = readString(formData.get("selectedDay"));
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
-  if (typeof from !== "string" || typeof to !== "string" || !from || !to) {
+  if (!from || !to) {
     redirect("/admin?error=missing-range");
   }
 
-  await runIngestionJob({
+  const result = await runIngestionJob({
     mode: "HISTORICAL",
     triggerSource: TriggerSource.MANUAL,
     from,
@@ -54,10 +66,18 @@ export async function runHistoricalRefreshAction(formData: FormData) {
   });
 
   revalidateAll();
+  redirectToAdmin({
+    selectedDay: selectedDay ?? to,
+    notice: "historical-refresh",
+    fetched: result.fetchedCount,
+    upserted: result.upsertedCount,
+    generated: result.summaryCount,
+  });
 }
 
 export async function updateSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
+  const selectedDay = readString(formData.get("selectedDay"));
 
   const genAiRankingWeights = {
     frontierRelevance: Number(formData.get("frontierRelevance") ?? 0),
@@ -94,16 +114,27 @@ export async function updateSettingsAction(formData: FormData) {
   });
 
   revalidateAll();
+  redirectToAdmin({
+    selectedDay,
+    notice: "settings-saved",
+  });
 }
 
-export async function resetSettingsAction() {
+export async function resetSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
+  const selectedDay = readString(formData.get("selectedDay"));
+
   await resetAppSettings();
   revalidateAll();
+  redirectToAdmin({
+    selectedDay,
+    notice: "settings-reset",
+  });
 }
 
 export async function updateCategoriesAction(formData: FormData) {
   await requireAdmin("/admin");
+  const selectedDay = readString(formData.get("selectedDay"));
   const categories = await getCategoryConfigs();
 
   await updateCategoryConfigs(
@@ -116,20 +147,19 @@ export async function updateCategoriesAction(formData: FormData) {
   );
 
   revalidateAll();
+  redirectToAdmin({
+    selectedDay,
+    notice: "categories-saved",
+  });
 }
 
 export async function togglePublishedPaperAction(formData: FormData) {
   await requireAdmin("/admin");
-  const announcementDay = formData.get("announcementDay");
-  const paperId = formData.get("paperId");
-  const published = formData.get("published");
+  const announcementDay = readString(formData.get("announcementDay"));
+  const paperId = readString(formData.get("paperId"));
+  const published = readString(formData.get("published"));
 
-  if (
-    typeof announcementDay !== "string" ||
-    !announcementDay ||
-    typeof paperId !== "string" ||
-    !paperId
-  ) {
+  if (!announcementDay || !paperId) {
     redirect("/admin");
   }
 
@@ -141,16 +171,75 @@ export async function togglePublishedPaperAction(formData: FormData) {
     published: nextPublishedState,
   });
 
+  let briefStatus: "ready" | "missing" | undefined;
   if (nextPublishedState) {
     await ensurePaperTechnicalBrief(paperId);
+    briefStatus = (await getCurrentTechnicalBrief(paperId)) ? "ready" : "missing";
   }
 
   revalidateAll();
-  redirect(`/admin?day=${encodeURIComponent(announcementDay)}`);
+  redirectToAdmin({
+    selectedDay: announcementDay,
+    focusPaperId: paperId,
+    notice: nextPublishedState ? "paper-published" : "paper-removed",
+    briefStatus,
+  });
 }
 
 function revalidateAll() {
   revalidatePath("/");
   revalidatePath("/archive");
   revalidatePath("/admin");
+}
+
+function redirectToAdmin(input: {
+  selectedDay?: string;
+  notice?: string;
+  fetched?: number;
+  upserted?: number;
+  generated?: number;
+  focusPaperId?: string;
+  briefStatus?: "ready" | "missing";
+}): never {
+  const search = new URLSearchParams();
+
+  if (input.selectedDay) {
+    search.set("day", input.selectedDay);
+  }
+
+  if (input.notice) {
+    search.set("notice", input.notice);
+  }
+
+  if (typeof input.fetched === "number") {
+    search.set("fetched", String(input.fetched));
+  }
+
+  if (typeof input.upserted === "number") {
+    search.set("upserted", String(input.upserted));
+  }
+
+  if (typeof input.generated === "number") {
+    search.set("generated", String(input.generated));
+  }
+
+  if (input.focusPaperId) {
+    search.set("focusPaper", input.focusPaperId);
+  }
+
+  if (input.briefStatus) {
+    search.set("brief", input.briefStatus);
+  }
+
+  const query = search.toString();
+  redirect(query ? `/admin?${query}` : "/admin");
+}
+
+function readString(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
