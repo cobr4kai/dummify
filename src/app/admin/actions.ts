@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
 import { runIngestionJob } from "@/lib/ingestion/service";
+import { ensurePaperTechnicalBrief } from "@/lib/technical/service";
 import { setPublishedPaperState } from "@/lib/publishing/service";
 import {
   getCategoryConfigs,
@@ -132,11 +133,17 @@ export async function togglePublishedPaperAction(formData: FormData) {
     redirect("/admin");
   }
 
+  const nextPublishedState = published === "true";
+
   await setPublishedPaperState({
     announcementDay,
     paperId,
-    published: published === "true",
+    published: nextPublishedState,
   });
+
+  if (nextPublishedState) {
+    await ensurePaperTechnicalBrief(paperId);
+  }
 
   revalidateAll();
   redirect(`/admin?day=${encodeURIComponent(announcementDay)}`);

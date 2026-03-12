@@ -13,6 +13,7 @@ import { ArxivClient } from "@/lib/arxiv/client";
 import { prisma } from "@/lib/db";
 import { paperToSourceRecord, buildPaperSearchText } from "@/lib/papers/record";
 import { getEnrichmentProvider, getTechnicalBriefProvider } from "@/lib/providers";
+import { getPublishedPaperIdsForDay } from "@/lib/publishing/service";
 import { computeBriefScore } from "@/lib/scoring/service";
 import { getAppSettings, getEnabledCategoryKeys } from "@/lib/settings/service";
 import { ensurePaperTechnicalBrief, selectGenAiTopPaperIds } from "@/lib/technical/service";
@@ -119,14 +120,17 @@ export async function runIngestionJob(options: IngestionOptions) {
     const briefProvider = getTechnicalBriefProvider();
     const enrichmentProvider = getEnrichmentProvider();
 
-    const paperIdsForBriefs =
-      briefProvider || enrichmentProvider || options.recomputeBriefs
-        ? await selectGenAiTopPaperIds(
-            upsertedIds,
-            appSettings.genAiShortlistSize,
-            appSettings.genAiFeaturedCount,
-          )
-        : [];
+    const shouldSelectBriefTargets =
+      briefProvider || enrichmentProvider || options.recomputeBriefs;
+    const paperIdsForBriefs = shouldSelectBriefTargets
+      ? await resolvePaperIdsForBriefs({
+          mode: options.mode,
+          announcementDay,
+          fallbackPaperIds: upsertedIds,
+          shortlistSize: appSettings.genAiShortlistSize,
+          featuredCount: appSettings.genAiFeaturedCount,
+        })
+      : [];
 
     if (briefProvider) {
       for (const paperId of paperIdsForBriefs) {
@@ -190,6 +194,27 @@ export async function runIngestionJob(options: IngestionOptions) {
 
     throw error;
   }
+}
+
+async function resolvePaperIdsForBriefs(input: {
+  mode: IngestionOptions["mode"];
+  announcementDay: string;
+  fallbackPaperIds: string[];
+  shortlistSize: number;
+  featuredCount: number;
+}) {
+  if (input.mode === "DAILY") {
+    const publishedPaperIds = await getPublishedPaperIdsForDay(input.announcementDay);
+    if (publishedPaperIds.length > 0) {
+      return publishedPaperIds;
+    }
+  }
+
+  return selectGenAiTopPaperIds(
+    input.fallbackPaperIds,
+    input.shortlistSize,
+    input.featuredCount,
+  );
 }
 
 export async function ensurePaperEnrichment(
