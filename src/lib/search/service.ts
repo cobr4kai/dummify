@@ -1,5 +1,6 @@
 import { BriefMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { getPublishedPaperCountForDay, getPublishedPaperIdsForDay } from "@/lib/publishing/service";
 import { getAppSettings, getCategoryConfigs } from "@/lib/settings/service";
 import { normalizeSearchText } from "@/lib/utils/strings";
 
@@ -12,6 +13,17 @@ export async function getLatestAnnouncementDay() {
   });
 
   return latest?.announcementDay ?? null;
+}
+
+export async function getAnnouncementDays(limit = 90) {
+  const days = await prisma.paper.findMany({
+    select: { announcementDay: true },
+    distinct: ["announcementDay"],
+    orderBy: { announcementDay: "desc" },
+    take: limit,
+  });
+
+  return days.map((day) => day.announcementDay);
 }
 
 export async function getDailyBrief(options: {
@@ -28,16 +40,19 @@ export async function getDailyBrief(options: {
       papers: [],
       categories: await getCategoryConfigs(),
       announcementDay: null,
+      isCurated: false,
       settings,
     };
   }
 
   const category = options.category ?? "all";
   const sort = options.sort ?? "score";
+  const publishedPaperIds = await getPublishedPaperIdsForDay(announcementDay);
 
   const papers = await prisma.paper.findMany({
     where: {
       announcementDay,
+      ...(publishedPaperIds.length > 0 ? { id: { in: publishedPaperIds } } : {}),
       ...(category !== "all"
         ? {
             OR: [
@@ -78,13 +93,18 @@ export async function getDailyBrief(options: {
       }
 
       return rightScore - leftScore;
-    })
-    .slice(0, settings.genAiFeaturedCount);
+    });
+
+  const editionPapers =
+    publishedPaperIds.length > 0
+      ? filtered
+      : filtered.slice(0, settings.genAiFeaturedCount);
 
   return {
-    papers: filtered,
+    papers: editionPapers,
     categories: await getCategoryConfigs(),
     announcementDay,
+    isCurated: publishedPaperIds.length > 0,
     settings,
   };
 }
@@ -154,17 +174,10 @@ export async function getArchiveResults(options: {
       return (right.scores[0]?.totalScore ?? 0) - (left.scores[0]?.totalScore ?? 0);
     });
 
-  const days = await prisma.paper.findMany({
-    select: { announcementDay: true },
-    distinct: ["announcementDay"],
-    orderBy: { announcementDay: "desc" },
-    take: 90,
-  });
-
   return {
     papers: filtered,
     categories: await getCategoryConfigs(),
-    days: days.map((day) => day.announcementDay),
+    days: await getAnnouncementDays(),
     settings,
   };
 }
@@ -196,8 +209,10 @@ export async function getPaperDetail(paperId: string) {
   });
 }
 
-export async function getAdminSnapshot() {
-  const [settings, categories, runs, latestDay] = await Promise.all([
+export async function getAdminSnapshot(options?: {
+  announcementDay?: string | null;
+}) {
+  const [settings, categories, runs, latestDay, days] = await Promise.all([
     getAppSettings(),
     getCategoryConfigs(),
     prisma.ingestionRun.findMany({
@@ -205,7 +220,10 @@ export async function getAdminSnapshot() {
       take: 10,
     }),
     getLatestAnnouncementDay(),
+    getAnnouncementDays(),
   ]);
+
+  const selectedDay = options?.announcementDay ?? latestDay;
 
   const technicalBriefCount = await prisma.paperTechnicalBrief.count({
     where: { isCurrent: true },
@@ -215,11 +233,43 @@ export async function getAdminSnapshot() {
     where: { isCurrent: true },
   });
 
+  const [publishedPaperIds, editionPapers] = selectedDay
+    ? await Promise.all([
+        getPublishedPaperIdsForDay(selectedDay),
+        prisma.paper.findMany({
+          where: {
+            announcementDay: selectedDay,
+          },
+          include: {
+            scores: {
+              where: {
+                isCurrent: true,
+                mode: BriefMode.GENAI,
+              },
+              take: 1,
+            },
+            technicalBriefs: {
+              where: { isCurrent: true },
+              orderBy: { updatedAt: "desc" },
+              take: 1,
+            },
+          },
+        }),
+      ])
+    : [[], []];
+
   return {
     settings,
     categories,
     runs,
     latestDay,
+    days,
+    selectedDay,
+    publishedPaperIds,
+    publishedCount: selectedDay ? await getPublishedPaperCountForDay(selectedDay) : 0,
+    editionPapers: editionPapers.sort(
+      (left, right) => (right.scores[0]?.totalScore ?? 0) - (left.scores[0]?.totalScore ?? 0),
+    ),
     technicalBriefCount,
     pdfCacheCount,
   };

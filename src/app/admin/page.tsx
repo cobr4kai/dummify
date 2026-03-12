@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AdminEditionTable } from "@/components/admin-edition-table";
 import { PageShell } from "@/components/page-shell";
 import {
   logoutAction,
@@ -17,9 +18,21 @@ import { formatLongDateTime, formatShortDate } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+type SearchParams = Promise<{
+  day?: string;
+}>;
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   await requireAdmin("/admin");
-  const snapshot = await getAdminSnapshot();
+  const params = await searchParams;
+  const selectedDay = typeof params.day === "string" && params.day ? params.day : null;
+  const snapshot = await getAdminSnapshot({
+    announcementDay: selectedDay,
+  });
 
   return (
     <PageShell currentPath="/admin">
@@ -97,6 +110,16 @@ export default async function AdminPage() {
             </div>
           </CardContent>
         </Card>
+      </section>
+
+      <section className="mb-6">
+        <AdminEditionTable
+          days={snapshot.days}
+          featuredCount={snapshot.settings.genAiFeaturedCount}
+          papers={snapshot.editionPapers}
+          publishedPaperIds={snapshot.publishedPaperIds}
+          selectedDay={snapshot.selectedDay}
+        />
       </section>
 
       <section className="mb-6 grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">

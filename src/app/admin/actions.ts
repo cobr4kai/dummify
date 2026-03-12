@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
 import { runIngestionJob } from "@/lib/ingestion/service";
+import { setPublishedPaperState } from "@/lib/publishing/service";
 import {
   getCategoryConfigs,
   resetAppSettings,
@@ -114,6 +115,31 @@ export async function updateCategoriesAction(formData: FormData) {
   );
 
   revalidateAll();
+}
+
+export async function togglePublishedPaperAction(formData: FormData) {
+  await requireAdmin("/admin");
+  const announcementDay = formData.get("announcementDay");
+  const paperId = formData.get("paperId");
+  const published = formData.get("published");
+
+  if (
+    typeof announcementDay !== "string" ||
+    !announcementDay ||
+    typeof paperId !== "string" ||
+    !paperId
+  ) {
+    redirect("/admin");
+  }
+
+  await setPublishedPaperState({
+    announcementDay,
+    paperId,
+    published: published === "true",
+  });
+
+  revalidateAll();
+  redirect(`/admin?day=${encodeURIComponent(announcementDay)}`);
 }
 
 function revalidateAll() {

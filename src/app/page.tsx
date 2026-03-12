@@ -18,7 +18,7 @@ export default async function Home({
   searchParams: SearchParams;
 }) {
   const params = await searchParams;
-  const { papers, announcementDay } = await getDailyBrief({
+  const { papers, announcementDay, isCurated } = await getDailyBrief({
     category: "all",
     sort: "score",
     announcementDay: typeof params.day === "string" && params.day ? params.day : null,
@@ -42,16 +42,25 @@ export default async function Home({
                 <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
                   Daily frontier brief
                 </p>
-                <CardTitle>Top 10 frontier AI papers worth your attention today</CardTitle>
+                <CardTitle>
+                  {isCurated
+                    ? "Published frontier AI papers selected for this edition"
+                    : "Top frontier AI papers worth your attention today"}
+                </CardTitle>
                 <CardDescription>
-                  A newsletter-style edition of the most important new papers shaping generative AI, model performance, and the stack around it.
+                  {isCurated
+                    ? "This edition was manually curated from the scored paper pool in the admin editor."
+                    : "A newsletter-style edition of the most important new papers shaping generative AI, model performance, and the stack around it."}
                 </CardDescription>
               </CardHeader>
               <div className="flex flex-wrap items-center gap-3">
-                <Badge variant="default">Top {papers.length} papers</Badge>
+                <Badge variant={isCurated ? "success" : "default"}>
+                  {isCurated ? `Published ${papers.length} papers` : `Top ${papers.length} papers`}
+                </Badge>
                 {papers.length > 0 && papers.every((paper) => paper.isDemoData) ? (
                   <Badge variant="highlight">Demo dataset</Badge>
                 ) : null}
+                {isCurated ? <Badge variant="muted">Admin curated edition</Badge> : null}
                 <Badge variant="muted">AI-first categories only</Badge>
               </div>
             </div>
