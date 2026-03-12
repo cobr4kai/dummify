@@ -26,12 +26,15 @@ export async function runDailyRefreshAction(formData: FormData) {
   await requireAdmin("/admin");
   const announcementDay = readString(formData.get("announcementDay"));
   const selectedDay = readString(formData.get("selectedDay"));
+  const sortKey = readString(formData.get("sort"));
+  const sortDirection = readString(formData.get("dir"));
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
   const result = await runIngestionJob({
     mode: "DAILY",
     triggerSource: TriggerSource.MANUAL,
     announcementDay,
+    recomputeScores: true,
     recomputeBriefs,
   });
 
@@ -42,6 +45,8 @@ export async function runDailyRefreshAction(formData: FormData) {
     fetched: result.fetchedCount,
     upserted: result.upsertedCount,
     generated: result.summaryCount,
+    sortKey,
+    sortDirection,
   });
 }
 
@@ -50,6 +55,8 @@ export async function runHistoricalRefreshAction(formData: FormData) {
   const from = readString(formData.get("from"));
   const to = readString(formData.get("to"));
   const selectedDay = readString(formData.get("selectedDay"));
+  const sortKey = readString(formData.get("sort"));
+  const sortDirection = readString(formData.get("dir"));
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
   if (!from || !to) {
@@ -72,12 +79,16 @@ export async function runHistoricalRefreshAction(formData: FormData) {
     fetched: result.fetchedCount,
     upserted: result.upsertedCount,
     generated: result.summaryCount,
+    sortKey,
+    sortDirection,
   });
 }
 
 export async function updateSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
   const selectedDay = readString(formData.get("selectedDay"));
+  const sortKey = readString(formData.get("sort"));
+  const sortDirection = readString(formData.get("dir"));
 
   const genAiRankingWeights = {
     frontierRelevance: Number(formData.get("frontierRelevance") ?? 0),
@@ -117,24 +128,32 @@ export async function updateSettingsAction(formData: FormData) {
   redirectToAdmin({
     selectedDay,
     notice: "settings-saved",
+    sortKey,
+    sortDirection,
   });
 }
 
 export async function resetSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
   const selectedDay = readString(formData.get("selectedDay"));
+  const sortKey = readString(formData.get("sort"));
+  const sortDirection = readString(formData.get("dir"));
 
   await resetAppSettings();
   revalidateAll();
   redirectToAdmin({
     selectedDay,
     notice: "settings-reset",
+    sortKey,
+    sortDirection,
   });
 }
 
 export async function updateCategoriesAction(formData: FormData) {
   await requireAdmin("/admin");
   const selectedDay = readString(formData.get("selectedDay"));
+  const sortKey = readString(formData.get("sort"));
+  const sortDirection = readString(formData.get("dir"));
   const categories = await getCategoryConfigs();
 
   await updateCategoryConfigs(
@@ -150,6 +169,8 @@ export async function updateCategoriesAction(formData: FormData) {
   redirectToAdmin({
     selectedDay,
     notice: "categories-saved",
+    sortKey,
+    sortDirection,
   });
 }
 
@@ -158,6 +179,8 @@ export async function togglePublishedPaperAction(formData: FormData) {
   const announcementDay = readString(formData.get("announcementDay"));
   const paperId = readString(formData.get("paperId"));
   const published = readString(formData.get("published"));
+  const sortKey = readString(formData.get("sort"));
+  const sortDirection = readString(formData.get("dir"));
 
   if (!announcementDay || !paperId) {
     redirect("/admin");
@@ -188,6 +211,8 @@ export async function togglePublishedPaperAction(formData: FormData) {
     focusPaperId: paperId,
     notice: nextPublishedState ? "paper-published" : "paper-removed",
     briefStatus,
+    sortKey,
+    sortDirection,
   });
 }
 
@@ -205,6 +230,8 @@ function redirectToAdmin(input: {
   generated?: number;
   focusPaperId?: string;
   briefStatus?: "ready" | "missing" | "fallback";
+  sortKey?: string;
+  sortDirection?: string;
 }): never {
   const search = new URLSearchParams();
 
@@ -234,6 +261,14 @@ function redirectToAdmin(input: {
 
   if (input.briefStatus) {
     search.set("brief", input.briefStatus);
+  }
+
+  if (input.sortKey) {
+    search.set("sort", input.sortKey);
+  }
+
+  if (input.sortDirection) {
+    search.set("dir", input.sortDirection);
   }
 
   const query = search.toString();

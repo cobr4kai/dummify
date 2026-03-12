@@ -12,12 +12,14 @@ import {
   updateSettingsAction,
 } from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/auth";
-import { getAdminSnapshot } from "@/lib/search/service";
 import { env } from "@/lib/env";
+import { EXECUTIVE_COMPONENT_LABELS } from "@/lib/scoring/keywords";
+import { getAdminSnapshot } from "@/lib/search/service";
 import {
   hasPdfBackedBrief,
   prioritizePapersWithPdfBackedBriefs,
 } from "@/lib/technical/brief-status";
+import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import { formatLongDateTime, formatShortDate } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,8 @@ type SearchParams = Promise<{
   generated?: string;
   brief?: string;
   focusPaper?: string;
+  sort?: string;
+  dir?: string;
 }>;
 
 type NoticeVariant = "success" | "highlight" | "danger";
@@ -40,6 +44,44 @@ type AdminNotice = {
   variant: NoticeVariant;
 } | null;
 
+const RANKING_WEIGHT_FIELDS: Array<{
+  key: ExecutiveScoreComponentKey;
+  description: string;
+}> = [
+  {
+    key: "strategicBusinessImpact",
+    description: "How much this could change real workflows, business decisions, or deployment value.",
+  },
+  {
+    key: "frontierRelevance",
+    description: "How likely a user or operator is to care about this topic right now.",
+  },
+  {
+    key: "evidenceStrength",
+    description: "How much hard empirical support the claims appear to have.",
+  },
+  {
+    key: "capabilityImpact",
+    description: "Whether the paper meaningfully changes what the system can do.",
+  },
+  {
+    key: "inferenceEconomicsImpact",
+    description: "Potential effect on serving cost, latency, or throughput.",
+  },
+  {
+    key: "platformStackImpact",
+    description: "How much it could change tooling, infrastructure, or deployment choices.",
+  },
+  {
+    key: "trainingEconomicsImpact",
+    description: "Potential effect on training or post-training cost and efficiency.",
+  },
+  {
+    key: "claritySignal",
+    description: "How legible and actionable the framing looks for a generalist reader.",
+  },
+];
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -48,6 +90,8 @@ export default async function AdminPage({
   await requireAdmin("/admin");
   const params = await searchParams;
   const selectedDay = typeof params.day === "string" && params.day ? params.day : null;
+  const sortKey = typeof params.sort === "string" && params.sort ? params.sort : null;
+  const sortDirection = typeof params.dir === "string" && params.dir ? params.dir : null;
   const snapshot = await getAdminSnapshot({
     announcementDay: selectedDay,
   });
@@ -264,6 +308,8 @@ export default async function AdminPage({
           papers={snapshot.editionPapers}
           publishedPaperIds={snapshot.publishedPaperIds}
           selectedDay={snapshot.selectedDay}
+          sortDirection={sortDirection}
+          sortKey={sortKey}
         />
       </section>
 
@@ -283,6 +329,7 @@ export default async function AdminPage({
             >
               <p className="text-sm font-semibold text-foreground">Daily refresh</p>
               <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <label className="space-y-2 text-sm font-medium">
                 Announcement day
                 <input
@@ -312,6 +359,7 @@ export default async function AdminPage({
             >
               <p className="text-sm font-semibold text-foreground">Historical fetch</p>
               <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <label className="space-y-2 text-sm font-medium">
                 From
                 <input
@@ -356,6 +404,7 @@ export default async function AdminPage({
           <CardContent>
             <form action={updateCategoriesAction} className="space-y-3">
               <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               {snapshot.categories.map((category) => (
                 <label
                   key={category.key}
@@ -387,12 +436,13 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Brief settings</CardTitle>
             <CardDescription>
-              Control output counts, ranking weights, high-signal threshold, and PDF cache path.
+              Control output counts, ranking weights, high-signal threshold, and the score bias toward real-world impact and user interest.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form action={updateSettingsAction} className="grid gap-4 sm:grid-cols-2">
               <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <label className="space-y-2 text-sm font-medium">
                 Featured count
                 <input
@@ -514,15 +564,21 @@ export default async function AdminPage({
                 />
               </label>
 
-              <div className="sm:col-span-2 mt-2">
+              <div className="sm:col-span-2 mt-2 space-y-2">
                 <p className="text-sm font-semibold text-foreground">Ranking weights</p>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  The default mix now leans toward real-world impact, user interest, and hard evidence. Save changes, then run a manual daily refresh to rescore the current day with the new mix.
+                </p>
               </div>
-              {Object.entries(snapshot.settings.genAiRankingWeights).map(([key, value]) => (
+              {RANKING_WEIGHT_FIELDS.map(({ key, description }) => (
                 <label key={key} className="space-y-2 text-sm font-medium">
-                  {key}
+                  {EXECUTIVE_COMPONENT_LABELS[key]}
+                  <span className="block text-xs leading-5 text-muted-foreground">
+                    {description}
+                  </span>
                   <input
                     className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
-                    defaultValue={value}
+                    defaultValue={snapshot.settings.genAiRankingWeights[key]}
                     name={key}
                     step="0.01"
                     type="number"
@@ -539,6 +595,7 @@ export default async function AdminPage({
             </form>
             <form action={resetSettingsAction} className="mt-3">
               <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <AdminSubmitButton
                 idleLabel="Reset defaults"
                 pendingLabel="Resetting defaults..."
@@ -595,6 +652,21 @@ export default async function AdminPage({
   );
 }
 
+function AdminSortStateInputs({
+  sortKey,
+  sortDirection,
+}: {
+  sortKey: string | null;
+  sortDirection: string | null;
+}) {
+  return (
+    <>
+      {sortKey ? <input name="sort" type="hidden" value={sortKey} /> : null}
+      {sortDirection ? <input name="dir" type="hidden" value={sortDirection} /> : null}
+    </>
+  );
+}
+
 function getAdminNotice(input: {
   notice: string | null;
   fetched?: number;
@@ -625,7 +697,7 @@ function getAdminNotice(input: {
       return {
         title: "Settings saved",
         description:
-          "Your briefing settings were saved. Future runs and homepage selection will use the updated values.",
+          "Your briefing settings were saved. Run a manual daily refresh to rescore the current day with the updated ranking mix.",
         variant: "success",
       };
     case "settings-reset":

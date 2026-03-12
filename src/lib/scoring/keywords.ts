@@ -10,14 +10,14 @@ export const EXECUTIVE_PRIORITY_FEED_CATEGORIES = [
 ] as const;
 
 export const EXECUTIVE_COMPONENT_LABELS: Record<ExecutiveScoreComponentKey, string> = {
-  frontierRelevance: "Frontier relevance",
+  frontierRelevance: "User interest",
   capabilityImpact: "Capability impact",
   trainingEconomicsImpact: "Training economics",
   inferenceEconomicsImpact: "Inference economics",
-  platformStackImpact: "Platform stack impact",
-  strategicBusinessImpact: "Strategic business impact",
-  evidenceStrength: "Evidence strength",
-  claritySignal: "Clarity signal",
+  platformStackImpact: "Platform impact",
+  strategicBusinessImpact: "Real-world impact",
+  evidenceStrength: "Proof strength",
+  claritySignal: "Clarity",
 };
 
 export const EXECUTIVE_COMPONENT_KEYWORDS: Record<

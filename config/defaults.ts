@@ -17,7 +17,7 @@ export const DEFAULT_CATEGORIES = [
   { key: "stat.ML", label: "Statistical Machine Learning", enabled: false },
 ] as const;
 
-export const DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS: ExecutiveScoringWeights = {
+export const LEGACY_EXECUTIVE_BRIEF_RANKING_WEIGHTS: ExecutiveScoringWeights = {
   frontierRelevance: 0.25,
   capabilityImpact: 0.18,
   trainingEconomicsImpact: 0.12,
@@ -25,6 +25,17 @@ export const DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS: ExecutiveScoringWeights = 
   platformStackImpact: 0.12,
   strategicBusinessImpact: 0.11,
   evidenceStrength: 0.06,
+  claritySignal: 0.04,
+};
+
+export const DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS: ExecutiveScoringWeights = {
+  frontierRelevance: 0.18,
+  capabilityImpact: 0.17,
+  trainingEconomicsImpact: 0.08,
+  inferenceEconomicsImpact: 0.09,
+  platformStackImpact: 0.08,
+  strategicBusinessImpact: 0.20,
+  evidenceStrength: 0.16,
   claritySignal: 0.04,
 };
 
@@ -51,7 +62,7 @@ export const DEFAULT_OPENAI_SYNTHESIS_MODEL = "gpt-5.4";
 export const DEFAULT_ENABLE_PREMIUM_SYNTHESIS = true;
 export const DEFAULT_PDF_CACHE_DIR =
   process.env.PAPERBRIEF_CACHE_DIR?.trim() || ".paperbrief-cache";
-export const DEFAULT_SCORING_VERSION = "2026-03-12.v1";
+export const DEFAULT_SCORING_VERSION = "2026-03-12.v2";
 
 export const DEFAULT_APP_SETTINGS = {
   featuredPaperCount: DEFAULT_FEATURED_PAPER_COUNT,

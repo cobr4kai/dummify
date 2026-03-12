@@ -32,6 +32,18 @@ describe("computeBriefScore", () => {
     expect(score.rationale.length).toBeGreaterThan(20);
   });
 
+  it("tilts default weights toward real impact, user interest, and evidence", () => {
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.strategicBusinessImpact).toBeGreaterThan(
+      DEFAULT_GENAI_RANKING_WEIGHTS.trainingEconomicsImpact,
+    );
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.evidenceStrength).toBeGreaterThan(
+      DEFAULT_GENAI_RANKING_WEIGHTS.platformStackImpact,
+    );
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.frontierRelevance).toBeGreaterThan(
+      DEFAULT_GENAI_RANKING_WEIGHTS.claritySignal,
+    );
+  });
+
   it("preserves score transparency for weaker, more conceptual papers", () => {
     const score = computeBriefScore({
       title: "A Novel Theoretical Lens on Representation Learning",

@@ -4,6 +4,7 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CATEGORIES,
   DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+  LEGACY_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
 } from "@/config/defaults";
 import type { ExecutiveScoringWeights } from "@/lib/types";
 
@@ -49,7 +50,8 @@ const settingDescriptions: Record<keyof AppSettings, string> = {
     "Minimum total score used for the archive high-signal toggle.",
   audienceFitThreshold: "Legacy audience threshold retained for compatibility.",
   rankingWeights: "Legacy score weights retained for compatibility.",
-  genAiRankingWeights: "Editable heuristic weights for the canonical daily brief score.",
+  genAiRankingWeights:
+    "Editable heuristic weights for the canonical daily brief score, with extra emphasis on real-world impact, user interest, and evidence.",
   genAiUsePremiumSynthesis:
     "Whether to use the premium synthesis model when the environment allows it.",
   pdfCacheDir: "Local directory used to cache official arXiv PDFs and extracted page text.",
@@ -99,6 +101,8 @@ export async function ensureDefaultSettings() {
       }),
     ),
   ]);
+
+  await upgradeLegacyRankingWeightDefaults();
 }
 
 export async function getCategoryConfigs() {
@@ -259,6 +263,49 @@ export async function resetAppSettings() {
   });
 }
 
+
+async function upgradeLegacyRankingWeightDefaults() {
+  const weightKeys = ["rankingWeights", "genAiRankingWeights"] as const;
+  const settings = await prisma.appSetting.findMany({
+    where: {
+      key: {
+        in: [...weightKeys],
+      },
+    },
+  });
+
+  const updates = settings.flatMap((setting) => {
+    const parsed = executiveRankingWeightsSchema.safeParse(setting.value);
+    if (!parsed.success) {
+      return [];
+    }
+
+    if (!weightsMatch(parsed.data, LEGACY_EXECUTIVE_BRIEF_RANKING_WEIGHTS)) {
+      return [];
+    }
+
+    if (weightsMatch(parsed.data, DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS)) {
+      return [];
+    }
+
+    return [
+      prisma.appSetting.update({
+        where: { key: setting.key },
+        data: { value: DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS },
+      }),
+    ];
+  });
+
+  if (updates.length > 0) {
+    await prisma.$transaction(updates);
+  }
+}
+
+function weightsMatch(left: ExecutiveScoringWeights, right: ExecutiveScoringWeights) {
+  return (Object.keys(left) as Array<keyof ExecutiveScoringWeights>).every(
+    (key) => Math.abs(left[key] - right[key]) < 0.0001,
+  );
+}
 function normalizeWeights(weights: ExecutiveScoringWeights) {
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
 

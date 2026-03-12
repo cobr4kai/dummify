@@ -11,6 +11,7 @@ import {
   hasPdfBackedBrief,
   prioritizePapersWithPdfBackedBriefs,
 } from "@/lib/technical/brief-status";
+import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { formatShortDate } from "@/lib/utils/dates";
 import { parseJsonValue } from "@/lib/utils/json";
@@ -28,15 +29,22 @@ const breakdownSchema = z.record(
 );
 
 const scoreColumns = [
-  { key: "frontierRelevance", label: "Frontier" },
+  { key: "strategicBusinessImpact", label: "Real-world" },
+  { key: "frontierRelevance", label: "Interest" },
   { key: "capabilityImpact", label: "Capability" },
-  { key: "trainingEconomicsImpact", label: "Training" },
+  { key: "evidenceStrength", label: "Proof" },
   { key: "inferenceEconomicsImpact", label: "Inference" },
   { key: "platformStackImpact", label: "Platform" },
-  { key: "strategicBusinessImpact", label: "Strategic" },
-  { key: "evidenceStrength", label: "Evidence" },
+  { key: "trainingEconomicsImpact", label: "Training" },
   { key: "claritySignal", label: "Clarity" },
-] as const;
+] as const satisfies ReadonlyArray<{
+  key: ExecutiveScoreComponentKey;
+  label: string;
+}>;
+
+type AdminEditionSortKey = "liveStatus" | "paper" | "total" | ExecutiveScoreComponentKey;
+type AdminEditionSortDirection = "asc" | "desc";
+type ScoreBreakdownRecord = z.infer<typeof breakdownSchema>;
 
 type AdminEditionTableProps = {
   days: string[];
@@ -44,6 +52,8 @@ type AdminEditionTableProps = {
   featuredCount: number;
   publishedPaperIds: string[];
   focusPaperId?: string | null;
+  sortKey?: string | null;
+  sortDirection?: string | null;
   papers: Array<{
     id: string;
     title: string;
@@ -62,12 +72,33 @@ type AdminEditionTableProps = {
   }>;
 };
 
+type AdminEditionPaper = AdminEditionTableProps["papers"][number];
+type AdminEditionRow = {
+  paper: AdminEditionPaper;
+  score: AdminEditionPaper["scores"][number] | undefined;
+  breakdown: ScoreBreakdownRecord;
+  briefState: ReturnType<typeof getHomepageBriefState>;
+  hasPdfBrief: boolean;
+  isPublished: boolean;
+  isOnHomepage: boolean;
+  isFocused: boolean;
+  sourceLabel: string;
+  briefLabel: string;
+  statusDescription: string;
+  actionLabel: string;
+  pendingLabel: string;
+  liveStatusRank: number;
+  totalScore: number;
+};
+
 export function AdminEditionTable({
   days,
   selectedDay,
   featuredCount,
   publishedPaperIds,
   focusPaperId,
+  sortKey,
+  sortDirection,
   papers,
 }: AdminEditionTableProps) {
   const publishedSet = new Set(publishedPaperIds);
@@ -85,6 +116,19 @@ export function AdminEditionTable({
     homePagePaperIds.length - homePageBriefReadyCount,
     0,
   );
+  const currentSortKey = readSortKey(sortKey);
+  const currentSortDirection = readSortDirection(sortDirection, currentSortKey);
+  const rows = papers.map((paper) => buildRow({
+    paper,
+    focusPaperId,
+    hasCuratedHomepage,
+    homePageSet,
+    publishedSet,
+  }));
+  const sortedRows = [...rows].sort((left, right) =>
+    compareRows(left, right, currentSortKey, currentSortDirection),
+  );
+  const activeSortLabel = getSortLabel(currentSortKey);
 
   return (
     <Card>
@@ -117,6 +161,10 @@ export function AdminEditionTable({
         </div>
 
         <form className="flex flex-wrap items-end gap-3">
+          <SortStateInputs
+            sortDirection={currentSortDirection}
+            sortKey={currentSortKey}
+          />
           <label className="space-y-2 text-sm font-medium">
             Announcement day
             <select
@@ -138,7 +186,7 @@ export function AdminEditionTable({
       <CardContent>
         {!selectedDay ? (
           <p className="text-sm text-muted-foreground">
-            Ingest or seed papers first, then come back here to curate a published edition.
+            Ingest papers first, then come back here to curate a published edition.
           </p>
         ) : papers.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -161,177 +209,167 @@ export function AdminEditionTable({
                   Every paper currently visible on the homepage already has a PDF-backed executive brief.
                 </p>
               )}
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                Click any column heading to sort. Active sort: {activeSortLabel} ({formatSortDirectionLabel(currentSortKey, currentSortDirection)}).
+              </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1500px] border-separate border-spacing-y-2 text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                    <th className="px-3 py-2">Live status</th>
-                    <th className="px-3 py-2">Paper</th>
-                    <th className="px-3 py-2">Total</th>
+                    <SortableHeader
+                      currentSortDirection={currentSortDirection}
+                      currentSortKey={currentSortKey}
+                      label="Live status"
+                      requestedSortKey="liveStatus"
+                      selectedDay={selectedDay}
+                    />
+                    <SortableHeader
+                      currentSortDirection={currentSortDirection}
+                      currentSortKey={currentSortKey}
+                      label="Paper"
+                      requestedSortKey="paper"
+                      selectedDay={selectedDay}
+                    />
+                    <SortableHeader
+                      currentSortDirection={currentSortDirection}
+                      currentSortKey={currentSortKey}
+                      label="Total"
+                      requestedSortKey="total"
+                      selectedDay={selectedDay}
+                    />
                     {scoreColumns.map((column) => (
-                      <th key={column.key} className="px-3 py-2">
-                        {column.label}
-                      </th>
+                      <SortableHeader
+                        key={column.key}
+                        currentSortDirection={currentSortDirection}
+                        currentSortKey={currentSortKey}
+                        label={column.label}
+                        requestedSortKey={column.key}
+                        selectedDay={selectedDay}
+                      />
                     ))}
                     <th className="px-3 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {papers.map((paper) => {
-                    const score = paper.scores[0];
-                    const breakdown = parseJsonValue(score?.breakdown ?? {}, breakdownSchema, {});
-                    const briefState = getHomepageBriefState(paper.technicalBriefs);
-                    const hasPdfBrief = briefState === "pdf-ready";
-                    const isPublished = publishedSet.has(paper.id);
-                    const isOnHomepage = homePageSet.has(paper.id);
-                    const isAutoHomepagePaper = !hasCuratedHomepage && isOnHomepage;
-                    const isFocused = focusPaperId === paper.id;
-                    const sourceLabel = hasCuratedHomepage
-                      ? isPublished
-                        ? "Curated set"
-                        : "Not curated"
-                      : isAutoHomepagePaper
-                        ? "Auto fallback"
-                        : "Below fallback cut";
-                    const briefLabel = hasPdfBrief
-                      ? "PDF brief ready"
-                      : briefState === "abstract-fallback"
-                        ? "Abstract fallback only"
-                        : isOnHomepage
-                          ? "PDF brief missing"
-                          : "No brief yet";
-                    const statusDescription = isOnHomepage
-                      ? hasPdfBrief
-                        ? "This paper is live on the homepage and its PDF-backed executive brief is already attached."
-                        : briefState === "abstract-fallback"
-                          ? "This paper is live on the homepage, but the last analysis fell back to the abstract, so the homepage is withholding that brief until PDF extraction succeeds."
-                          : "This paper is live on the homepage, but its PDF-backed executive brief is still missing."
-                      : hasPdfBrief
-                        ? "A PDF-backed brief already exists, but this paper is not currently live on the homepage."
-                        : briefState === "abstract-fallback"
-                          ? "Only an abstract fallback brief exists so far, so this paper is not homepage-ready yet."
-                          : "This paper is stored and scored, but it is not currently live on the homepage.";
-                    const actionLabel = hasCuratedHomepage
-                      ? isPublished
-                        ? "Remove from curated page"
-                        : "Add to curated page"
-                      : "Start curated homepage";
-                    const pendingLabel = isPublished
-                      ? "Removing..."
-                      : isOnHomepage
-                        ? "Publishing and syncing..."
-                        : "Publishing...";
-
-                    return (
-                      <tr
-                        key={paper.id}
-                        className={cn(
-                          "rounded-[20px] bg-white/70 align-top shadow-sm transition-shadow",
-                          isFocused ? "shadow-[0_0_0_2px_rgba(15,127,132,0.22)]" : null,
-                        )}
-                      >
-                        <td className="rounded-l-[20px] px-3 py-4">
-                          <div className="flex max-w-[220px] flex-col items-start gap-2">
-                            <Badge variant={isOnHomepage ? "success" : "muted"}>
-                              {isOnHomepage ? "On homepage now" : "Off homepage"}
-                            </Badge>
-                            <Badge
-                              variant={
-                                sourceLabel === "Curated set" || sourceLabel === "Auto fallback"
-                                  ? "default"
-                                  : "muted"
-                              }
-                            >
-                              {sourceLabel}
-                            </Badge>
-                            <Badge
-                              variant={
-                                hasPdfBrief
-                                  ? "success"
-                                  : briefState === "abstract-fallback"
+                  {sortedRows.map((row) => (
+                    <tr
+                      key={row.paper.id}
+                      className={cn(
+                        "rounded-[20px] bg-white/70 align-top shadow-sm transition-shadow",
+                        row.isFocused ? "shadow-[0_0_0_2px_rgba(15,127,132,0.22)]" : null,
+                      )}
+                    >
+                      <td className="rounded-l-[20px] px-3 py-4">
+                        <div className="flex max-w-[220px] flex-col items-start gap-2">
+                          <Badge variant={row.isOnHomepage ? "success" : "muted"}>
+                            {row.isOnHomepage ? "On homepage now" : "Off homepage"}
+                          </Badge>
+                          <Badge
+                            variant={
+                              row.sourceLabel === "Curated set" || row.sourceLabel === "Auto fallback"
+                                ? "default"
+                                : "muted"
+                            }
+                          >
+                            {row.sourceLabel}
+                          </Badge>
+                          <Badge
+                            variant={
+                              row.hasPdfBrief
+                                ? "success"
+                                : row.briefState === "abstract-fallback"
+                                  ? "highlight"
+                                  : row.isOnHomepage
                                     ? "highlight"
-                                    : isOnHomepage
-                                      ? "highlight"
-                                      : "muted"
-                              }
-                            >
-                              {briefLabel}
-                            </Badge>
-                            <p className="text-xs leading-5 text-muted-foreground">
-                              {statusDescription}
+                                    : "muted"
+                            }
+                          >
+                            {row.briefLabel}
+                          </Badge>
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            {row.statusDescription}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="max-w-[420px] px-3 py-4">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {row.paper.primaryCategory ? (
+                              <Badge variant="muted">{row.paper.primaryCategory}</Badge>
+                            ) : null}
+                            {row.isFocused ? <Badge variant="highlight">Just updated</Badge> : null}
+                            <Button asChild size="sm" variant="ghost">
+                              <Link href={`/papers/${row.paper.id}`}>Open detail</Link>
+                            </Button>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-foreground">{row.paper.title}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {row.paper.authorsText}
                             </p>
                           </div>
-                        </td>
-                        <td className="max-w-[420px] px-3 py-4">
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {paper.primaryCategory ? (
-                                <Badge variant="muted">{paper.primaryCategory}</Badge>
-                              ) : null}
-                              {isFocused ? <Badge variant="highlight">Just updated</Badge> : null}
-                              <Button asChild size="sm" variant="ghost">
-                                <Link href={`/papers/${paper.id}`}>Open detail</Link>
-                              </Button>
-                            </div>
-                            <div>
-                              <p className="font-semibold text-foreground">{paper.title}</p>
-                              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                {paper.authorsText}
-                              </p>
-                            </div>
-                            <div className="rounded-[18px] border border-border/70 bg-background/45 px-3 py-2 text-xs leading-5 text-foreground/80">
-                              {paper.technicalBriefs[0]?.oneLineVerdict ??
-                                score?.rationale ??
-                                "No brief or score rationale is available yet."}
-                            </div>
-                            <a
-                              href={paper.abstractUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-block text-xs font-medium text-foreground/75 underline-offset-4 hover:text-foreground hover:underline"
-                            >
-                              Open arXiv abstract
-                            </a>
+                          <div className="rounded-[18px] border border-border/70 bg-background/45 px-3 py-2 text-xs leading-5 text-foreground/80">
+                            {row.paper.technicalBriefs[0]?.oneLineVerdict ??
+                              row.score?.rationale ??
+                              "No brief or score rationale is available yet."}
                           </div>
+                          <a
+                            href={row.paper.abstractUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-block text-xs font-medium text-foreground/75 underline-offset-4 hover:text-foreground hover:underline"
+                          >
+                            Open arXiv abstract
+                          </a>
+                        </div>
+                      </td>
+                      <td className="px-3 py-4 font-semibold text-foreground">
+                        {formatScore(row.totalScore)}
+                      </td>
+                      {scoreColumns.map((column) => (
+                        <td key={column.key} className="px-3 py-4 text-foreground/85">
+                          {formatScore(row.breakdown[column.key]?.rawScore)}
                         </td>
-                        <td className="px-3 py-4 font-semibold text-foreground">
-                          {formatScore(score?.totalScore)}
-                        </td>
-                        {scoreColumns.map((column) => (
-                          <td key={column.key} className="px-3 py-4 text-foreground/85">
-                            {formatScore(breakdown[column.key]?.rawScore)}
-                          </td>
-                        ))}
-                        <td className="rounded-r-[20px] px-3 py-4">
-                          <form action={togglePublishedPaperAction} className="space-y-2">
-                            <input name="announcementDay" type="hidden" value={selectedDay} />
-                            <input name="paperId" type="hidden" value={paper.id} />
-                            <input
-                              name="published"
-                              type="hidden"
-                              value={isPublished ? "false" : "true"}
-                            />
-                            <AdminSubmitButton
-                              className="w-full"
-                              idleLabel={actionLabel}
-                              pendingLabel={pendingLabel}
-                              size="sm"
-                              type="submit"
-                              variant={isPublished ? "danger" : isOnHomepage ? "default" : "secondary"}
-                            />
-                            <p className="text-xs leading-5 text-muted-foreground">
-                              {isPublished
-                                ? "Removes this paper from the curated homepage set."
-                                : hasCuratedHomepage
-                                  ? "Adds this paper to the curated homepage set and keeps the current curated mode active."
-                                  : "Starts a curated homepage with this paper and triggers PDF-backed brief generation if needed."}
-                            </p>
-                          </form>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      ))}
+                      <td className="rounded-r-[20px] px-3 py-4">
+                        <form action={togglePublishedPaperAction} className="space-y-2">
+                          <SortStateInputs
+                            sortDirection={currentSortDirection}
+                            sortKey={currentSortKey}
+                          />
+                          <input name="announcementDay" type="hidden" value={selectedDay} />
+                          <input name="paperId" type="hidden" value={row.paper.id} />
+                          <input
+                            name="published"
+                            type="hidden"
+                            value={row.isPublished ? "false" : "true"}
+                          />
+                          <AdminSubmitButton
+                            className="w-full"
+                            idleLabel={row.actionLabel}
+                            pendingLabel={row.pendingLabel}
+                            size="sm"
+                            type="submit"
+                            variant={
+                              row.isPublished
+                                ? "danger"
+                                : row.isOnHomepage
+                                  ? "default"
+                                  : "secondary"
+                            }
+                          />
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            {row.isPublished
+                              ? "Removes this paper from the curated homepage set."
+                              : hasCuratedHomepage
+                                ? "Adds this paper to the curated homepage set and keeps the current curated mode active."
+                                : "Starts a curated homepage with this paper and triggers PDF-backed brief generation if needed."}
+                          </p>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -342,8 +380,251 @@ export function AdminEditionTable({
   );
 }
 
+function SortStateInputs({
+  sortKey,
+  sortDirection,
+}: {
+  sortKey: AdminEditionSortKey;
+  sortDirection: AdminEditionSortDirection;
+}) {
+  return (
+    <>
+      <input name="sort" type="hidden" value={sortKey} />
+      <input name="dir" type="hidden" value={sortDirection} />
+    </>
+  );
+}
+
+function SortableHeader({
+  currentSortKey,
+  currentSortDirection,
+  requestedSortKey,
+  label,
+  selectedDay,
+}: {
+  currentSortKey: AdminEditionSortKey;
+  currentSortDirection: AdminEditionSortDirection;
+  requestedSortKey: AdminEditionSortKey;
+  label: string;
+  selectedDay: string | null;
+}) {
+  const isActive = currentSortKey === requestedSortKey;
+  const nextDirection = getNextSortDirection(
+    currentSortKey,
+    currentSortDirection,
+    requestedSortKey,
+  );
+  const params = new URLSearchParams();
+  if (selectedDay) {
+    params.set("day", selectedDay);
+  }
+  params.set("sort", requestedSortKey);
+  params.set("dir", nextDirection);
+
+  return (
+    <th className="px-3 py-2">
+      <Link
+        className={cn(
+          "inline-flex items-center gap-2 rounded-full px-2 py-1 transition-colors hover:bg-foreground/5 hover:text-foreground",
+          isActive ? "text-foreground" : null,
+        )}
+        href={`/admin?${params.toString()}`}
+        prefetch={false}
+      >
+        <span>{label}</span>
+        <span aria-hidden>{isActive ? (currentSortDirection === "asc" ? "^" : "v") : "<>"}</span>
+      </Link>
+    </th>
+  );
+}
+
+function buildRow(input: {
+  paper: AdminEditionPaper;
+  focusPaperId?: string | null;
+  hasCuratedHomepage: boolean;
+  homePageSet: Set<string>;
+  publishedSet: Set<string>;
+}): AdminEditionRow {
+  const score = input.paper.scores[0];
+  const breakdown = parseJsonValue(score?.breakdown ?? {}, breakdownSchema, {});
+  const briefState = getHomepageBriefState(input.paper.technicalBriefs);
+  const hasPdfBrief = briefState === "pdf-ready";
+  const isPublished = input.publishedSet.has(input.paper.id);
+  const isOnHomepage = input.homePageSet.has(input.paper.id);
+  const isAutoHomepagePaper = !input.hasCuratedHomepage && isOnHomepage;
+  const isFocused = input.focusPaperId === input.paper.id;
+  const sourceLabel = input.hasCuratedHomepage
+    ? isPublished
+      ? "Curated set"
+      : "Not curated"
+    : isAutoHomepagePaper
+      ? "Auto fallback"
+      : "Below fallback cut";
+  const briefLabel = hasPdfBrief
+    ? "PDF brief ready"
+    : briefState === "abstract-fallback"
+      ? "Abstract fallback only"
+      : isOnHomepage
+        ? "PDF brief missing"
+        : "No brief yet";
+  const statusDescription = isOnHomepage
+    ? hasPdfBrief
+      ? "This paper is live on the homepage and its PDF-backed executive brief is already attached."
+      : briefState === "abstract-fallback"
+        ? "This paper is live on the homepage, but the last analysis fell back to the abstract, so the homepage is withholding that brief until PDF extraction succeeds."
+        : "This paper is live on the homepage, but its PDF-backed executive brief is still missing."
+    : hasPdfBrief
+      ? "A PDF-backed brief already exists, but this paper is not currently live on the homepage."
+      : briefState === "abstract-fallback"
+        ? "Only an abstract fallback brief exists so far, so this paper is not homepage-ready yet."
+        : "This paper is stored and scored, but it is not currently live on the homepage.";
+  const actionLabel = input.hasCuratedHomepage
+    ? isPublished
+      ? "Remove from curated page"
+      : "Add to curated page"
+    : "Start curated homepage";
+  const pendingLabel = isPublished
+    ? "Removing..."
+    : isOnHomepage
+      ? "Publishing and syncing..."
+      : "Publishing...";
+  const liveStatusRank =
+    (isOnHomepage ? 100 : 0) +
+    (hasPdfBrief ? 20 : briefState === "abstract-fallback" ? 10 : 0) +
+    (isPublished ? 5 : 0);
+
+  return {
+    paper: input.paper,
+    score,
+    breakdown,
+    briefState,
+    hasPdfBrief,
+    isPublished,
+    isOnHomepage,
+    isFocused,
+    sourceLabel,
+    briefLabel,
+    statusDescription,
+    actionLabel,
+    pendingLabel,
+    liveStatusRank,
+    totalScore: score?.totalScore ?? -1,
+  };
+}
+
+function compareRows(
+  left: AdminEditionRow,
+  right: AdminEditionRow,
+  sortKey: AdminEditionSortKey,
+  sortDirection: AdminEditionSortDirection,
+) {
+  const primaryResult = comparePrimary(left, right, sortKey);
+  const directedResult = sortDirection === "asc" ? primaryResult : primaryResult * -1;
+  if (directedResult !== 0) {
+    return directedResult;
+  }
+
+  const totalTieBreaker = compareNumber(right.totalScore, left.totalScore);
+  if (totalTieBreaker !== 0) {
+    return totalTieBreaker;
+  }
+
+  return left.paper.title.localeCompare(right.paper.title);
+}
+
+function comparePrimary(
+  left: AdminEditionRow,
+  right: AdminEditionRow,
+  sortKey: AdminEditionSortKey,
+) {
+  switch (sortKey) {
+    case "liveStatus":
+      return compareNumber(left.liveStatusRank, right.liveStatusRank);
+    case "paper":
+      return left.paper.title.localeCompare(right.paper.title);
+    case "total":
+      return compareNumber(left.totalScore, right.totalScore);
+    default:
+      return compareNumber(
+        left.breakdown[sortKey]?.rawScore ?? -1,
+        right.breakdown[sortKey]?.rawScore ?? -1,
+      );
+  }
+}
+
+function compareNumber(left: number, right: number) {
+  if (left === right) {
+    return 0;
+  }
+
+  return left > right ? 1 : -1;
+}
+
+function readSortKey(value: string | null | undefined): AdminEditionSortKey {
+  if (value === "liveStatus" || value === "paper" || value === "total") {
+    return value;
+  }
+
+  const scoreColumn = scoreColumns.find((column) => column.key === value);
+  return scoreColumn?.key ?? "total";
+}
+
+function readSortDirection(
+  value: string | null | undefined,
+  sortKey: AdminEditionSortKey,
+): AdminEditionSortDirection {
+  if (value === "asc" || value === "desc") {
+    return value;
+  }
+
+  return getDefaultSortDirection(sortKey);
+}
+
+function getDefaultSortDirection(sortKey: AdminEditionSortKey): AdminEditionSortDirection {
+  return sortKey === "paper" ? "asc" : "desc";
+}
+
+function getNextSortDirection(
+  currentSortKey: AdminEditionSortKey,
+  currentSortDirection: AdminEditionSortDirection,
+  requestedSortKey: AdminEditionSortKey,
+): AdminEditionSortDirection {
+  if (currentSortKey === requestedSortKey) {
+    return currentSortDirection === "asc" ? "desc" : "asc";
+  }
+
+  return getDefaultSortDirection(requestedSortKey);
+}
+
+function getSortLabel(sortKey: AdminEditionSortKey) {
+  if (sortKey === "liveStatus") {
+    return "live status";
+  }
+
+  if (sortKey === "paper") {
+    return "paper title";
+  }
+
+  if (sortKey === "total") {
+    return "total score";
+  }
+
+  return scoreColumns.find((column) => column.key === sortKey)?.label.toLowerCase() ?? "total score";
+}
+
+function formatSortDirectionLabel(
+  sortKey: AdminEditionSortKey,
+  sortDirection: AdminEditionSortDirection,
+) {
+  if (sortKey === "paper") {
+    return sortDirection === "asc" ? "A to Z" : "Z to A";
+  }
+
+  return sortDirection === "asc" ? "low to high" : "high to low";
+}
+
 function formatScore(value: number | undefined) {
-  if (typeof value !== "number") {
+  if (typeof value !== "number" || value < 0) {
     return "-";
   }
 
