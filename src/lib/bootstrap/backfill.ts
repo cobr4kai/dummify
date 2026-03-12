@@ -1,11 +1,4 @@
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const TEMPORARY_RENDER_BACKFILL = {
-  from: "2026-03-11",
-  to: "2026-03-11",
-  recomputeBriefs: false,
-  taskKey: "temporary-render-bootstrap:2026-03-11",
-} as const;
-
 export type BootstrapBackfillConfig = {
   from: string;
   to: string;
@@ -21,7 +14,7 @@ export function readBootstrapBackfillConfig(
   const to = normalizeString(env.PAPERBRIEF_BOOTSTRAP_BACKFILL_TO);
 
   if (!from && !to) {
-    return readTemporaryRenderBootstrapBackfillConfig(env);
+    return null;
   }
 
   if (!from || !to) {
@@ -72,20 +65,6 @@ export function buildBootstrapBackfillTaskKey(input: {
   const briefKey = input.recomputeBriefs ? "briefs" : "metadata-only";
 
   return `historical-backfill:${input.from}:${input.to}:${briefKey}:${categoryKey}`;
-}
-
-function readTemporaryRenderBootstrapBackfillConfig(
-  env: NodeJS.ProcessEnv,
-): BootstrapBackfillConfig | null {
-  const databaseUrl = normalizeString(env.DATABASE_URL);
-
-  if (databaseUrl !== "file:/var/data/paperbrief.db") {
-    return null;
-  }
-
-  return {
-    ...TEMPORARY_RENDER_BACKFILL,
-  };
 }
 
 function normalizeCategories(value: string | undefined) {
