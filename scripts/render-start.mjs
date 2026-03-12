@@ -16,15 +16,11 @@ async function main() {
     console.log("Skipping bootstrap-db because DATABASE_URL is not a local SQLite file URL.");
   }
 
-  if (shouldRunBootstrapBackfill()) {
-    console.log("Running configured one-time bootstrap backfill before starting the web server.");
-    await run(process.execPath, [
-      require.resolve("tsx/dist/cli.mjs"),
-      path.resolve("scripts/bootstrap-backfill.ts"),
-    ]);
-  } else {
-    console.log("Skipping one-time bootstrap backfill because no range is configured.");
-  }
+  console.log("Checking one-time bootstrap backfill tasks before starting the web server.");
+  await run(process.execPath, [
+    require.resolve("tsx/dist/cli.mjs"),
+    path.resolve("scripts/bootstrap-backfill.ts"),
+  ]);
 
   await run(
     process.execPath,
@@ -79,11 +75,4 @@ function run(command, args, options = {}) {
 
     child.on("error", reject);
   });
-}
-
-function shouldRunBootstrapBackfill() {
-  return Boolean(
-    process.env.PAPERBRIEF_BOOTSTRAP_BACKFILL_FROM?.trim() ||
-      process.env.PAPERBRIEF_BOOTSTRAP_BACKFILL_TO?.trim(),
-  );
 }

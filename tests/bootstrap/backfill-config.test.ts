@@ -9,6 +9,20 @@ describe("readBootstrapBackfillConfig", () => {
     expect(readBootstrapBackfillConfig({})).toBeNull();
   });
 
+  it("uses the temporary Render bootstrap fallback for the production disk path", () => {
+    expect(
+      readBootstrapBackfillConfig({
+        DATABASE_URL: "file:/var/data/paperbrief.db",
+      }),
+    ).toEqual({
+      from: "2026-03-11",
+      to: "2026-03-11",
+      recomputeBriefs: false,
+      categories: undefined,
+      taskKey: "temporary-render-bootstrap:2026-03-11",
+    });
+  });
+
   it("builds a default task key from the configured range and options", () => {
     expect(
       readBootstrapBackfillConfig({
