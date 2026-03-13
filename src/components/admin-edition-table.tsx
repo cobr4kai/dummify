@@ -76,7 +76,6 @@ type AdminEditionRow = {
   isFocused: boolean;
   sourceLabel: string;
   briefLabel: string;
-  statusDescription: string;
   actionLabel: string;
   pendingLabel: string;
   liveStatusRank: number;
@@ -299,9 +298,6 @@ export function AdminEditionTable({
                           >
                             {row.briefLabel}
                           </Badge>
-                          <p className="text-xs leading-5 text-muted-foreground">
-                            {row.statusDescription}
-                          </p>
                         </div>
                       </td>
                       <td className="max-w-[420px] px-3 py-4">
@@ -485,17 +481,6 @@ function buildRow(input: {
       : isOnHomepage
         ? "PDF brief missing"
         : "No brief yet";
-  const statusDescription = isOnHomepage
-    ? hasPdfBrief
-      ? "This paper is live on the homepage and its PDF-backed executive brief is already attached."
-      : briefState === "abstract-fallback"
-        ? "This paper is live on the homepage, but the last analysis fell back to the abstract, so the homepage is withholding that brief until PDF extraction succeeds."
-        : "This paper is live on the homepage, but its PDF-backed executive brief is still missing."
-    : hasPdfBrief
-      ? "A PDF-backed brief already exists, but this paper is not currently live on the homepage."
-      : briefState === "abstract-fallback"
-        ? "Only an abstract fallback brief exists so far, so this paper is not homepage-ready yet."
-        : "This paper is stored and scored, but it is not currently live on the homepage.";
   const actionLabel = input.hasCuratedHomepage
     ? isPublished
       ? "Remove from curated page"
@@ -522,7 +507,6 @@ function buildRow(input: {
     isFocused,
     sourceLabel,
     briefLabel,
-    statusDescription,
     actionLabel,
     pendingLabel,
     liveStatusRank,
