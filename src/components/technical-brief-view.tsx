@@ -43,7 +43,6 @@ export function TechnicalBriefView({
     bulletsJson: Prisma.JsonValue;
     confidenceNotesJson: Prisma.JsonValue;
     evidenceJson: Prisma.JsonValue;
-    sourceBasis: string;
     usedFallbackAbstract: boolean;
   };
   score?: {
@@ -66,9 +65,8 @@ export function TechnicalBriefView({
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="highlight">Score {Math.round(score?.totalScore ?? 0)}</Badge>
             <Badge variant={technicalBrief.usedFallbackAbstract ? "danger" : "success"}>
-              {technicalBrief.usedFallbackAbstract ? "Abstract-based" : "Full PDF"}
+              {technicalBrief.usedFallbackAbstract ? "Abstract-based" : "PDF-backed"}
             </Badge>
-            <Badge variant="muted">{technicalBrief.sourceBasis}</Badge>
             {focusTags.map((tag) => (
               <Badge key={tag} variant="default">
               {tag}

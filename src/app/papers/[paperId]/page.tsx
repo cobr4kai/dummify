@@ -80,8 +80,8 @@ export default async function PaperDetailPage({
   return (
     <PageShell
       currentPath={`/papers/${paper.id}`}
-      hero={(
-        <section className="hero-shell rounded-[34px] px-6 py-7 sm:px-8 sm:py-8">
+      headerContent={(
+        <div>
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-4xl">
               <div className="flex flex-wrap items-center gap-2">
@@ -112,7 +112,7 @@ export default async function PaperDetailPage({
               </Button>
             </div>
           </div>
-        </section>
+        </div>
       )}
     >
       {detailNotice ? (

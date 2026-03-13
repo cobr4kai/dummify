@@ -20,7 +20,7 @@ export function AppHeader({
   headerContent?: React.ReactNode;
   tone?: "reader" | "utility";
 }) {
-  const showReaderMasthead = currentPath === "/" && Boolean(headerContent);
+  const showReaderMasthead = Boolean(headerContent);
   const navItems = isUtilityRoute(currentPath)
     ? [...publicNavItems, utilityNavItem]
     : showReaderMasthead

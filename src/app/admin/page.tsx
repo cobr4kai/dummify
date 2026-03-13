@@ -107,8 +107,8 @@ export default async function AdminPage({
     <PageShell
       currentPath="/admin"
       tone="utility"
-      hero={(
-        <section className="hero-shell rounded-[30px] px-6 py-5 sm:px-8 sm:py-6 lg:flex lg:items-end lg:justify-between lg:gap-6">
+      headerContent={(
+        <div className="lg:flex lg:items-end lg:justify-between lg:gap-6">
           <div className="max-w-3xl">
             <p className="eyebrow text-[11px] font-medium text-muted-foreground">
               Admin
@@ -124,11 +124,11 @@ export default async function AdminPage({
             <Badge variant={snapshot.activeHomepageIsCurated ? "success" : "muted"}>
               {snapshot.activeHomepageIsCurated ? "Curated homepage live" : "Homepage waiting for curation"}
             </Badge>
-            <Badge variant="muted">
-              Latest brief {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
-            </Badge>
+              <Badge variant="muted">
+                Latest brief {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
+              </Badge>
+            </div>
           </div>
-        </section>
       )}
     >
       {notice ? (

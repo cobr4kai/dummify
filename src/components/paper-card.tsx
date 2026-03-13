@@ -31,7 +31,6 @@ type PaperCardProps = {
     technicalBriefs: Array<{
       oneLineVerdict: string;
       bulletsJson: Prisma.JsonValue;
-      sourceBasis: string;
       usedFallbackAbstract: boolean;
     }>;
   };
@@ -70,12 +69,6 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
           ) : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.95rem] leading-6 text-muted-foreground">
             <span>{paper.authorsText}</span>
-            {brief?.sourceBasis ? (
-              <>
-                <span className="text-border">/</span>
-                <span>{brief.sourceBasis}</span>
-              </>
-            ) : null}
             <span className="text-border">/</span>
             <a
               href={paper.abstractUrl}
@@ -125,7 +118,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
               Executive brief status
             </p>
             <p className="mt-2 text-sm leading-6 text-foreground/90">
-              Full-PDF analysis is still pending for this paper, so the homepage is intentionally
+              PDF-backed analysis is still pending for this paper, so the homepage is intentionally
               withholding any abstract-only brief.
             </p>
           </section>

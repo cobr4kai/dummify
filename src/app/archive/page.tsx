@@ -36,16 +36,16 @@ export default async function ArchivePage({
   return (
     <PageShell
       currentPath="/archive"
-      hero={(
-        <section className="hero-shell rounded-[32px] px-6 py-6 sm:px-8 sm:py-7 lg:grid lg:grid-cols-[1.3fr_0.85fr] lg:items-end lg:gap-8">
+      headerContent={(
+        <div className="lg:grid lg:grid-cols-[1.3fr_0.85fr] lg:items-end lg:gap-8">
           <div className="max-w-3xl">
             <p className="eyebrow text-[11px] font-medium text-muted-foreground">
               Reader archive
             </p>
-            <h1 className="editorial-display mt-4 text-5xl text-foreground sm:text-[4.5rem]">
+            <h1 className="editorial-display mt-4 text-4xl text-foreground sm:text-[4rem] lg:text-[3.55rem]">
               Archive
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/80">
+            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/80 sm:text-[1.08rem] sm:leading-8">
               Search stored editions, filter by announcement day or category, and revisit the briefs that made it onto the front page.
             </p>
           </div>
@@ -60,7 +60,7 @@ export default async function ArchivePage({
               </p>
             </div>
           </div>
-        </section>
+        </div>
       )}
     >
       <section className="mb-6">
