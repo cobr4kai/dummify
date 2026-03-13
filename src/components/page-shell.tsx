@@ -1,4 +1,5 @@
 import { AppHeader } from "@/components/app-header";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils/cn";
 
 export function PageShell({
@@ -28,6 +29,9 @@ export function PageShell({
           Thank you to arXiv for use of its open access interoperability. This product was not
           reviewed or approved by, nor does it necessarily express or reflect the policies or
           opinions of, arXiv.
+          <div className="mt-5 flex justify-center sm:hidden">
+            <ThemeToggle className="gap-1.5" />
+          </div>
         </footer>
       </div>
     </div>

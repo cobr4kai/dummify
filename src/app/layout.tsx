@@ -45,7 +45,7 @@ export default function RootLayout({
         </Script>
         <ParticleField />
         <div className="app-chrome">{children}</div>
-        <ThemeToggle className="fixed bottom-4 right-4 z-40 gap-1.5 sm:bottom-5 sm:right-5" />
+        <ThemeToggle className="hidden gap-1.5 sm:fixed sm:bottom-5 sm:right-5 sm:z-40 sm:inline-flex" />
       </body>
     </html>
   );
