@@ -14,11 +14,15 @@ const newsreader = Newsreader({
 
 export const metadata: Metadata = {
   title: {
-    default: "PaperBrief",
-    template: "%s | PaperBrief",
+    default: "Abstracted",
+    template: "%s | Abstracted",
+  },
+  icons: {
+    icon: "/abstracted-favicon.svg",
+    shortcut: "/abstracted-favicon.svg",
   },
   description:
-    "PaperBrief turns newly announced frontier AI papers into punchy, stat-forward executive briefs for decision-makers tracking GenAI and the stack.",
+    "Abstracted turns newly announced arXiv papers into punchy executive briefs for readers tracking what matters beyond the lab.",
 };
 
 export default function RootLayout({
