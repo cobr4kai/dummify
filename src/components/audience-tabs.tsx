@@ -50,7 +50,7 @@ export function AudienceTabs({ summaries }: { summaries: SummaryRecord[] }) {
             <p className="eyebrow mb-2 text-[11px] font-semibold text-muted-foreground">
               Plain-English summary
             </p>
-            <p className="font-serif text-3xl leading-tight tracking-tight">
+            <p className="editorial-title text-4xl text-foreground">
               {general.oneSentenceSummary}
             </p>
           </div>

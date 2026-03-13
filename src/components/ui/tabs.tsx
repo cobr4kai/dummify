@@ -13,7 +13,7 @@ export function TabsList({
   return (
     <TabsPrimitive.List
       className={cn(
-        "inline-flex h-auto items-center rounded-full border border-border bg-white/70 p-1",
+        "surface-muted inline-flex h-auto items-center rounded-full border border-border/80 p-1",
         className,
       )}
       {...props}

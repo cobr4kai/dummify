@@ -1,59 +1,80 @@
 import Link from "next/link";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 
-const internalNavItems = [
+const publicNavItems = [
   { href: "/", label: "Daily Brief" },
   { href: "/archive", label: "Archive" },
-  { href: "/admin", label: "Admin" },
 ];
+
+const utilityNavItem = { href: "/admin", label: "Admin" };
 
 export function AppHeader({
   currentPath,
-  headerMeta,
+  navMeta,
+  tone = "reader",
 }: {
   currentPath?: string;
-  headerMeta?: React.ReactNode;
+  navMeta?: React.ReactNode;
+  tone?: "reader" | "utility";
 }) {
-  const showInternalNav = currentPath === "/admin";
-  const navItems = showInternalNav ? internalNavItems : [];
+  const navItems = isUtilityRoute(currentPath)
+    ? [...publicNavItems, utilityNavItem]
+    : publicNavItems;
 
   return (
-    <header className="mb-8">
-      <div className="surface flex flex-col gap-6 rounded-[32px] border border-border/80 px-6 py-6 lg:flex-row lg:items-center lg:justify-between">
-        <div className="max-w-2xl">
-          <Link href="/" className="block">
-            <h1 className="font-serif text-4xl leading-none tracking-tight">
-              {APP_NAME}
-            </h1>
-          </Link>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
+    <header className="nav-glass sticky top-0 z-30 border-b border-border/60" data-tone={tone}>
+      <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+        <Link href="/" className="min-w-0">
+          <span className="block text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+            Editorial brief
+          </span>
+          <span className="mt-1 block text-lg font-medium tracking-[-0.03em] text-foreground">
+            {APP_NAME}
+          </span>
+          <span className="mt-1 hidden text-sm text-muted-foreground sm:block">
             {APP_TAGLINE}
-          </p>
+          </span>
+        </Link>
+
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <nav className="flex flex-wrap items-center gap-2">
+            {navItems.map((item) => {
+              const isActive = isActivePath(currentPath, item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  className={cn(
+                    "nav-link rounded-full px-4 py-2 text-sm font-medium",
+                    isActive && "nav-link-active",
+                  )}
+                  href={item.href}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          {navMeta ? <div className="flex flex-wrap items-center gap-2 lg:ml-2">{navMeta}</div> : null}
         </div>
-        {headerMeta || navItems.length > 0 ? (
-          <div className="flex flex-col items-start gap-3 lg:items-end">
-            {headerMeta ? <div className="flex flex-wrap items-center gap-2">{headerMeta}</div> : null}
-            {navItems.length > 0 ? (
-              <nav className="flex flex-wrap items-center gap-2">
-                {navItems.map((item) => (
-                  <Button
-                    key={item.href}
-                    asChild
-                    variant={currentPath === item.href ? "default" : "secondary"}
-                    size="sm"
-                  >
-                    <Link className={cn("min-w-[110px]")} href={item.href}>
-                      {item.label}
-                    </Link>
-                  </Button>
-                ))}
-              </nav>
-            ) : null}
-          </div>
-        ) : null}
       </div>
     </header>
   );
+}
+
+function isUtilityRoute(currentPath?: string) {
+  return currentPath?.startsWith("/admin") || currentPath?.startsWith("/login");
+}
+
+function isActivePath(currentPath: string | undefined, href: string) {
+  if (!currentPath) {
+    return false;
+  }
+
+  if (href === "/admin") {
+    return currentPath.startsWith("/admin") || currentPath.startsWith("/login");
+  }
+
+  return currentPath === href;
 }

@@ -194,7 +194,7 @@ export function AdminEditionTable({
           <label className="space-y-2 text-sm font-medium">
             Announcement day
             <select
-              className="h-11 min-w-[220px] rounded-2xl border border-border bg-white/70 px-4 text-sm"
+              className="field-control h-11 min-w-[220px] rounded-2xl px-4 text-sm"
               defaultValue={selectedDay ?? ""}
               name="day"
             >
@@ -220,7 +220,7 @@ export function AdminEditionTable({
           </p>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+            <div className="stat-panel rounded-[24px] p-4">
               <p className="text-sm leading-6 text-muted-foreground">
                 {isActiveHomepageDay
                   ? hasCuratedHomepage
@@ -290,8 +290,8 @@ export function AdminEditionTable({
                     <tr
                       key={row.paper.id}
                       className={cn(
-                        "rounded-[20px] bg-white/70 align-top shadow-sm transition-shadow",
-                        row.isFocused ? "shadow-[0_0_0_2px_rgba(15,127,132,0.22)]" : null,
+                        "table-row-panel rounded-[20px] align-top transition-shadow",
+                        row.isFocused ? "shadow-[0_0_0_2px_rgba(196,168,76,0.24)]" : null,
                       )}
                     >
                       <td className="rounded-l-[20px] px-3 py-4">

@@ -36,10 +36,31 @@ export default async function ArchivePage({
   return (
     <PageShell
       currentPath="/archive"
-      headerMeta={(
-        <div className="rounded-[24px] border border-border/80 bg-white/70 px-5 py-4 shadow-sm">
-          <p className="font-serif text-3xl leading-none text-foreground">Archive</p>
-        </div>
+      hero={(
+        <section className="hero-shell rounded-[32px] px-6 py-6 sm:px-8 sm:py-7 lg:grid lg:grid-cols-[1.3fr_0.85fr] lg:items-end lg:gap-8">
+          <div className="max-w-3xl">
+            <p className="eyebrow text-[11px] font-medium text-muted-foreground">
+              Reader archive
+            </p>
+            <h1 className="editorial-display mt-4 text-5xl text-foreground sm:text-[4.5rem]">
+              Archive
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/80">
+              Search stored editions, filter by announcement day or category, and revisit the briefs that made it onto the front page.
+            </p>
+          </div>
+          <div className="mt-6 grid gap-3 lg:mt-0">
+            <div className="panel-soft rounded-[26px] px-5 py-4">
+              <p className="eyebrow text-[11px] font-medium text-muted-foreground">
+                Visible results
+              </p>
+              <p className="metric-value mt-3 text-4xl text-foreground">{papers.length}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {day === "all" ? "All stored announcement days" : `Filtered to ${formatShortDate(day)}`}.
+              </p>
+            </div>
+          </div>
+        </section>
       )}
     >
       <section className="mb-6">
@@ -49,7 +70,7 @@ export default async function ArchivePage({
               <label className="space-y-2 text-sm font-medium">
                 Keyword
                 <input
-                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                  className="field-control h-11 w-full rounded-2xl px-4 text-sm"
                   defaultValue={query}
                   name="q"
                   placeholder="moe, kv cache, scaling, distillation..."
@@ -58,7 +79,7 @@ export default async function ArchivePage({
               <label className="space-y-2 text-sm font-medium">
                 Day
                 <select
-                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                  className="field-control h-11 w-full rounded-2xl px-4 text-sm"
                   defaultValue={day}
                   name="day"
                 >
@@ -73,7 +94,7 @@ export default async function ArchivePage({
               <label className="space-y-2 text-sm font-medium">
                 Category
                 <select
-                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                  className="field-control h-11 w-full rounded-2xl px-4 text-sm"
                   defaultValue={category}
                   name="category"
                 >

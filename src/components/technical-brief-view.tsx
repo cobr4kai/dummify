@@ -103,7 +103,7 @@ export function TechnicalBriefView({
           {evidence.map((item, index) => (
             <div
               key={`${item.claim}-${index}`}
-              className="rounded-[22px] border border-border/80 bg-white/60 p-4"
+              className="stat-panel rounded-[22px] p-4"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="muted">{item.impactArea}</Badge>

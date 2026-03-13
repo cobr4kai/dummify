@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
-import { Manrope, Newsreader } from "next/font/google";
+import { Cormorant_Garamond, Outfit } from "next/font/google";
+import { ParticleField } from "@/components/particle-field";
 import "./globals.css";
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+const outfit = Outfit({
+  variable: "--font-ui",
   subsets: ["latin"],
+  weight: ["300", "400", "500"],
 });
 
-const newsreader = Newsreader({
-  variable: "--font-newsreader",
+const cormorantGaramond = Cormorant_Garamond({
+  variable: "--font-display",
   subsets: ["latin"],
+  weight: ["500", "600"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -32,8 +36,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${manrope.variable} ${newsreader.variable} antialiased`}>
-        {children}
+      <body className={`${outfit.variable} ${cormorantGaramond.variable} antialiased`}>
+        <ParticleField />
+        <div className="app-chrome">{children}</div>
       </body>
     </html>
   );

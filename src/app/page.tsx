@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
+import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { getDailyBrief } from "@/lib/search/service";
 import { formatShortDate } from "@/lib/utils/dates";
 
@@ -16,20 +18,38 @@ export default async function Home() {
   return (
     <PageShell
       currentPath="/"
-      headerMeta={(
-        <Link
-          className="block rounded-[24px] transition-transform duration-200 hover:-translate-y-0.5"
-          href="/archive"
-        >
-          <div className="rounded-[24px] border border-border/80 bg-white/70 px-5 py-4 shadow-sm transition-colors hover:bg-white/85">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Edition date
-          </p>
-          <p className="mt-2 font-serif text-3xl leading-none text-foreground">
-            {announcementDay ? formatShortDate(announcementDay) : "No data"}
-          </p>
+      hero={(
+        <section className="hero-shell rounded-[36px] px-6 py-7 sm:px-8 sm:py-8 lg:grid lg:grid-cols-[1.35fr_0.8fr] lg:items-end lg:gap-8">
+          <div className="max-w-3xl">
+            <p className="eyebrow text-[11px] font-medium text-muted-foreground">
+              Today&apos;s editorial brief
+            </p>
+            <h1 className="editorial-display mt-4 text-5xl text-foreground sm:text-6xl lg:text-[5.25rem]">
+              {APP_NAME}
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/80 sm:text-lg sm:leading-8">
+              {APP_TAGLINE} Read the latest arXiv announcements through a calmer, more curated lens.
+            </p>
           </div>
-        </Link>
+          <div className="mt-6 grid gap-4 lg:mt-0">
+            <div className="panel-soft rounded-[28px] px-5 py-5">
+              <p className="eyebrow text-[11px] font-medium text-muted-foreground">
+                Edition date
+              </p>
+              <p className="editorial-title mt-3 text-4xl text-foreground">
+                {announcementDay ? formatShortDate(announcementDay) : "No live edition"}
+              </p>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                {papers.length} paper{papers.length === 1 ? "" : "s"} are currently live in today&apos;s briefing.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/archive">Browse the archive</Link>
+              </Button>
+            </div>
+          </div>
+        </section>
       )}
     >
       {papers.length === 0 ? (

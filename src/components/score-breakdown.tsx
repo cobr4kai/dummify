@@ -48,7 +48,7 @@ export function ScoreBreakdownCard({
               <p className="text-sm leading-6 text-muted-foreground">
                 {metadata.description}
               </p>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-2 overflow-hidden rounded-full bg-border/50">
                 <div
                   className="h-full rounded-full bg-accent"
                   style={{ width: `${Math.max(8, item.rawScore)}%` }}

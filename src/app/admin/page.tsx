@@ -104,7 +104,33 @@ export default async function AdminPage({
   });
 
   return (
-    <PageShell currentPath="/admin">
+    <PageShell
+      currentPath="/admin"
+      tone="utility"
+      hero={(
+        <section className="hero-shell rounded-[30px] px-6 py-5 sm:px-8 sm:py-6 lg:flex lg:items-end lg:justify-between lg:gap-6">
+          <div className="max-w-3xl">
+            <p className="eyebrow text-[11px] font-medium text-muted-foreground">
+              Admin
+            </p>
+            <h1 className="utility-title mt-3 text-3xl text-foreground sm:text-4xl">
+              Control room
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-foreground/78 sm:text-base">
+              Configure ingestion, curate the live homepage, and inspect the health of the briefing pipeline without leaving the workspace.
+            </p>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2 lg:mt-0">
+            <Badge variant={snapshot.activeHomepageIsCurated ? "success" : "muted"}>
+              {snapshot.activeHomepageIsCurated ? "Curated homepage live" : "Homepage waiting for curation"}
+            </Badge>
+            <Badge variant="muted">
+              Latest brief {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
+            </Badge>
+          </div>
+        </section>
+      )}
+    >
       {notice ? (
         <section className="mb-6">
           <Card className={getNoticeCardClassName(notice.variant)}>
@@ -256,13 +282,15 @@ export default async function AdminPage({
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Papers live now
                 </p>
-                <p className="mt-2 font-serif text-3xl">{snapshot.activeHomepagePaperIds.length}</p>
+                <p className="metric-value mt-2 text-3xl text-foreground">
+                  {snapshot.activeHomepagePaperIds.length}
+                </p>
               </div>
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   PDF briefs ready
                 </p>
-                <p className="mt-2 font-serif text-3xl">
+                <p className="metric-value mt-2 text-3xl text-foreground">
                   {snapshot.activeHomepageBriefReadyCount}/{snapshot.activeHomepagePaperIds.length}
                 </p>
               </div>
@@ -270,7 +298,9 @@ export default async function AdminPage({
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Needs attention
                 </p>
-                <p className="mt-2 font-serif text-3xl">{snapshot.activeHomepageMissingBriefCount}</p>
+                <p className="metric-value mt-2 text-3xl text-foreground">
+                  {snapshot.activeHomepageMissingBriefCount}
+                </p>
               </div>
             </div>
             <form
@@ -812,14 +842,14 @@ function buildRunSummary(
 
 function getNoticeCardClassName(variant: NoticeVariant) {
   if (variant === "success") {
-    return "border-success/40";
+    return "notice-success";
   }
 
   if (variant === "danger") {
-    return "border-danger/40";
+    return "notice-danger";
   }
 
-  return "border-highlight/40";
+  return "notice-highlight";
 }
 
 function getRunBadgeVariant(status: string): NoticeVariant {

@@ -78,7 +78,50 @@ export default async function PaperDetailPage({
   const pdfCache = paper.pdfCaches[0] ?? null;
 
   return (
-    <PageShell currentPath={`/papers/${paper.id}`}>
+    <PageShell
+      currentPath={`/papers/${paper.id}`}
+      hero={(
+        <section className="hero-shell rounded-[34px] px-6 py-7 sm:px-8 sm:py-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-4xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="highlight">arXiv {paper.arxivId}v{paper.version}</Badge>
+                <Badge variant="muted">{formatShortDate(paper.announcementDay)}</Badge>
+                {categories.map((category) => (
+                  <Badge key={category} variant="muted">
+                    {category}
+                  </Badge>
+                ))}
+              </div>
+              <h1 className="editorial-title mt-5 text-[2.9rem] text-foreground sm:text-[3.5rem] lg:text-[4rem]">
+                {paper.title}
+              </h1>
+              <p className="mt-4 max-w-3xl text-base leading-7 text-foreground/78 sm:text-lg sm:leading-8">
+                {paper.authorsText}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3 lg:max-w-sm lg:justify-end">
+              <Button asChild size="sm" variant="secondary">
+                <Link href="/">Back to daily brief</Link>
+              </Button>
+              <Button asChild size="sm" variant="secondary">
+                <a href={paper.abstractUrl} rel="noreferrer" target="_blank">
+                  View on arXiv
+                </a>
+              </Button>
+              {paper.pdfUrl ? (
+                <Button asChild size="sm" variant="secondary">
+                  <a href={paper.pdfUrl} rel="noreferrer" target="_blank">
+                    Official PDF
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      )}
+    >
       {detailNotice ? (
         <section className="mb-6">
           <Card className={getNoticeCardClassName(detailNotice.variant)}>
@@ -98,41 +141,16 @@ export default async function PaperDetailPage({
         </section>
       ) : null}
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <Button asChild size="sm" variant="secondary">
-          <Link href="/">Back to daily brief</Link>
-        </Button>
-        <Button asChild size="sm" variant="secondary">
-          <a href={paper.abstractUrl} rel="noreferrer" target="_blank">
-            View on arXiv
-          </a>
-        </Button>
-        {paper.pdfUrl ? (
-          <Button asChild size="sm" variant="secondary">
-            <a href={paper.pdfUrl} rel="noreferrer" target="_blank">
-              Official PDF
-            </a>
-          </Button>
-        ) : null}
-      </div>
-
       <section className="mb-6 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <Card>
           <CardHeader>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="highlight">arXiv {paper.arxivId}v{paper.version}</Badge>
-              <Badge variant="muted">{formatShortDate(paper.announcementDay)}</Badge>
-              {categories.map((category) => (
-                <Badge key={category} variant="muted">
-                  {category}
-                </Badge>
-              ))}
-            </div>
-            <CardTitle>{paper.title}</CardTitle>
-            <CardDescription>{paper.authorsText}</CardDescription>
+            <CardTitle>Paper snapshot</CardTitle>
+            <CardDescription>
+              Publication timing and current brief availability for this paper.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+            <div className="stat-panel rounded-[22px] p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                 Published
               </p>
@@ -140,7 +158,7 @@ export default async function PaperDetailPage({
                 {formatLongDateTime(paper.publishedAt)}
               </p>
             </div>
-            <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+            <div className="stat-panel rounded-[22px] p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                 Updated
               </p>
@@ -148,7 +166,7 @@ export default async function PaperDetailPage({
                 {formatLongDateTime(paper.updatedAt)}
               </p>
             </div>
-            <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+            <div className="stat-panel rounded-[22px] p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                 Brief status
               </p>
@@ -190,7 +208,7 @@ export default async function PaperDetailPage({
           </CardHeader>
           {score?.rationale ? (
             <CardContent>
-              <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+              <div className="stat-panel rounded-[22px] p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Scoring note
                 </p>
@@ -317,7 +335,7 @@ export default async function PaperDetailPage({
           <CardContent className="space-y-4">
             {pdfCache ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+                <div className="stat-panel rounded-[22px] p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     Extraction status
                   </p>
@@ -325,7 +343,7 @@ export default async function PaperDetailPage({
                     {pdfCache.extractionStatus}
                   </p>
                 </div>
-                <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+                <div className="stat-panel rounded-[22px] p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     Page count
                   </p>
@@ -337,11 +355,11 @@ export default async function PaperDetailPage({
             ) : null}
             {openAlex ? (
               <>
-                <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+                <div className="stat-panel rounded-[22px] p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     Citation count
                   </p>
-                  <p className="mt-2 font-serif text-3xl">
+                  <p className="metric-value mt-2 text-3xl text-foreground">
                     {openAlex.citedByCount ?? "n/a"}
                   </p>
                 </div>
@@ -385,12 +403,12 @@ export default async function PaperDetailPage({
             related.map((item) => (
               <div
                 key={item.id}
-                className="rounded-[24px] border border-border/80 bg-white/60 p-4"
+                className="stat-panel rounded-[24px] p-4"
               >
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {item.primaryCategory ?? "Mixed"}
                 </p>
-                <h3 className="mt-2 font-serif text-2xl leading-tight">{item.title}</h3>
+                <h3 className="editorial-title mt-2 text-3xl text-foreground">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   {item.authorsText}
                 </p>
@@ -478,10 +496,10 @@ function getPaperDetailNotice(notice: string | null): PaperDetailNotice {
 function getNoticeCardClassName(variant: NonNullable<PaperDetailNotice>["variant"]) {
   switch (variant) {
     case "success":
-      return "border-success/40 bg-success-soft/60";
+      return "notice-success";
     case "highlight":
-      return "border-highlight/40 bg-highlight-soft/60";
+      return "notice-highlight";
     case "danger":
-      return "border-danger/40 bg-danger-soft/60";
+      return "notice-danger";
   }
 }

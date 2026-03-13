@@ -52,7 +52,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
       <div className="space-y-5">
         <div className="space-y-3">
           {headerMeta ? <div className="flex flex-wrap items-center gap-2">{headerMeta}</div> : null}
-          <h3 className="font-serif text-[1.9rem] leading-[1.12] tracking-tight">
+          <h3 className="editorial-title text-[2rem] text-foreground">
             {paper.title}
           </h3>
           {categories.length > 0 ? (
@@ -60,7 +60,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
               {categories.map((category) => (
                 <Badge
                   key={category}
-                  className="border border-border/70 bg-white/70 text-foreground/75"
+                  className="panel-soft text-foreground/75"
                   variant="muted"
                 >
                   {category}
@@ -102,7 +102,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
           <section className="surface rounded-[24px] border border-border/80 px-5">
             <Accordion type="single" collapsible>
               <AccordionItem value={`brief-${paper.id}`} className="border-none">
-                <AccordionTrigger className="-mx-3 cursor-pointer rounded-[18px] px-3 py-5 transition-colors hover:bg-white/65 hover:no-underline data-[state=open]:bg-white/70 [&>svg]:h-5 [&>svg]:w-5 hover:[&>svg]:text-foreground data-[state=open]:[&>svg]:text-foreground">
+                <AccordionTrigger className="-mx-3 cursor-pointer rounded-[18px] px-3 py-5 transition-colors hover:bg-[rgba(248,244,236,0.68)] hover:no-underline data-[state=open]:bg-[rgba(248,244,236,0.82)] [&>svg]:h-5 [&>svg]:w-5 hover:[&>svg]:text-foreground data-[state=open]:[&>svg]:text-foreground">
                   <div className="text-left">
                     <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
                       Executive brief
@@ -120,7 +120,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
             </Accordion>
           </section>
         ) : (
-          <section className="rounded-[24px] border border-highlight/35 bg-highlight/8 px-5 py-4">
+          <section className="notice-highlight rounded-[24px] border px-5 py-4">
             <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
               Executive brief status
             </p>
