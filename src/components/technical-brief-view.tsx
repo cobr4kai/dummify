@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { parseJsonValue } from "@/lib/utils/json";
 
 const citationSchema = z.object({
@@ -56,6 +57,7 @@ export function TechnicalBriefView({
     [],
   );
   const evidence = parseJsonValue(technicalBrief.evidenceJson, evidenceSchema, []);
+  const verdict = stripTechnicalBriefHeading(technicalBrief.oneLineVerdict);
 
   return (
     <div className="space-y-6">
@@ -83,7 +85,7 @@ export function TechnicalBriefView({
             <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
               Why this is worth your attention
             </p>
-            <p className="text-base leading-7 text-foreground/95">{technicalBrief.oneLineVerdict}</p>
+            <p className="text-base leading-7 text-foreground/95">{verdict}</p>
           </div>
           <ul className="list-disc space-y-4 pl-5 text-base leading-7 text-foreground/90 marker:text-foreground/70">
             {bullets.map((bullet, index) => (

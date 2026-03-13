@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { parseJsonValue } from "@/lib/utils/json";
 
 const stringArraySchema = z.array(z.string());
@@ -36,6 +37,9 @@ type PaperCardProps = {
 
 export function PaperCard({ paper }: PaperCardProps) {
   const brief = paper.technicalBriefs[0];
+  const verdict = brief?.oneLineVerdict
+    ? stripTechnicalBriefHeading(brief.oneLineVerdict)
+    : "";
   const categories = parseJsonValue(paper.categoriesJson, stringArraySchema, []).filter((category) =>
     /^cs\.[A-Z]+$/i.test(category),
   );
@@ -79,13 +83,13 @@ export function PaperCard({ paper }: PaperCardProps) {
               arXiv abstract
             </a>
           </div>
-          {brief?.oneLineVerdict ? (
+          {verdict ? (
             <div className="space-y-2">
               <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
                 Why this is worth your attention
               </p>
               <p className="max-w-5xl text-base leading-7 text-foreground/95">
-                {brief.oneLineVerdict}
+                {verdict}
               </p>
             </div>
           ) : null}

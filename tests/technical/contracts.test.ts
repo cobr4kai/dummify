@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { demoPaperFixtures } from "../../data/mock/demo-fixtures";
 import { demoTechnicalBriefFixtures } from "../../data/mock/demo-technical-briefs";
 import { MockTechnicalBriefProvider } from "@/lib/providers/mock-technical-provider";
+import { normalizeTechnicalBriefLead } from "@/lib/technical/brief-text";
 import {
   buildTechnicalBriefSystemPrompt,
   buildTechnicalBriefUserPrompt,
@@ -97,6 +98,17 @@ describe("technical brief contracts", () => {
 
     expect(normalizeHookText(hook)).toBe(
       "Multi-agent AI often wastes time and money in the handoff layer.",
+    );
+  });
+
+  it("strips leaked markdown headings from verdict text", () => {
+    const hook = "## Why this is worth your attention\n\nThis paper argues the hard part is orchestration, not model quality.";
+
+    expect(normalizeTechnicalBriefLead(hook)).toBe(
+      "This paper argues the hard part is orchestration, not model quality.",
+    );
+    expect(normalizeHookText(hook)).toBe(
+      "This paper argues the hard part is orchestration, not model quality.",
     );
   });
 });

@@ -12,6 +12,7 @@ import {
   buildTechnicalBriefSystemPrompt,
   buildTechnicalBriefUserPrompt,
 } from "@/lib/technical/prompts";
+import { normalizeTechnicalBriefLead } from "@/lib/technical/brief-text";
 import { chunkEvidenceSchema, technicalBriefSchema } from "@/lib/technical/schema";
 import { chunkPdfPages } from "@/lib/pdf/service";
 
@@ -139,7 +140,7 @@ export function normalizeChunkEvidence(payloads: ChunkEvidencePayload[]) {
 }
 
 export function normalizeHookText(hook: string) {
-  const normalized = hook.replace(/\s+/g, " ").trim();
+  const normalized = normalizeTechnicalBriefLead(hook);
 
   if (/[.!?]["')\]]*$/.test(normalized)) {
     return normalized;
