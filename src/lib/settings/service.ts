@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import {
@@ -37,6 +38,10 @@ const appSettingsSchema = z.object({
   featuredPaperCount: z.number().int().min(1).max(50),
   genAiFeaturedCount: z.number().int().min(1).max(20),
   genAiShortlistSize: z.number().int().min(10).max(100),
+  activeHomepageAnnouncementDay: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
   highBusinessRelevanceThreshold: z.number().min(0).max(100),
   audienceFitThreshold: z.number().min(0).max(100),
   rankingWeights: executiveRankingWeightsSchema,
@@ -60,6 +65,8 @@ const settingDescriptions: Record<keyof AppSettings, string> = {
   genAiFeaturedCount: "Number of papers to feature in the daily frontier brief.",
   genAiShortlistSize:
     "Metadata-ranked shortlist size used before selecting the final daily brief.",
+  activeHomepageAnnouncementDay:
+    "Single announcement day currently shown on the public homepage.",
   highBusinessRelevanceThreshold:
     "Minimum total score used for the archive high-signal toggle.",
   audienceFitThreshold: "Legacy audience threshold retained for compatibility.",
@@ -78,6 +85,10 @@ const settingDescriptions: Record<keyof AppSettings, string> = {
   feedCacheTtlMinutes: "TTL for cached RSS feed responses.",
   apiCacheTtlMinutes: "TTL for cached export.arxiv.org API responses.",
 };
+
+function serializeSettingValue(value: AppSettings[keyof AppSettings]) {
+  return value === null ? Prisma.JsonNull : value;
+}
 
 export async function ensureDefaultSettings() {
   await prisma.$transaction([
@@ -109,7 +120,7 @@ export async function ensureDefaultSettings() {
         },
         create: {
           key,
-          value,
+          value: serializeSettingValue(value),
           description: settingDescriptions[key],
         },
       }),
@@ -149,6 +160,12 @@ export async function getAppSettings(): Promise<AppSettings> {
       typeof raw.genAiShortlistSize === "number"
         ? raw.genAiShortlistSize
         : DEFAULT_APP_SETTINGS.genAiShortlistSize,
+    activeHomepageAnnouncementDay:
+      typeof raw.activeHomepageAnnouncementDay === "string"
+        ? raw.activeHomepageAnnouncementDay
+        : raw.activeHomepageAnnouncementDay === null
+          ? null
+          : DEFAULT_APP_SETTINGS.activeHomepageAnnouncementDay,
     highBusinessRelevanceThreshold:
       typeof raw.highBusinessRelevanceThreshold === "number"
         ? raw.highBusinessRelevanceThreshold
@@ -245,10 +262,10 @@ export async function updateAppSettings(input: Partial<AppSettings>) {
     ).map(([key, value]) =>
       prisma.appSetting.upsert({
         where: { key },
-        update: { value },
+        update: { value: serializeSettingValue(value) },
         create: {
           key,
-          value,
+          value: serializeSettingValue(value),
           description: settingDescriptions[key],
         },
       }),
@@ -263,6 +280,7 @@ export async function resetAppSettings() {
     featuredPaperCount: DEFAULT_APP_SETTINGS.featuredPaperCount,
     genAiFeaturedCount: DEFAULT_APP_SETTINGS.genAiFeaturedCount,
     genAiShortlistSize: DEFAULT_APP_SETTINGS.genAiShortlistSize,
+    activeHomepageAnnouncementDay: DEFAULT_APP_SETTINGS.activeHomepageAnnouncementDay,
     highBusinessRelevanceThreshold:
       DEFAULT_APP_SETTINGS.highBusinessRelevanceThreshold,
     audienceFitThreshold: DEFAULT_APP_SETTINGS.audienceFitThreshold,

@@ -77,6 +77,7 @@ export const DEFAULT_APP_SETTINGS = {
   featuredPaperCount: DEFAULT_FEATURED_PAPER_COUNT,
   genAiFeaturedCount: DEFAULT_GENAI_FEATURED_PAPER_COUNT,
   genAiShortlistSize: DEFAULT_GENAI_SHORTLIST_SIZE,
+  activeHomepageAnnouncementDay: null,
   highBusinessRelevanceThreshold: DEFAULT_HIGH_BUSINESS_RELEVANCE_THRESHOLD,
   audienceFitThreshold: DEFAULT_AUDIENCE_FIT_THRESHOLD,
   rankingWeights: DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,

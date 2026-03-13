@@ -1,8 +1,11 @@
 import { BriefMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getPublishedPaperCountForDay, getPublishedPaperIdsForDay } from "@/lib/publishing/service";
-import { getAppSettings, getCategoryConfigs } from "@/lib/settings/service";
-import { prioritizePapersWithPdfBackedBriefs } from "@/lib/technical/brief-status";
+import { getPublishedPaperIdsForDay } from "@/lib/publishing/service";
+import { getAppSettings, getCategoryConfigs, type AppSettings } from "@/lib/settings/service";
+import {
+  hasPdfBackedBrief,
+  prioritizePapersWithPdfBackedBriefs,
+} from "@/lib/technical/brief-status";
 import { normalizeSearchText } from "@/lib/utils/strings";
 
 export type SortMode = "score" | "date";
@@ -44,14 +47,111 @@ async function getArchiveAnnouncementDays(limit = 90) {
   return days.map((day) => day.announcementDay);
 }
 
+export async function resolveActiveHomepageAnnouncementDay(options?: {
+  settings?: AppSettings;
+  latestDay?: string | null;
+}) {
+  const settings = options?.settings ?? (await getAppSettings());
+  const latestDay = options?.latestDay ?? (await getLatestAnnouncementDay());
+  const configuredDay = settings.activeHomepageAnnouncementDay;
+
+  if (!configuredDay) {
+    return latestDay;
+  }
+
+  const existingPaper = await prisma.paper.findFirst({
+    where: { announcementDay: configuredDay },
+    select: { id: true },
+  });
+
+  return existingPaper ? configuredDay : latestDay;
+}
+
+function sortEditionPapers<
+  T extends {
+    scores: Array<{
+      totalScore: number;
+    }>;
+  },
+>(papers: T[]) {
+  return papers.sort(
+    (left, right) => (right.scores[0]?.totalScore ?? 0) - (left.scores[0]?.totalScore ?? 0),
+  );
+}
+
+function resolveHomepagePaperIds<
+  T extends {
+    id: string;
+    technicalBriefs: Parameters<typeof hasPdfBackedBrief>[0];
+  },
+>(papers: T[], publishedPaperIds: string[], featuredCount: number) {
+  return publishedPaperIds.length > 0
+    ? publishedPaperIds
+    : prioritizePapersWithPdfBackedBriefs(papers)
+        .slice(0, featuredCount)
+        .map((paper) => paper.id);
+}
+
+function buildHomepageSnapshot<
+  T extends {
+    id: string;
+    technicalBriefs: Parameters<typeof hasPdfBackedBrief>[0];
+  },
+>(papers: T[], publishedPaperIds: string[], featuredCount: number) {
+  const homepagePaperIds = resolveHomepagePaperIds(papers, publishedPaperIds, featuredCount);
+  const homepageSet = new Set(homepagePaperIds);
+  const homepageBriefReadyCount = papers.filter(
+    (paper) => homepageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
+  ).length;
+
+  return {
+    homepagePaperIds,
+    homepageBriefReadyCount,
+    homepageMissingBriefCount: Math.max(homepagePaperIds.length - homepageBriefReadyCount, 0),
+    isCurated: publishedPaperIds.length > 0,
+  };
+}
+
+async function getEditionDataForDay(announcementDay: string) {
+  const [publishedPaperIds, editionPapers] = await Promise.all([
+    getPublishedPaperIdsForDay(announcementDay),
+    prisma.paper.findMany({
+      where: {
+        announcementDay,
+      },
+      include: {
+        scores: {
+          where: {
+            isCurrent: true,
+            mode: BriefMode.GENAI,
+          },
+          take: 1,
+        },
+        technicalBriefs: {
+          where: { isCurrent: true },
+          orderBy: { updatedAt: "desc" },
+          take: 1,
+        },
+      },
+    }),
+  ]);
+
+  return {
+    publishedPaperIds,
+    editionPapers: sortEditionPapers(editionPapers),
+  };
+}
+
 export async function getDailyBrief(options: {
   announcementDay?: string | null;
   category?: string | "all";
   sort?: SortMode;
 }) {
   const settings = await getAppSettings();
+  const latestDay = await getLatestAnnouncementDay();
   const announcementDay =
-    options.announcementDay ?? (await getLatestAnnouncementDay());
+    options.announcementDay ??
+    (await resolveActiveHomepageAnnouncementDay({ settings, latestDay }));
 
   if (!announcementDay) {
     return {
@@ -116,10 +216,13 @@ export async function getDailyBrief(options: {
       return rightScore - leftScore;
     });
 
-  const editionPapers =
-    publishedPaperIds.length > 0
-      ? filtered
-      : prioritizePapersWithPdfBackedBriefs(filtered).slice(0, settings.genAiFeaturedCount);
+  const homepagePaperIds = resolveHomepagePaperIds(
+    filtered,
+    publishedPaperIds,
+    settings.genAiFeaturedCount,
+  );
+  const homepageSet = new Set(homepagePaperIds);
+  const editionPapers = filtered.filter((paper) => homepageSet.has(paper.id));
 
   return {
     papers: editionPapers,
@@ -248,7 +351,11 @@ export async function getAdminSnapshot(options?: {
     getAnnouncementDays(),
   ]);
 
-  const selectedDay = options?.announcementDay ?? latestDay;
+  const activeHomepageAnnouncementDay = await resolveActiveHomepageAnnouncementDay({
+    settings,
+    latestDay,
+  });
+  const selectedDay = options?.announcementDay ?? activeHomepageAnnouncementDay ?? latestDay;
 
   const technicalBriefCount = await prisma.paperTechnicalBrief.count({
     where: { isCurrent: true },
@@ -258,30 +365,23 @@ export async function getAdminSnapshot(options?: {
     where: { isCurrent: true },
   });
 
-  const [publishedPaperIds, editionPapers] = selectedDay
-    ? await Promise.all([
-        getPublishedPaperIdsForDay(selectedDay),
-        prisma.paper.findMany({
-          where: {
-            announcementDay: selectedDay,
-          },
-          include: {
-            scores: {
-              where: {
-                isCurrent: true,
-                mode: BriefMode.GENAI,
-              },
-              take: 1,
-            },
-            technicalBriefs: {
-              where: { isCurrent: true },
-              orderBy: { updatedAt: "desc" },
-              take: 1,
-            },
-          },
-        }),
-      ])
-    : [[], []];
+  const selectedEdition = selectedDay ? await getEditionDataForDay(selectedDay) : null;
+  const activeEdition =
+    activeHomepageAnnouncementDay && activeHomepageAnnouncementDay !== selectedDay
+      ? await getEditionDataForDay(activeHomepageAnnouncementDay)
+      : selectedEdition;
+  const activeHomepageSnapshot = activeEdition
+    ? buildHomepageSnapshot(
+        activeEdition.editionPapers,
+        activeEdition.publishedPaperIds,
+        settings.genAiFeaturedCount,
+      )
+    : {
+        homepagePaperIds: [],
+        homepageBriefReadyCount: 0,
+        homepageMissingBriefCount: 0,
+        isCurated: false,
+      };
 
   return {
     settings,
@@ -290,11 +390,14 @@ export async function getAdminSnapshot(options?: {
     latestDay,
     days,
     selectedDay,
-    publishedPaperIds,
-    publishedCount: selectedDay ? await getPublishedPaperCountForDay(selectedDay) : 0,
-    editionPapers: editionPapers.sort(
-      (left, right) => (right.scores[0]?.totalScore ?? 0) - (left.scores[0]?.totalScore ?? 0),
-    ),
+    activeHomepageAnnouncementDay,
+    publishedPaperIds: selectedEdition?.publishedPaperIds ?? [],
+    publishedCount: selectedEdition?.publishedPaperIds.length ?? 0,
+    editionPapers: selectedEdition?.editionPapers ?? [],
+    activeHomepagePaperIds: activeHomepageSnapshot.homepagePaperIds,
+    activeHomepageBriefReadyCount: activeHomepageSnapshot.homepageBriefReadyCount,
+    activeHomepageMissingBriefCount: activeHomepageSnapshot.homepageMissingBriefCount,
+    activeHomepageIsCurated: activeHomepageSnapshot.isCurated,
     technicalBriefCount,
     pdfCacheCount,
   };

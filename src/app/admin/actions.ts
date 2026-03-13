@@ -167,6 +167,27 @@ export async function updateCategoriesAction(formData: FormData) {
   });
 }
 
+export async function setActiveHomepageDayAction(formData: FormData) {
+  await requireAdmin("/admin");
+  const selectedDay = readString(formData.get("selectedDay"));
+  const activeHomepageAnnouncementDay = readString(
+    formData.get("activeHomepageAnnouncementDay"),
+  );
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
+
+  await updateAppSettings({
+    activeHomepageAnnouncementDay: activeHomepageAnnouncementDay ?? null,
+  });
+
+  revalidateAll();
+  redirectToAdmin({
+    selectedDay: selectedDay ?? activeHomepageAnnouncementDay,
+    notice: "homepage-day-set",
+    sortKey,
+    sortDirection,
+  });
+}
+
 export async function togglePublishedPaperAction(formData: FormData) {
   await requireAdmin("/admin");
   const announcementDay = readString(formData.get("announcementDay"));

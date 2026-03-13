@@ -8,6 +8,7 @@ import {
   resetSettingsAction,
   runDailyRefreshAction,
   runHistoricalRefreshAction,
+  setActiveHomepageDayAction,
   updateCategoriesAction,
   updateSettingsAction,
 } from "@/app/admin/actions";
@@ -15,10 +16,6 @@ import { requireAdmin } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { EXECUTIVE_SCORE_COMPONENT_METADATA } from "@/lib/scoring/model";
 import { getAdminSnapshot } from "@/lib/search/service";
-import {
-  hasPdfBackedBrief,
-  prioritizePapersWithPdfBackedBriefs,
-} from "@/lib/technical/brief-status";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import { formatLongDateTime, formatShortDate } from "@/lib/utils/dates";
 
@@ -92,19 +89,6 @@ export default async function AdminPage({
     ? params.focusPaper
     : null;
   const latestRun = snapshot.runs[0] ?? null;
-  const homePagePaperIds = snapshot.publishedPaperIds.length > 0
-    ? snapshot.publishedPaperIds
-    : prioritizePapersWithPdfBackedBriefs(snapshot.editionPapers)
-        .slice(0, snapshot.settings.genAiFeaturedCount)
-        .map((paper) => paper.id);
-  const homePageSet = new Set(homePagePaperIds);
-  const homePageBriefReadyCount = snapshot.editionPapers.filter(
-    (paper) => homePageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
-  ).length;
-  const homePageMissingBriefCount = Math.max(
-    homePagePaperIds.length - homePageBriefReadyCount,
-    0,
-  );
   const notice = getAdminNotice({
     notice: typeof params.notice === "string" ? params.notice : null,
     fetched: readCount(params.fetched),
@@ -227,27 +211,37 @@ export default async function AdminPage({
                 </p>
                 <CardTitle>What visitors see right now</CardTitle>
                 <CardDescription>
-                  This tracks the papers currently live on the homepage for the selected edition and
-                  whether their PDF-backed executive briefs are already attached.
+                  This tracks the single announcement day currently powering `/`, independent of
+                  whichever day you are previewing below in the editor.
                 </CardDescription>
               </div>
               <Badge
-                variant={snapshot.publishedPaperIds.length > 0 ? "success" : "default"}
+                variant={snapshot.activeHomepageIsCurated ? "success" : "default"}
               >
-                {snapshot.publishedPaperIds.length > 0
+                {snapshot.activeHomepageIsCurated
                   ? "Curated homepage live"
                   : "Automatic homepage live"}
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Active day
+                </p>
+                <p className="mt-2 text-sm leading-6 text-foreground">
+                  {snapshot.activeHomepageAnnouncementDay
+                    ? formatShortDate(snapshot.activeHomepageAnnouncementDay)
+                    : "No active day yet"}
+                </p>
+              </div>
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Edition mode
                 </p>
                 <p className="mt-2 text-sm leading-6 text-foreground">
-                  {snapshot.publishedPaperIds.length > 0
+                  {snapshot.activeHomepageIsCurated
                     ? "Curated homepage selection"
                     : `Automatic top ${snapshot.settings.genAiFeaturedCount} fallback`}
                 </p>
@@ -256,23 +250,55 @@ export default async function AdminPage({
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Papers live now
                 </p>
-                <p className="mt-2 font-serif text-3xl">{homePagePaperIds.length}</p>
+                <p className="mt-2 font-serif text-3xl">{snapshot.activeHomepagePaperIds.length}</p>
               </div>
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   PDF briefs ready
                 </p>
                 <p className="mt-2 font-serif text-3xl">
-                  {homePageBriefReadyCount}/{homePagePaperIds.length}
+                  {snapshot.activeHomepageBriefReadyCount}/{snapshot.activeHomepagePaperIds.length}
                 </p>
               </div>
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Needs attention
                 </p>
-                <p className="mt-2 font-serif text-3xl">{homePageMissingBriefCount}</p>
+                <p className="mt-2 font-serif text-3xl">{snapshot.activeHomepageMissingBriefCount}</p>
               </div>
             </div>
+            <form
+              action={setActiveHomepageDayAction}
+              className="grid gap-3 rounded-[24px] border border-border/80 bg-white/60 p-4 xl:grid-cols-[1fr_auto]"
+            >
+              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
+              <label className="space-y-2 text-sm font-medium">
+                Active homepage day
+                <select
+                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                  defaultValue={snapshot.activeHomepageAnnouncementDay ?? snapshot.latestDay ?? ""}
+                  name="activeHomepageAnnouncementDay"
+                >
+                  {snapshot.days.map((day) => (
+                    <option key={day} value={day}>
+                      {formatShortDate(day)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="xl:self-end">
+                <AdminSubmitButton
+                  idleLabel="Set live homepage day"
+                  pendingLabel="Setting live homepage day..."
+                  type="submit"
+                />
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground xl:col-span-2">
+                The editor below can load any stored day, but only this one is actually shown on the
+                public homepage.
+              </p>
+            </form>
             {latestRun ? (
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -295,6 +321,7 @@ export default async function AdminPage({
 
       <section className="mb-6">
         <AdminEditionTable
+          activeHomepageAnnouncementDay={snapshot.activeHomepageAnnouncementDay}
           days={snapshot.days}
           featuredCount={snapshot.settings.genAiFeaturedCount}
           focusPaperId={focusPaperId}
@@ -713,22 +740,29 @@ function getAdminNotice(input: {
           "Source category toggles were saved. The next ingestion run will use the new enabled category set.",
         variant: "success",
       };
+    case "homepage-day-set":
+      return {
+        title: "Live homepage day updated",
+        description:
+          "The public homepage now resolves from the selected active announcement day instead of whichever day happens to be loaded in the editor.",
+        variant: "success",
+      };
     case "paper-published":
       return {
-        title: "Homepage selection updated",
+        title: "Curated set updated",
         description:
           input.briefStatus === "ready"
-            ? "That paper is now part of the curated homepage set and its PDF-backed executive brief is ready."
+            ? "That paper is now part of the curated set for the selected day, and its PDF-backed executive brief is ready."
             : input.briefStatus === "fallback"
-              ? "That paper is now part of the curated homepage set, but PDF extraction fell back to abstract-only mode, so no homepage brief will appear until a full-PDF brief is available."
-              : "That paper is now part of the curated homepage set, but it still needs a PDF-backed executive brief.",
+              ? "That paper is now part of the curated set for the selected day, but PDF extraction fell back to abstract-only mode, so no homepage brief will appear until a full-PDF brief is available."
+              : "That paper is now part of the curated set for the selected day, but it still needs a PDF-backed executive brief.",
         variant: input.briefStatus === "ready" ? "success" : "highlight",
       };
     case "paper-removed":
       return {
-        title: "Homepage selection updated",
+        title: "Curated set updated",
         description:
-          "That paper was removed from the curated homepage set. If no curated papers remain, the homepage will fall back to the automatic top list.",
+          "That paper was removed from the curated set for the selected day. If no curated papers remain for that day, its preview will fall back to the automatic top list.",
         variant: "highlight",
       };
     default:

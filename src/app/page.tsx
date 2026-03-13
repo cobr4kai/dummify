@@ -7,20 +7,10 @@ import { formatShortDate } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{
-  day?: string;
-}>;
-
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
-  const params = await searchParams;
+export default async function Home() {
   const { papers, announcementDay } = await getDailyBrief({
     category: "all",
     sort: "score",
-    announcementDay: typeof params.day === "string" && params.day ? params.day : null,
   });
 
   return (

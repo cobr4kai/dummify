@@ -30,7 +30,7 @@ export function getHomepageBriefState<TBrief extends BriefLike>(
 
 export function prioritizePapersWithPdfBackedBriefs<
   TPaper extends {
-    technicalBriefs: BriefLike[];
+    technicalBriefs: BriefLike[] | null | undefined;
   },
 >(papers: TPaper[]) {
   const papersWithPdfBriefs: TPaper[] = [];

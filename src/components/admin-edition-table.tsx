@@ -41,6 +41,7 @@ type ScoreBreakdownRecord = z.infer<typeof executiveScoreBreakdownRecordSchema>;
 type AdminEditionTableProps = {
   days: string[];
   selectedDay: string | null;
+  activeHomepageAnnouncementDay?: string | null;
   featuredCount: number;
   publishedPaperIds: string[];
   focusPaperId?: string | null;
@@ -85,6 +86,7 @@ type AdminEditionRow = {
 export function AdminEditionTable({
   days,
   selectedDay,
+  activeHomepageAnnouncementDay,
   featuredCount,
   publishedPaperIds,
   focusPaperId,
@@ -107,6 +109,11 @@ export function AdminEditionTable({
     homePagePaperIds.length - homePageBriefReadyCount,
     0,
   );
+  const isActiveHomepageDay = Boolean(
+    selectedDay &&
+    activeHomepageAnnouncementDay &&
+    selectedDay === activeHomepageAnnouncementDay,
+  );
   const initialSortKey = readSortKey(sortKey);
   const initialSortDirection = readSortDirection(sortDirection, initialSortKey);
   const [currentSortKey, setCurrentSortKey] = useState<AdminEditionSortKey>(initialSortKey);
@@ -124,6 +131,7 @@ export function AdminEditionTable({
     compareRows(left, right, currentSortKey, currentSortDirection),
   );
   const activeSortLabel = getSortLabel(currentSortKey);
+  const statusColumnLabel = isActiveHomepageDay ? "Live status" : "Edition status";
 
   function handleSort(requestedSortKey: AdminEditionSortKey) {
     const nextSortDirection = getNextSortDirection(
@@ -152,21 +160,35 @@ export function AdminEditionTable({
             <CardTitle>Curate the published front page</CardTitle>
             <CardDescription>
               Review one announcement day as a score table, then add or remove papers from the
-              published edition with explicit homepage and brief status for each row.
+              selected edition. Changes only affect the public homepage immediately when this day
+              matches the active homepage day.
             </CardDescription>
           </div>
           {selectedDay ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={hasCuratedHomepage ? "success" : "default"}>
-                {hasCuratedHomepage ? "Curated homepage" : "Automatic homepage"}
+              <Badge variant={isActiveHomepageDay ? (hasCuratedHomepage ? "success" : "default") : "muted"}>
+                {isActiveHomepageDay
+                  ? hasCuratedHomepage
+                    ? "Curated homepage"
+                    : "Automatic homepage"
+                  : hasCuratedHomepage
+                    ? "Curated preview"
+                    : "Automatic preview"}
               </Badge>
               <Badge variant="muted">Scored pool {papers.length}</Badge>
-              <Badge variant="muted">Live now {homePagePaperIds.length}</Badge>
+              <Badge variant="muted">
+                {isActiveHomepageDay ? "Live now" : "In preview"} {homePagePaperIds.length}
+              </Badge>
               <Badge
                 variant={homePageMissingBriefCount === 0 ? "success" : "highlight"}
               >
                 PDF briefs ready {homePageBriefReadyCount}/{homePagePaperIds.length}
               </Badge>
+              {!isActiveHomepageDay && activeHomepageAnnouncementDay ? (
+                <Badge variant="highlight">
+                  Active day {formatShortDate(activeHomepageAnnouncementDay)}
+                </Badge>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -207,17 +229,21 @@ export function AdminEditionTable({
           <div className="space-y-3">
             <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
               <p className="text-sm leading-6 text-muted-foreground">
-                {hasCuratedHomepage
-                  ? "The homepage is currently using the curated set below. Rows marked 'On homepage now' are live immediately, and their brief badge tells you whether a PDF-backed executive brief is already attached."
-                  : `The homepage is currently using the top ${featuredCount} papers automatically, with PDF-backed briefs prioritized first. Publishing any row switches the homepage into curated mode, so the status badges below show exactly what will be live next.`}
+                {isActiveHomepageDay
+                  ? hasCuratedHomepage
+                    ? "The homepage is currently using the curated set below. Rows marked 'On homepage now' are live immediately, and their brief badge tells you whether a PDF-backed executive brief is already attached."
+                    : `The homepage is currently using the top ${featuredCount} papers automatically, with PDF-backed briefs prioritized first. Creating a curated set for this day will immediately replace that fallback.`
+                  : hasCuratedHomepage
+                    ? "This selected day already has a curated set saved. You are editing that saved edition, but it is not currently live on the homepage."
+                    : `This selected day has no curated set yet, so the preview below shows the top ${featuredCount} papers that would be used for this day automatically.`}
               </p>
               {homePageMissingBriefCount > 0 ? (
                 <p className="mt-2 text-sm font-medium text-highlight">
-                  {homePageMissingBriefCount} homepage paper{homePageMissingBriefCount === 1 ? "" : "s"} still need a PDF-backed executive brief.
+                  {homePageMissingBriefCount} {isActiveHomepageDay ? "homepage" : "preview"} paper{homePageMissingBriefCount === 1 ? "" : "s"} still need a PDF-backed executive brief.
                 </p>
               ) : (
                 <p className="mt-2 text-sm font-medium text-success">
-                  Every paper currently visible on the homepage already has a PDF-backed executive brief.
+                  Every paper {isActiveHomepageDay ? "currently visible on the homepage" : "in this selected preview"} already has a PDF-backed executive brief.
                 </p>
               )}
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -231,7 +257,7 @@ export function AdminEditionTable({
                     <SortableHeader
                       currentSortDirection={currentSortDirection}
                       currentSortKey={currentSortKey}
-                      label="Live status"
+                      label={statusColumnLabel}
                       onSort={handleSort}
                       requestedSortKey="liveStatus"
                     />
@@ -274,7 +300,13 @@ export function AdminEditionTable({
                       <td className="rounded-l-[20px] px-3 py-4">
                         <div className="flex max-w-[220px] flex-col items-start gap-2">
                           <Badge variant={row.isOnHomepage ? "success" : "muted"}>
-                            {row.isOnHomepage ? "On homepage now" : "Off homepage"}
+                            {row.isOnHomepage
+                              ? isActiveHomepageDay
+                                ? "On homepage now"
+                                : "In selected edition"
+                              : isActiveHomepageDay
+                                ? "Off homepage"
+                                : "Outside selected edition"}
                           </Badge>
                           <Badge
                             variant={
@@ -483,14 +515,10 @@ function buildRow(input: {
         : "No brief yet";
   const actionLabel = input.hasCuratedHomepage
     ? isPublished
-      ? "Remove from curated page"
-      : "Add to curated page"
-    : "Start curated homepage";
-  const pendingLabel = isPublished
-    ? "Removing..."
-    : isOnHomepage
-      ? "Publishing and syncing..."
-      : "Publishing...";
+      ? "Remove from curated set"
+      : "Add to curated set"
+    : "Create curated set";
+  const pendingLabel = isPublished ? "Removing..." : "Saving...";
   const liveStatusRank =
     (isOnHomepage ? 100 : 0) +
     (hasPdfBrief ? 20 : briefState === "abstract-fallback" ? 10 : 0) +
