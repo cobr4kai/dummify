@@ -17,7 +17,11 @@ import { env } from "@/lib/env";
 import { EXECUTIVE_SCORE_COMPONENT_METADATA } from "@/lib/scoring/model";
 import { getAdminSnapshot } from "@/lib/search/service";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
-import { formatLongDateTime, formatShortDate } from "@/lib/utils/dates";
+import {
+  formatLongDateTime,
+  formatShortDate,
+  getArxivAnnouncementDateString,
+} from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +86,7 @@ export default async function AdminPage({
   const selectedDay = typeof params.day === "string" && params.day ? params.day : null;
   const sortKey = typeof params.sort === "string" && params.sort ? params.sort : null;
   const sortDirection = typeof params.dir === "string" && params.dir ? params.dir : null;
+  const currentArxivAnnouncementDay = getArxivAnnouncementDateString();
   const snapshot = await getAdminSnapshot({
     announcementDay: selectedDay,
   });
@@ -91,6 +96,7 @@ export default async function AdminPage({
   const latestRun = snapshot.runs[0] ?? null;
   const notice = getAdminNotice({
     notice: typeof params.notice === "string" ? params.notice : null,
+    currentArxivAnnouncementDay,
     fetched: readCount(params.fetched),
     upserted: readCount(params.upserted),
     generated: readCount(params.generated),
@@ -355,16 +361,16 @@ export default async function AdminPage({
             >
               <p className="text-sm font-semibold text-foreground">Daily refresh</p>
               <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <input name="announcementDay" type="hidden" value={currentArxivAnnouncementDay} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
-              <label className="space-y-2 text-sm font-medium">
-                Announcement day
-                <input
-                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
-                  defaultValue={snapshot.selectedDay ?? snapshot.latestDay ?? ""}
-                  name="announcementDay"
-                  type="date"
-                />
-              </label>
+              <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Current arXiv RSS day
+                </p>
+                <p className="mt-2 text-sm leading-6 text-foreground">
+                  {formatShortDate(currentArxivAnnouncementDay)}
+                </p>
+              </div>
               <label className="flex items-center gap-3 text-sm text-foreground">
                 <input name="recomputeBriefs" type="checkbox" />
                 Recompute executive briefs
@@ -375,8 +381,8 @@ export default async function AdminPage({
                 type="submit"
               />
               <p className="text-xs leading-5 text-muted-foreground">
-                Use this after changing categories or models, or when you want to refresh scoring
-                before manually curating the selected day.
+                This only pulls the current arXiv RSS announcement day. Use Historical fetch for
+                older dates like {snapshot.selectedDay ? formatShortDate(snapshot.selectedDay) : "past editions"}.
               </p>
             </form>
             <form
@@ -696,12 +702,20 @@ function AdminSortStateInputs({
 
 function getAdminNotice(input: {
   notice: string | null;
+  currentArxivAnnouncementDay: string;
   fetched?: number;
   upserted?: number;
   generated?: number;
   briefStatus: string | null;
 }): AdminNotice {
   switch (input.notice) {
+    case "daily-refresh-day-mismatch":
+      return {
+        title: "Daily refresh only supports the live RSS day",
+        description:
+          `Daily refresh currently ingests only the active arXiv RSS announcement day (${formatShortDate(input.currentArxivAnnouncementDay)}). Use Historical fetch when you want to repopulate an older stored day.`,
+        variant: "highlight",
+      };
     case "daily-refresh":
       return {
         title: "Daily refresh finished",

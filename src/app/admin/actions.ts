@@ -17,6 +17,7 @@ import {
   ensurePaperTechnicalBrief,
   getCurrentTechnicalBrief,
 } from "@/lib/technical/service";
+import { getArxivAnnouncementDateString } from "@/lib/utils/dates";
 
 export async function logoutAction() {
   await clearAdminSession();
@@ -29,18 +30,29 @@ export async function runDailyRefreshAction(formData: FormData) {
   const selectedDay = readString(formData.get("selectedDay"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
+  const currentArxivAnnouncementDay = getArxivAnnouncementDateString();
+  const requestedAnnouncementDay = announcementDay ?? currentArxivAnnouncementDay;
+
+  if (requestedAnnouncementDay !== currentArxivAnnouncementDay) {
+    redirectToAdmin({
+      selectedDay: requestedAnnouncementDay,
+      notice: "daily-refresh-day-mismatch",
+      sortKey,
+      sortDirection,
+    });
+  }
 
   const result = await runIngestionJob({
     mode: "DAILY",
     triggerSource: TriggerSource.MANUAL,
-    announcementDay,
+    announcementDay: requestedAnnouncementDay,
     recomputeScores: true,
     recomputeBriefs,
   });
 
   revalidateAll();
   redirectToAdmin({
-    selectedDay: announcementDay ?? selectedDay,
+    selectedDay: requestedAnnouncementDay ?? selectedDay,
     notice: "daily-refresh",
     fetched: result.fetchedCount,
     upserted: result.upsertedCount,

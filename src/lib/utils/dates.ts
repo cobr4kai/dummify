@@ -13,6 +13,7 @@ const LONG_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
 });
 
 const PACIFIC_TIME_ZONE = "America/Los_Angeles";
+const ARXIV_ANNOUNCEMENT_TIME_ZONE = "America/New_York";
 
 export function toAnnouncementDay(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -44,8 +45,16 @@ export function toArxivDateStamp(date: Date) {
 }
 
 export function getPacificDateString(date = new Date()) {
+  return getZonedDateString(PACIFIC_TIME_ZONE, date);
+}
+
+export function getArxivAnnouncementDateString(date = new Date()) {
+  return getZonedDateString(ARXIV_ANNOUNCEMENT_TIME_ZONE, date);
+}
+
+function getZonedDateString(timeZone: string, date = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: PACIFIC_TIME_ZONE,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

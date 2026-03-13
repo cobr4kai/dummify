@@ -3,7 +3,7 @@ import { TriggerSource } from "@prisma/client";
 import { env } from "@/lib/env";
 import { runIngestionJob } from "@/lib/ingestion/service";
 import { getAppSettings } from "@/lib/settings/service";
-import { getPacificDateString } from "@/lib/utils/dates";
+import { getArxivAnnouncementDateString } from "@/lib/utils/dates";
 
 declare global {
   var paperBriefCronStarted: boolean | undefined;
@@ -23,7 +23,7 @@ export async function startLocalScheduler() {
         mode: "DAILY",
         jobMode: "PRIMARY",
         triggerSource: TriggerSource.SCHEDULED,
-        announcementDay: getPacificDateString(),
+        announcementDay: getArxivAnnouncementDateString(),
       });
     } catch (error) {
       console.error("PaperBrief primary cron run failed.", error);
@@ -42,7 +42,7 @@ export async function startLocalScheduler() {
         mode: "DAILY",
         jobMode: "RECONCILE",
         triggerSource: TriggerSource.SCHEDULED,
-        announcementDay: getPacificDateString(),
+        announcementDay: getArxivAnnouncementDateString(),
       });
     } catch (error) {
       console.error("PaperBrief reconcile cron run failed.", error);

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { TriggerSource } from "@prisma/client";
 import { isValidCronSecret } from "@/lib/auth";
 import { runIngestionJob } from "@/lib/ingestion/service";
-import { getPacificDateString } from "@/lib/utils/dates";
+import { getArxivAnnouncementDateString } from "@/lib/utils/dates";
 
 export async function POST(request: Request) {
   const authorization = request.headers.get("authorization");
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const jobParam = searchParams.get("job");
   const dayParam = searchParams.get("day");
   const jobMode = jobParam === "reconcile" ? "RECONCILE" : "PRIMARY";
-  const today = dayParam || getPacificDateString();
+  const today = dayParam || getArxivAnnouncementDateString();
   const result = await runIngestionJob({
     mode: "DAILY",
     jobMode,

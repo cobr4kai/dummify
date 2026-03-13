@@ -18,7 +18,10 @@ import { computeBriefScore } from "@/lib/scoring/service";
 import { getAppSettings, getEnabledCategoryKeys } from "@/lib/settings/service";
 import { ensurePaperTechnicalBrief } from "@/lib/technical/service";
 import type { PaperSourceRecord } from "@/lib/types";
-import { getPacificDateString, isExpectedQuietAnnouncementDay } from "@/lib/utils/dates";
+import {
+  getArxivAnnouncementDateString,
+  isExpectedQuietAnnouncementDay,
+} from "@/lib/utils/dates";
 import { toJsonInput } from "@/lib/utils/prisma";
 
 export type DailyJobMode = "PRIMARY" | "RECONCILE";
@@ -49,7 +52,7 @@ export async function runIngestionJob(options: IngestionOptions) {
     cacheRoot: path.resolve(appSettings.pdfCacheDir),
   });
   const announcementDay =
-    options.announcementDay ?? getPacificDateString();
+    options.announcementDay ?? getArxivAnnouncementDateString();
   const jobMode = options.jobMode ?? "PRIMARY";
 
   const run = await prisma.ingestionRun.create({
