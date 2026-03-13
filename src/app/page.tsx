@@ -17,8 +17,8 @@ export default async function Home() {
   return (
     <PageShell
       currentPath="/"
-      hero={(
-        <section className="hero-shell rounded-[36px] px-6 py-7 sm:px-8 sm:py-8 lg:flex lg:items-start lg:justify-between lg:gap-8">
+      headerContent={(
+        <div className="lg:flex lg:items-start lg:justify-between lg:gap-8">
           <div className="max-w-3xl lg:pt-1">
             <h1 className="editorial-display text-5xl text-foreground sm:text-6xl lg:text-[4.9rem]">
               {APP_NAME}
@@ -40,7 +40,7 @@ export default async function Home() {
               </p>
             </div>
           </Link>
-        </section>
+        </div>
       )}
     >
       {papers.length === 0 ? (
