@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
@@ -26,14 +27,19 @@ export default async function Home({
     <PageShell
       currentPath="/"
       headerMeta={(
-        <div className="rounded-[24px] border border-border/80 bg-white/70 px-5 py-4 shadow-sm">
+        <Link
+          className="block rounded-[24px] transition-transform duration-200 hover:-translate-y-0.5"
+          href={announcementDay ? `/archive?day=${announcementDay}` : "/archive"}
+        >
+          <div className="rounded-[24px] border border-border/80 bg-white/70 px-5 py-4 shadow-sm transition-colors hover:bg-white/85">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Edition date
           </p>
           <p className="mt-2 font-serif text-3xl leading-none text-foreground">
             {announcementDay ? formatShortDate(announcementDay) : "No data"}
           </p>
-        </div>
+          </div>
+        </Link>
       )}
     >
       {papers.length === 0 ? (
