@@ -216,11 +216,11 @@ export default async function AdminPage({
                 </CardDescription>
               </div>
               <Badge
-                variant={snapshot.activeHomepageIsCurated ? "success" : "default"}
+                variant={snapshot.activeHomepageIsCurated ? "success" : "muted"}
               >
                 {snapshot.activeHomepageIsCurated
                   ? "Curated homepage live"
-                  : "Automatic homepage live"}
+                  : "Homepage waiting for curation"}
               </Badge>
             </div>
           </CardHeader>
@@ -243,7 +243,7 @@ export default async function AdminPage({
                 <p className="mt-2 text-sm leading-6 text-foreground">
                   {snapshot.activeHomepageIsCurated
                     ? "Curated homepage selection"
-                    : `Automatic top ${snapshot.settings.genAiFeaturedCount} fallback`}
+                    : "No curated papers selected"}
                 </p>
               </div>
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
@@ -296,7 +296,8 @@ export default async function AdminPage({
               </div>
               <p className="text-xs leading-5 text-muted-foreground xl:col-span-2">
                 The editor below can load any stored day, but only this one is actually shown on the
-                public homepage.
+                public homepage. If the active day has no curated papers, the homepage stays empty
+                until you add them manually.
               </p>
             </form>
             {latestRun ? (
@@ -323,7 +324,6 @@ export default async function AdminPage({
         <AdminEditionTable
           activeHomepageAnnouncementDay={snapshot.activeHomepageAnnouncementDay}
           days={snapshot.days}
-          featuredCount={snapshot.settings.genAiFeaturedCount}
           focusPaperId={focusPaperId}
           key={[
             snapshot.selectedDay ?? "no-day",
@@ -375,8 +375,8 @@ export default async function AdminPage({
                 type="submit"
               />
               <p className="text-xs leading-5 text-muted-foreground">
-                Use this after changing categories, models, or homepage composition to get fresh
-                coverage for the selected day.
+                Use this after changing categories or models, or when you want to refresh scoring
+                before manually curating the selected day.
               </p>
             </form>
             <form
@@ -462,7 +462,8 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Brief settings</CardTitle>
             <CardDescription>
-              Control output counts, ranking weights, high-signal threshold, and the score bias toward frontier relevance, real-world impact, and audience pull.
+              Control ranking weights, high-signal threshold, cache/runtime settings, and keep the
+              future automation knobs parked for later.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -470,7 +471,7 @@ export default async function AdminPage({
               <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <label className="space-y-2 text-sm font-medium">
-                Featured count
+                Featured count (reserved)
                 <input
                   className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
                   defaultValue={snapshot.settings.genAiFeaturedCount}
@@ -479,7 +480,7 @@ export default async function AdminPage({
                 />
               </label>
               <label className="space-y-2 text-sm font-medium">
-                Shortlist size
+                Shortlist size (reserved)
                 <input
                   className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
                   defaultValue={snapshot.settings.genAiShortlistSize}
@@ -744,7 +745,7 @@ function getAdminNotice(input: {
       return {
         title: "Live homepage day updated",
         description:
-          "The public homepage now resolves from the selected active announcement day instead of whichever day happens to be loaded in the editor.",
+          "The public homepage now resolves from the selected active announcement day. If that day has no curated papers yet, the homepage will stay empty until you add them.",
         variant: "success",
       };
     case "paper-published":
@@ -762,7 +763,7 @@ function getAdminNotice(input: {
       return {
         title: "Curated set updated",
         description:
-          "That paper was removed from the curated set for the selected day. If no curated papers remain for that day, its preview will fall back to the automatic top list.",
+          "That paper was removed from the curated set for the selected day. If no curated papers remain for that day, the homepage for that day will stay empty until you add papers back.",
         variant: "highlight",
       };
     default:

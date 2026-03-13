@@ -2,10 +2,7 @@ import { BriefMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getPublishedPaperIdsForDay } from "@/lib/publishing/service";
 import { getAppSettings, getCategoryConfigs, type AppSettings } from "@/lib/settings/service";
-import {
-  hasPdfBackedBrief,
-  prioritizePapersWithPdfBackedBriefs,
-} from "@/lib/technical/brief-status";
+import { hasPdfBackedBrief } from "@/lib/technical/brief-status";
 import { normalizeSearchText } from "@/lib/utils/strings";
 
 export type SortMode = "score" | "date";
@@ -90,26 +87,13 @@ function sortEditionPapers<
   );
 }
 
-function resolveHomepagePaperIds<
-  T extends {
-    id: string;
-    technicalBriefs: Parameters<typeof hasPdfBackedBrief>[0];
-  },
->(papers: T[], publishedPaperIds: string[], featuredCount: number) {
-  return publishedPaperIds.length > 0
-    ? publishedPaperIds
-    : prioritizePapersWithPdfBackedBriefs(papers)
-        .slice(0, featuredCount)
-        .map((paper) => paper.id);
-}
-
 function buildHomepageSnapshot<
   T extends {
     id: string;
     technicalBriefs: Parameters<typeof hasPdfBackedBrief>[0];
   },
->(papers: T[], publishedPaperIds: string[], featuredCount: number) {
-  const homepagePaperIds = resolveHomepagePaperIds(papers, publishedPaperIds, featuredCount);
+>(papers: T[], publishedPaperIds: string[]) {
+  const homepagePaperIds = publishedPaperIds;
   const homepageSet = new Set(homepagePaperIds);
   const homepageBriefReadyCount = papers.filter(
     (paper) => homepageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
@@ -178,10 +162,20 @@ export async function getDailyBrief(options: {
   const sort = options.sort ?? "score";
   const publishedPaperIds = await getPublishedPaperIdsForDay(announcementDay);
 
+  if (publishedPaperIds.length === 0) {
+    return {
+      papers: [],
+      categories: await getCategoryConfigs(),
+      announcementDay,
+      isCurated: false,
+      settings,
+    };
+  }
+
   const papers = await prisma.paper.findMany({
     where: {
       announcementDay,
-      ...(publishedPaperIds.length > 0 ? { id: { in: publishedPaperIds } } : {}),
+      id: { in: publishedPaperIds },
       ...(category !== "all"
         ? {
             OR: [
@@ -227,19 +221,11 @@ export async function getDailyBrief(options: {
       return rightScore - leftScore;
     });
 
-  const homepagePaperIds = resolveHomepagePaperIds(
-    filtered,
-    publishedPaperIds,
-    settings.genAiFeaturedCount,
-  );
-  const homepageSet = new Set(homepagePaperIds);
-  const editionPapers = filtered.filter((paper) => homepageSet.has(paper.id));
-
   return {
-    papers: editionPapers,
+    papers: filtered,
     categories: await getCategoryConfigs(),
     announcementDay,
-    isCurated: publishedPaperIds.length > 0,
+    isCurated: true,
     settings,
   };
 }
@@ -398,7 +384,6 @@ export async function getAdminSnapshot(options?: {
     ? buildHomepageSnapshot(
         activeEdition.editionPapers,
         activeEdition.publishedPaperIds,
-        settings.genAiFeaturedCount,
       )
     : {
         homepagePaperIds: [],

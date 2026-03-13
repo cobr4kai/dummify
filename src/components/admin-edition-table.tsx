@@ -16,7 +16,6 @@ import {
 import {
   getHomepageBriefState,
   hasPdfBackedBrief,
-  prioritizePapersWithPdfBackedBriefs,
 } from "@/lib/technical/brief-status";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
@@ -42,7 +41,6 @@ type AdminEditionTableProps = {
   days: string[];
   selectedDay: string | null;
   activeHomepageAnnouncementDay?: string | null;
-  featuredCount: number;
   publishedPaperIds: string[];
   focusPaperId?: string | null;
   sortKey?: string | null;
@@ -87,7 +85,6 @@ export function AdminEditionTable({
   days,
   selectedDay,
   activeHomepageAnnouncementDay,
-  featuredCount,
   publishedPaperIds,
   focusPaperId,
   sortKey,
@@ -96,11 +93,7 @@ export function AdminEditionTable({
 }: AdminEditionTableProps) {
   const publishedSet = new Set(publishedPaperIds);
   const hasCuratedHomepage = publishedPaperIds.length > 0;
-  const homePagePaperIds = hasCuratedHomepage
-    ? publishedPaperIds
-    : prioritizePapersWithPdfBackedBriefs(papers)
-        .slice(0, featuredCount)
-        .map((paper) => paper.id);
+  const homePagePaperIds = publishedPaperIds;
   const homePageSet = new Set(homePagePaperIds);
   const homePageBriefReadyCount = papers.filter(
     (paper) => homePageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
@@ -160,24 +153,24 @@ export function AdminEditionTable({
             <CardTitle>Curate the published front page</CardTitle>
             <CardDescription>
               Review one announcement day as a score table, then add or remove papers from the
-              selected edition. Changes only affect the public homepage immediately when this day
-              matches the active homepage day.
+              selected edition. Nothing goes live until you explicitly add papers, and changes only
+              affect the public homepage immediately when this day matches the active homepage day.
             </CardDescription>
           </div>
           {selectedDay ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={isActiveHomepageDay ? (hasCuratedHomepage ? "success" : "default") : "muted"}>
+              <Badge variant={hasCuratedHomepage ? "success" : "muted"}>
                 {isActiveHomepageDay
                   ? hasCuratedHomepage
                     ? "Curated homepage"
-                    : "Automatic homepage"
+                    : "Homepage empty"
                   : hasCuratedHomepage
                     ? "Curated preview"
-                    : "Automatic preview"}
+                    : "Nothing selected"}
               </Badge>
               <Badge variant="muted">Scored pool {papers.length}</Badge>
               <Badge variant="muted">
-                {isActiveHomepageDay ? "Live now" : "In preview"} {homePagePaperIds.length}
+                {isActiveHomepageDay ? "Live now" : "Selected"} {homePagePaperIds.length}
               </Badge>
               <Badge
                 variant={homePageMissingBriefCount === 0 ? "success" : "highlight"}
@@ -232,18 +225,22 @@ export function AdminEditionTable({
                 {isActiveHomepageDay
                   ? hasCuratedHomepage
                     ? "The homepage is currently using the curated set below. Rows marked 'On homepage now' are live immediately, and their brief badge tells you whether a PDF-backed executive brief is already attached."
-                    : `The homepage is currently using the top ${featuredCount} papers automatically, with PDF-backed briefs prioritized first. Creating a curated set for this day will immediately replace that fallback.`
+                    : "This is the active homepage day, but nothing is live yet because no curated papers have been selected."
                   : hasCuratedHomepage
                     ? "This selected day already has a curated set saved. You are editing that saved edition, but it is not currently live on the homepage."
-                    : `This selected day has no curated set yet, so the preview below shows the top ${featuredCount} papers that would be used for this day automatically.`}
+                    : "This selected day has no curated set yet. Use the action buttons below to choose exactly which papers should go live when you are ready."}
               </p>
               {homePageMissingBriefCount > 0 ? (
                 <p className="mt-2 text-sm font-medium text-highlight">
-                  {homePageMissingBriefCount} {isActiveHomepageDay ? "homepage" : "preview"} paper{homePageMissingBriefCount === 1 ? "" : "s"} still need a PDF-backed executive brief.
+                  {homePageMissingBriefCount} selected paper{homePageMissingBriefCount === 1 ? "" : "s"} still need a PDF-backed executive brief.
+                </p>
+              ) : homePagePaperIds.length > 0 ? (
+                <p className="mt-2 text-sm font-medium text-success">
+                  Every selected paper already has a PDF-backed executive brief.
                 </p>
               ) : (
-                <p className="mt-2 text-sm font-medium text-success">
-                  Every paper {isActiveHomepageDay ? "currently visible on the homepage" : "in this selected preview"} already has a PDF-backed executive brief.
+                <p className="mt-2 text-sm font-medium text-muted-foreground">
+                  No papers are selected for this day yet.
                 </p>
               )}
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -497,15 +494,12 @@ function buildRow(input: {
   const hasPdfBrief = briefState === "pdf-ready";
   const isPublished = input.publishedSet.has(input.paper.id);
   const isOnHomepage = input.homePageSet.has(input.paper.id);
-  const isAutoHomepagePaper = !input.hasCuratedHomepage && isOnHomepage;
   const isFocused = input.focusPaperId === input.paper.id;
   const sourceLabel = input.hasCuratedHomepage
     ? isPublished
       ? "Curated set"
       : "Not curated"
-    : isAutoHomepagePaper
-      ? "Auto fallback"
-      : "Below fallback cut";
+    : "Not selected";
   const briefLabel = hasPdfBrief
     ? "PDF brief ready"
     : briefState === "abstract-fallback"

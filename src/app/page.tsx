@@ -35,7 +35,7 @@ export default async function Home() {
       {papers.length === 0 ? (
         <EmptyState
           title="No papers match this brief."
-          description="There is no paper data for the current daily edition yet."
+          description="No curated papers are live for the current homepage day yet."
         />
       ) : (
         <section className="space-y-4">
