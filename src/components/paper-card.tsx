@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import type { ReactNode } from "react";
 import { z } from "zod";
 import {
   Accordion,
@@ -20,6 +21,7 @@ const bulletSchema = z.array(
 );
 
 type PaperCardProps = {
+  headerMeta?: ReactNode;
   paper: {
     id: string;
     title: string;
@@ -35,7 +37,7 @@ type PaperCardProps = {
   };
 };
 
-export function PaperCard({ paper }: PaperCardProps) {
+export function PaperCard({ headerMeta, paper }: PaperCardProps) {
   const brief = paper.technicalBriefs[0];
   const verdict = brief?.oneLineVerdict
     ? stripTechnicalBriefHeading(brief.oneLineVerdict)
@@ -49,6 +51,7 @@ export function PaperCard({ paper }: PaperCardProps) {
     <Card className="p-6">
       <div className="space-y-5">
         <div className="space-y-3">
+          {headerMeta ? <div className="flex flex-wrap items-center gap-2">{headerMeta}</div> : null}
           <h3 className="font-serif text-[1.9rem] leading-[1.12] tracking-tight">
             {paper.title}
           </h3>
