@@ -3,7 +3,7 @@ import type { ExecutiveScoringWeights } from "@/lib/types";
 
 export const APP_NAME = "Abstracted";
 export const APP_TAGLINE =
-  "One daily frontier brief that turns new AI papers into sharp, executive-ready takeaways.";
+  "arXiv papers, translated beyond the lab.";
 export const PROJECT_CODENAME = "arXiv for Dummies";
 
 export const DEFAULT_CATEGORIES = [
