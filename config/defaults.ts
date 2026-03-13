@@ -1,7 +1,7 @@
 import type { LegacyExecutiveScoringWeights } from "@/lib/scoring/model";
 import type { ExecutiveScoringWeights } from "@/lib/types";
 
-export const APP_NAME = "PaperBrief";
+export const APP_NAME = "Abstracted";
 export const APP_TAGLINE =
   "One daily frontier brief that turns new AI papers into sharp, executive-ready takeaways.";
 export const PROJECT_CODENAME = "arXiv for Dummies";
