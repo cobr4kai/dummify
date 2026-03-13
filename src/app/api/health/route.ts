@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { assertPrismaRuntimeCompatibility, prisma } from "@/lib/db";
 
 export async function GET() {
   try {
+    assertPrismaRuntimeCompatibility();
     await prisma.$queryRawUnsafe("SELECT 1");
+    await prisma.publishedPaper.count({ take: 0 });
 
     return NextResponse.json({
       ok: true,

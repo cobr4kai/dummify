@@ -1,6 +1,7 @@
-import { prisma } from "@/lib/db";
+import { assertPrismaRuntimeCompatibility, prisma } from "@/lib/db";
 
 export async function getPublishedPaperIdsForDay(announcementDay: string) {
+  assertPrismaRuntimeCompatibility();
   const items = await prisma.publishedPaper.findMany({
     where: { announcementDay },
     select: { paperId: true },
@@ -10,6 +11,7 @@ export async function getPublishedPaperIdsForDay(announcementDay: string) {
 }
 
 export async function getPublishedPaperCountForDay(announcementDay: string) {
+  assertPrismaRuntimeCompatibility();
   return prisma.publishedPaper.count({
     where: { announcementDay },
   });
@@ -20,6 +22,7 @@ export async function setPublishedPaperState(input: {
   paperId: string;
   published: boolean;
 }) {
+  assertPrismaRuntimeCompatibility();
   const paper = await prisma.paper.findUnique({
     where: { id: input.paperId },
     select: { id: true, announcementDay: true },

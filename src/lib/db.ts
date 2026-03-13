@@ -24,3 +24,21 @@ if (process.env.NODE_ENV !== "production") {
   global.prisma = prisma;
   global.paperBriefAdapter = adapter;
 }
+
+const REQUIRED_PRISMA_DELEGATES = [
+  "paper",
+  "appSetting",
+  "publishedPaper",
+] as const;
+
+export function assertPrismaRuntimeCompatibility() {
+  const missingDelegates = REQUIRED_PRISMA_DELEGATES.filter(
+    (delegate) => !(delegate in prisma) || typeof prisma[delegate] === "undefined",
+  );
+
+  if (missingDelegates.length > 0) {
+    throw new Error(
+      `Generated Prisma client is missing delegate(s): ${missingDelegates.join(", ")}. Run "prisma generate" and restart the app.`,
+    );
+  }
+}

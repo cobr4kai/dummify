@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "prisma generate",
     "dev": "next dev",
+    "prebuild": "prisma generate",
     "build": "next build",
+    "prestart": "prisma generate",
     "start": "next start",
+    "prestart:render": "prisma generate",
     "start:render": "node scripts/render-start.mjs",
     "bootstrap:backfill": "tsx scripts/bootstrap-backfill.ts",
     "cron:primary": "node scripts/render-trigger-cron.mjs primary",
