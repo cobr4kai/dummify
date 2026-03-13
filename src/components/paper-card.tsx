@@ -102,7 +102,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
           <section className="surface rounded-[24px] border border-border/80 px-5">
             <Accordion type="single" collapsible>
               <AccordionItem value={`brief-${paper.id}`} className="border-none">
-                <AccordionTrigger className="-mx-3 cursor-pointer rounded-[18px] px-3 py-5 transition-colors hover:bg-[rgba(248,244,236,0.68)] hover:no-underline data-[state=open]:bg-[rgba(248,244,236,0.82)] [&>svg]:h-5 [&>svg]:w-5 hover:[&>svg]:text-foreground data-[state=open]:[&>svg]:text-foreground">
+                <AccordionTrigger className="-mx-3 cursor-pointer rounded-[18px] px-3 py-5 transition-colors hover:bg-[var(--panel-bg)] hover:no-underline data-[state=open]:bg-[var(--field-bg)] [&>svg]:h-5 [&>svg]:w-5 hover:[&>svg]:text-foreground data-[state=open]:[&>svg]:text-foreground">
                   <div className="text-left">
                     <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
                       Executive brief

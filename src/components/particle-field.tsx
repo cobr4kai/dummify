@@ -1,19 +1,21 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const PARTICLE_COUNT = 260;
 const MOUSE_RADIUS = 134;
 const DRAG = 0.997;
-const ATTRACT_STRENGTH = 0.018;
+const POINTER_FORCE = 0.006;
 const SPEED_MIN = 0.06;
 const SPEED_MAX = 0.21;
 const SIZE_MIN = 1.5;
 const SIZE_MAX = 5.5;
 const ALPHA_MIN = 0.18;
-const ALPHA_MAX = 0.4;
-const LIFE_MIN = 540;
-const LIFE_MAX = 1280;
+const ALPHA_MAX = 0.42;
+const LIFE_MIN = 200;
+const LIFE_MAX = 540;
+
+type ThemeMode = "light" | "dark";
 
 type Particle = {
   x: number;
@@ -67,27 +69,43 @@ void main() {
     discard;
   }
 
-  float softenedEdge = smoothstep(0.12, 0.25, 0.5 - distanceFromCenter);
+  float d = 0.5 - distanceFromCenter;
+  float softenedEdge = smoothstep(0.12, 0.25, d);
   gl_FragColor = vec4(0.82, 0.65, 0.08, v_alpha * softenedEdge);
 }
 `;
 
 export function ParticleField() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [motionAllowed, setMotionAllowed] = useState(false);
+  const [webglAvailable, setWebglAvailable] = useState(true);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (mediaQuery.matches) {
+    const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncMotionPreference = () => {
+      setMotionAllowed(!reducedMotionQuery.matches);
+    };
+
+    syncMotionPreference();
+    reducedMotionQuery.addEventListener("change", syncMotionPreference);
+
+    return () => {
+      reducedMotionQuery.removeEventListener("change", syncMotionPreference);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!motionAllowed || !webglAvailable) {
       return;
     }
 
+    const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const canvasNode = canvasRef.current;
     if (!canvasNode) {
       return;
     }
 
     const canvas: HTMLCanvasElement = canvasNode;
-
     const glContext = canvas.getContext("webgl", {
       alpha: true,
       antialias: true,
@@ -98,7 +116,7 @@ export function ParticleField() {
     });
 
     if (!glContext) {
-      canvas.style.display = "none";
+      setWebglAvailable(false);
       return;
     }
 
@@ -113,7 +131,7 @@ export function ParticleField() {
       fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
       program = createProgram(gl, vertexShader, fragmentShader);
     } catch {
-      canvas.style.display = "none";
+      setWebglAvailable(false);
       return;
     }
 
@@ -128,7 +146,7 @@ export function ParticleField() {
       alphaLocation === -1 ||
       !resolutionLocation
     ) {
-      canvas.style.display = "none";
+      setWebglAvailable(false);
       return;
     }
 
@@ -137,7 +155,7 @@ export function ParticleField() {
     const alphaBuffer = gl.createBuffer();
 
     if (!positionBuffer || !sizeBuffer || !alphaBuffer) {
-      canvas.style.display = "none";
+      setWebglAvailable(false);
       return;
     }
 
@@ -150,6 +168,7 @@ export function ParticleField() {
 
     let rafId = 0;
     let stopped = false;
+    let themeMode: ThemeMode = resolveThemeMode(colorSchemeQuery);
 
     function resizeCanvas() {
       const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -166,6 +185,15 @@ export function ParticleField() {
       canvas.style.height = `${height}px`;
 
       gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    function applyThemeMode() {
+      themeMode = resolveThemeMode(colorSchemeQuery);
+      if (themeMode === "dark") {
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      } else {
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      }
     }
 
     function resetParticle(index: number, randomizeAge = false) {
@@ -215,9 +243,10 @@ export function ParticleField() {
 
           if (distanceSquared <= radiusSquared) {
             const distance = Math.max(Math.sqrt(distanceSquared), 0.0001);
-            const pull = (1 - distance / MOUSE_RADIUS) * ATTRACT_STRENGTH;
-            current.vx += (dx / distance) * pull;
-            current.vy += (dy / distance) * pull;
+            const direction = themeMode === "dark" ? -1 : 1;
+            const force = ((MOUSE_RADIUS - distance) / MOUSE_RADIUS) * POINTER_FORCE * direction;
+            current.vx += (dx / distance) * force;
+            current.vy += (dy / distance) * force;
           }
         }
 
@@ -289,22 +318,33 @@ export function ParticleField() {
     function handleContextLost(event: Event) {
       event.preventDefault();
       stopped = true;
-      canvas.style.display = "none";
       window.cancelAnimationFrame(rafId);
+      setWebglAvailable(false);
     }
+
+    function handleThemeChange() {
+      applyThemeMode();
+    }
+
+    const themeObserver = new MutationObserver(handleThemeChange);
 
     resizeCanvas();
     seedParticles();
 
     gl.clearColor(0, 0, 0, 0);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    applyThemeMode();
 
     window.addEventListener("resize", resizeCanvas);
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("pointerdown", handlePointerMove, { passive: true });
     document.documentElement.addEventListener("mouseleave", handlePointerExit);
     window.addEventListener("blur", handlePointerExit);
+    colorSchemeQuery.addEventListener("change", handleThemeChange);
+    themeObserver.observe(document.documentElement, {
+      attributeFilter: ["data-theme"],
+      attributes: true,
+    });
     canvas.addEventListener("webglcontextlost", handleContextLost, false);
 
     rafId = window.requestAnimationFrame(drawFrame);
@@ -317,6 +357,8 @@ export function ParticleField() {
       window.removeEventListener("pointerdown", handlePointerMove);
       document.documentElement.removeEventListener("mouseleave", handlePointerExit);
       window.removeEventListener("blur", handlePointerExit);
+      colorSchemeQuery.removeEventListener("change", handleThemeChange);
+      themeObserver.disconnect();
       canvas.removeEventListener("webglcontextlost", handleContextLost, false);
 
       gl.deleteBuffer(positionBuffer);
@@ -326,7 +368,11 @@ export function ParticleField() {
       gl.deleteShader(vertexShader);
       gl.deleteShader(fragmentShader);
     };
-  }, []);
+  }, [motionAllowed, webglAvailable]);
+
+  if (!motionAllowed || !webglAvailable) {
+    return null;
+  }
 
   return <canvas ref={canvasRef} aria-hidden="true" className="particle-field" />;
 }
@@ -392,4 +438,18 @@ function getFadeProgress(progress: number) {
   }
 
   return 1;
+}
+
+function resolveThemeMode(query: MediaQueryList): ThemeMode {
+  const explicitTheme = document.documentElement.getAttribute("data-theme");
+
+  if (explicitTheme === "dark") {
+    return "dark";
+  }
+
+  if (explicitTheme === "light") {
+    return "light";
+  }
+
+  return query.matches ? "dark" : "light";
 }

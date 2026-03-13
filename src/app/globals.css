@@ -1,25 +1,144 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8f4ec;
-  --foreground: #1c1608;
-  --card: #ede4cc;
-  --card-foreground: #1c1608;
-  --muted: #efe6d0;
-  --muted-foreground: #a89060;
-  --border: #e0d4a8;
-  --accent: #c4a84c;
-  --accent-foreground: #1c1608;
-  --accent-soft: #e8dcae;
-  --highlight: #7c6428;
-  --highlight-soft: #ebe1bf;
-  --success: #5d7355;
-  --success-soft: #e1eadb;
-  --danger: #9b5e4d;
-  --danger-soft: #f2dfd8;
-  --ring: rgba(196, 168, 76, 0.38);
-  --shadow-soft: 0 22px 70px rgba(92, 73, 22, 0.09);
-  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+:root,
+:root[data-theme="light"] {
+  --bg0: #f8f4ec;
+  --bg1: #ede4cc;
+  --bg2: #e0d4a8;
+  --mid: #c4a84c;
+  --deep: #7c6428;
+  --ink: #1c1608;
+  --muted: #a89060;
+
+  --background: var(--bg0);
+  --foreground: var(--ink);
+  --card: var(--bg1);
+  --card-foreground: var(--ink);
+  --border: var(--bg2);
+  --accent: var(--mid);
+  --accent-foreground: var(--bg0);
+  --accent-soft: color-mix(in srgb, var(--mid) 26%, var(--bg1) 74%);
+  --highlight: var(--deep);
+  --highlight-soft: color-mix(in srgb, var(--deep) 16%, var(--bg1) 84%);
+  --muted-surface: color-mix(in srgb, var(--bg2) 62%, var(--bg1) 38%);
+  --muted-foreground: var(--muted);
+  --success: #7a9a67;
+  --success-soft: rgba(122, 154, 103, 0.16);
+  --danger: #cc7d60;
+  --danger-soft: rgba(204, 125, 96, 0.16);
+  --ring: rgba(196, 168, 76, 0.34);
+  --nav-bg: rgba(248, 244, 236, 0.72);
+  --page-glow-a: rgba(196, 168, 76, 0.16);
+  --page-glow-b: rgba(224, 212, 168, 0.46);
+  --page-top-wash: rgba(255, 255, 255, 0.42);
+  --surface-bg: var(--bg1);
+  --surface-muted-bg: color-mix(in srgb, var(--bg1) 78%, var(--bg0) 22%);
+  --panel-bg: color-mix(in srgb, var(--bg0) 84%, var(--bg1) 16%);
+  --stat-bg: color-mix(in srgb, var(--bg0) 78%, var(--bg1) 22%);
+  --row-bg: color-mix(in srgb, var(--bg0) 82%, var(--bg1) 18%);
+  --field-bg: color-mix(in srgb, var(--bg0) 82%, var(--bg1) 18%);
+  --hero-glow: rgba(196, 168, 76, 0.16);
+  --hero-wash: rgba(255, 255, 255, 0.28);
+  --shadow-soft: 0 24px 70px rgba(92, 73, 22, 0.1);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --shadow-card: 0 14px 36px rgba(92, 73, 22, 0.08);
+  --cta-hover-bg: var(--deep);
+  --cta-hover-text: var(--bg0);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg0: #14110a;
+  --bg1: #1e1a0e;
+  --bg2: #2c2510;
+  --mid: #c4a84c;
+  --deep: #7c6428;
+  --ink: #f0d870;
+  --muted: #7c6428;
+
+  --background: var(--bg0);
+  --foreground: var(--ink);
+  --card: var(--bg1);
+  --card-foreground: var(--ink);
+  --border: var(--bg2);
+  --accent: var(--mid);
+  --accent-foreground: var(--bg0);
+  --accent-soft: color-mix(in srgb, var(--mid) 18%, var(--bg1) 82%);
+  --highlight: var(--mid);
+  --highlight-soft: color-mix(in srgb, var(--mid) 12%, var(--bg1) 88%);
+  --muted-surface: color-mix(in srgb, var(--bg2) 72%, var(--bg1) 28%);
+  --muted-foreground: var(--muted);
+  --success: #9dbf83;
+  --success-soft: rgba(157, 191, 131, 0.14);
+  --danger: #e3a081;
+  --danger-soft: rgba(227, 160, 129, 0.14);
+  --ring: rgba(196, 168, 76, 0.24);
+  --nav-bg: rgba(20, 17, 10, 0.72);
+  --page-glow-a: rgba(196, 168, 76, 0.08);
+  --page-glow-b: rgba(124, 100, 40, 0.18);
+  --page-top-wash: rgba(255, 255, 255, 0.03);
+  --surface-bg: color-mix(in srgb, var(--bg1) 92%, black 8%);
+  --surface-muted-bg: color-mix(in srgb, var(--bg1) 86%, var(--bg0) 14%);
+  --panel-bg: color-mix(in srgb, var(--bg1) 82%, var(--bg0) 18%);
+  --stat-bg: color-mix(in srgb, var(--bg1) 88%, var(--bg0) 12%);
+  --row-bg: color-mix(in srgb, var(--bg1) 84%, var(--bg0) 16%);
+  --field-bg: color-mix(in srgb, var(--bg1) 84%, var(--bg2) 16%);
+  --hero-glow: rgba(196, 168, 76, 0.14);
+  --hero-wash: rgba(255, 255, 255, 0.03);
+  --shadow-soft: 0 28px 84px rgba(0, 0, 0, 0.38);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.28);
+  --cta-hover-bg: var(--deep);
+  --cta-hover-text: var(--bg0);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg0: #14110a;
+    --bg1: #1e1a0e;
+    --bg2: #2c2510;
+    --mid: #c4a84c;
+    --deep: #7c6428;
+    --ink: #f0d870;
+    --muted: #7c6428;
+
+    --background: var(--bg0);
+    --foreground: var(--ink);
+    --card: var(--bg1);
+    --card-foreground: var(--ink);
+    --border: var(--bg2);
+    --accent: var(--mid);
+    --accent-foreground: var(--bg0);
+    --accent-soft: color-mix(in srgb, var(--mid) 18%, var(--bg1) 82%);
+    --highlight: var(--mid);
+    --highlight-soft: color-mix(in srgb, var(--mid) 12%, var(--bg1) 88%);
+    --muted-surface: color-mix(in srgb, var(--bg2) 72%, var(--bg1) 28%);
+    --muted-foreground: var(--muted);
+    --success: #9dbf83;
+    --success-soft: rgba(157, 191, 131, 0.14);
+    --danger: #e3a081;
+    --danger-soft: rgba(227, 160, 129, 0.14);
+    --ring: rgba(196, 168, 76, 0.24);
+    --nav-bg: rgba(20, 17, 10, 0.72);
+    --page-glow-a: rgba(196, 168, 76, 0.08);
+    --page-glow-b: rgba(124, 100, 40, 0.18);
+    --page-top-wash: rgba(255, 255, 255, 0.03);
+    --surface-bg: color-mix(in srgb, var(--bg1) 92%, black 8%);
+    --surface-muted-bg: color-mix(in srgb, var(--bg1) 86%, var(--bg0) 14%);
+    --panel-bg: color-mix(in srgb, var(--bg1) 82%, var(--bg0) 18%);
+    --stat-bg: color-mix(in srgb, var(--bg1) 88%, var(--bg0) 12%);
+    --row-bg: color-mix(in srgb, var(--bg1) 84%, var(--bg0) 16%);
+    --field-bg: color-mix(in srgb, var(--bg1) 84%, var(--bg2) 16%);
+    --hero-glow: rgba(196, 168, 76, 0.14);
+    --hero-wash: rgba(255, 255, 255, 0.03);
+    --shadow-soft: 0 28px 84px rgba(0, 0, 0, 0.38);
+    --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.28);
+    --cta-hover-bg: var(--deep);
+    --cta-hover-text: var(--bg0);
+    color-scheme: dark;
+  }
 }
 
 @theme inline {
@@ -27,7 +146,7 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  --color-muted: var(--muted);
+  --color-muted: var(--muted-surface);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --color-accent: var(--accent);
@@ -49,6 +168,14 @@
   border-color: var(--border);
 }
 
+.border,
+.border-t,
+.border-b,
+.border-l,
+.border-r {
+  border-width: 0.5px;
+}
+
 html {
   background: var(--background);
 }
@@ -56,12 +183,13 @@ html {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 12% 16%, rgba(196, 168, 76, 0.16), transparent 22%),
-    radial-gradient(circle at 88% 14%, rgba(224, 212, 168, 0.46), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 28%),
+    radial-gradient(circle at 12% 16%, var(--page-glow-a), transparent 22%),
+    radial-gradient(circle at 88% 14%, var(--page-glow-b), transparent 30%),
+    linear-gradient(180deg, var(--page-top-wash), transparent 28%),
     var(--background);
   color: var(--foreground);
   font-family: var(--font-ui), sans-serif;
+  font-weight: 300;
 }
 
 button,
@@ -74,20 +202,18 @@ select {
 input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
 select,
 textarea {
-  border-color: color-mix(in srgb, var(--border) 92%, white 8%);
-  background: rgba(248, 244, 236, 0.82);
+  border: 0.5px solid var(--bg2);
+  background: var(--field-bg);
   color: var(--foreground);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  box-shadow: var(--shadow-inset);
   outline: none;
 }
 
 input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 56%, var(--border) 44%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.62),
-    0 0 0 3px var(--ring);
+  border-color: var(--mid);
+  box-shadow: var(--shadow-inset), 0 0 0 3px var(--ring);
 }
 
 input[type="checkbox"],
@@ -96,7 +222,7 @@ input[type="radio"] {
 }
 
 ::selection {
-  background: rgba(196, 168, 76, 0.24);
+  background: color-mix(in srgb, var(--mid) 28%, transparent);
   color: var(--foreground);
 }
 
@@ -117,13 +243,15 @@ a {
 }
 
 .nav-glass {
-  background: rgba(248, 244, 236, 0.72);
+  background: var(--nav-bg);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 0.5px solid var(--bg2);
 }
 
 .nav-link {
-  border: 1px solid transparent;
-  color: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground) 28%);
+  border: 0.5px solid transparent;
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
   transition:
     background-color 180ms ease,
     border-color 180ms ease,
@@ -132,61 +260,61 @@ a {
 }
 
 .nav-link:hover {
-  border-color: color-mix(in srgb, var(--border) 92%, white 8%);
-  background: rgba(237, 228, 204, 0.7);
+  border-color: var(--bg2);
+  background: color-mix(in srgb, var(--bg1) 72%, transparent);
   color: var(--foreground);
   transform: translateY(-1px);
 }
 
 .nav-link-active {
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--border) 48%);
-  background: rgba(196, 168, 76, 0.2);
+  border-color: var(--mid);
+  background: color-mix(in srgb, var(--mid) 16%, var(--bg1) 84%);
   color: var(--foreground);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  box-shadow: var(--shadow-inset);
 }
 
 .surface {
-  background: rgba(237, 228, 204, 0.84);
+  border: 0.5px solid var(--bg2);
+  background: var(--surface-bg);
   box-shadow: var(--shadow-inset), var(--shadow-soft);
 }
 
 .bg-white\/60 {
-  background: rgba(248, 244, 236, 0.72) !important;
+  background: var(--stat-bg) !important;
 }
 
 .bg-white\/70 {
-  background: rgba(248, 244, 236, 0.82) !important;
+  background: var(--field-bg) !important;
 }
 
 .surface-muted {
-  background: rgba(237, 228, 204, 0.58);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+  border: 0.5px solid var(--bg2);
+  background: var(--surface-muted-bg);
+  box-shadow: var(--shadow-inset);
 }
 
 .panel-soft {
-  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
-  background: rgba(248, 244, 236, 0.76);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  border: 0.5px solid var(--bg2);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-inset), var(--shadow-card);
 }
 
 .stat-panel {
-  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
-  background: rgba(248, 244, 236, 0.7);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  border: 0.5px solid var(--bg2);
+  background: var(--stat-bg);
+  box-shadow: var(--shadow-inset), var(--shadow-card);
 }
 
 .table-row-panel {
-  background: rgba(248, 244, 236, 0.82);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.52),
-    0 16px 36px rgba(92, 73, 22, 0.06);
+  background: var(--row-bg);
+  box-shadow: var(--shadow-inset), var(--shadow-card);
 }
 
 .field-control {
-  border: 1px solid color-mix(in srgb, var(--border) 92%, white 8%);
-  background: rgba(248, 244, 236, 0.82);
+  border: 0.5px solid var(--bg2);
+  background: var(--field-bg);
   color: var(--foreground);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  box-shadow: var(--shadow-inset);
   outline: none;
   transition:
     border-color 160ms ease,
@@ -199,10 +327,8 @@ a {
 }
 
 .field-control:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 56%, var(--border) 44%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.62),
-    0 0 0 3px var(--ring);
+  border-color: var(--mid);
+  box-shadow: var(--shadow-inset), 0 0 0 3px var(--ring);
 }
 
 .editorial-kicker,
@@ -242,29 +368,27 @@ a {
 .hero-shell {
   position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
+  border: 0.5px solid var(--bg2);
   background:
-    radial-gradient(circle at top right, rgba(196, 168, 76, 0.16), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 48%),
-    rgba(237, 228, 204, 0.7);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.65),
-    0 28px 90px rgba(92, 73, 22, 0.08);
+    radial-gradient(circle at top right, var(--hero-glow), transparent 34%),
+    linear-gradient(180deg, var(--hero-wash), transparent 48%),
+    color-mix(in srgb, var(--bg1) 84%, var(--bg0) 16%);
+  box-shadow: var(--shadow-inset), var(--shadow-soft);
 }
 
 .notice-success {
-  border-color: color-mix(in srgb, var(--success) 44%, var(--border) 56%);
-  background: color-mix(in srgb, var(--success-soft) 72%, rgba(248, 244, 236, 0.88) 28%);
+  border: 0.5px solid color-mix(in srgb, var(--success) 42%, var(--bg2) 58%);
+  background: color-mix(in srgb, var(--success-soft) 70%, var(--bg1) 30%);
 }
 
 .notice-highlight {
-  border-color: color-mix(in srgb, var(--highlight) 34%, var(--border) 66%);
-  background: color-mix(in srgb, var(--highlight-soft) 72%, rgba(248, 244, 236, 0.88) 28%);
+  border: 0.5px solid color-mix(in srgb, var(--mid) 32%, var(--bg2) 68%);
+  background: color-mix(in srgb, var(--highlight-soft) 70%, var(--bg1) 30%);
 }
 
 .notice-danger {
-  border-color: color-mix(in srgb, var(--danger) 38%, var(--border) 62%);
-  background: color-mix(in srgb, var(--danger-soft) 72%, rgba(248, 244, 236, 0.88) 28%);
+  border: 0.5px solid color-mix(in srgb, var(--danger) 42%, var(--bg2) 58%);
+  background: color-mix(in srgb, var(--danger-soft) 70%, var(--bg1) 30%);
 }
 
 .prose-brief p {

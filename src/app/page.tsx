@@ -20,22 +20,22 @@ export default async function Home() {
       headerContent={(
         <div className="lg:flex lg:items-start lg:justify-between lg:gap-8">
           <div className="max-w-3xl lg:pt-1">
-            <h1 className="editorial-display text-5xl text-foreground sm:text-6xl lg:text-[4.9rem]">
+            <h1 className="editorial-display text-4xl text-foreground sm:text-[4.35rem] lg:text-[3.9rem]">
               {APP_NAME}
             </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-foreground/78 sm:text-[1.7rem] sm:leading-10 lg:text-[2rem] lg:leading-[1.5]">
+            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/78 sm:text-[1.35rem] sm:leading-9 lg:text-[1.55rem] lg:leading-[1.45]">
               {APP_TAGLINE}
             </p>
           </div>
           <Link
-            className="mt-6 block rounded-[28px] transition-transform duration-200 hover:-translate-y-0.5 lg:mt-1 lg:w-full lg:max-w-[22rem]"
+            className="mt-5 block rounded-[28px] transition-transform duration-200 hover:-translate-y-0.5 lg:mt-1 lg:w-full lg:max-w-[20rem]"
             href="/archive"
           >
-            <div className="panel-soft rounded-[28px] px-5 py-5 shadow-[0_16px_40px_rgba(92,73,22,0.08)] sm:px-6">
+            <div className="panel-soft rounded-[28px] px-5 py-4 shadow-[var(--shadow-card)] sm:px-6">
               <p className="eyebrow text-[11px] font-medium text-muted-foreground">
                 Edition date
               </p>
-              <p className="editorial-title mt-3 text-4xl text-foreground">
+              <p className="editorial-title mt-2 text-[2.15rem] text-foreground sm:text-[2.35rem]">
                 {announcementDay ? formatShortDate(announcementDay) : "No live edition"}
               </p>
             </div>

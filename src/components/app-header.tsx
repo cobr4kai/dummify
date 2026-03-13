@@ -28,7 +28,7 @@ export function AppHeader({
       : publicNavItems;
 
   return (
-    <header className={cn(showReaderMasthead ? "mb-8" : "nav-glass sticky top-0 z-30 border-b border-border/60")} data-tone={tone}>
+    <header className={cn(showReaderMasthead ? "mb-8" : "nav-glass sticky top-0 z-30")} data-tone={tone}>
       {showReaderMasthead ? (
         <div className="mx-auto max-w-[1280px] px-4 pt-6 sm:px-6 lg:px-8">
           <div className="hero-shell rounded-[36px] px-6 py-7 sm:px-8 sm:py-8">

@@ -11,13 +11,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border border-transparent bg-accent px-4 py-2 text-accent-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:-translate-y-0.5 hover:bg-[#b29438]",
+          "border border-transparent bg-accent px-4 py-2 text-accent-foreground shadow-[var(--shadow-inset)] hover:-translate-y-0.5 hover:bg-[var(--cta-hover-bg)] hover:text-[var(--cta-hover-text)]",
         secondary:
-          "surface-muted border border-border px-4 py-2 text-foreground hover:-translate-y-0.5 hover:bg-[rgba(248,244,236,0.86)]",
+          "surface-muted border border-border px-4 py-2 text-foreground hover:-translate-y-0.5 hover:bg-[var(--panel-bg)]",
         ghost:
-          "px-3 py-2 text-muted-foreground hover:bg-[rgba(237,228,204,0.52)] hover:text-foreground",
+          "px-3 py-2 text-muted-foreground hover:bg-[var(--muted-surface)] hover:text-foreground",
         danger:
-          "border border-transparent bg-danger px-4 py-2 text-background shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] hover:-translate-y-0.5 hover:bg-[#865042]",
+          "border border-transparent bg-danger px-4 py-2 text-background shadow-[var(--shadow-inset)] hover:-translate-y-0.5 hover:bg-[color-mix(in_srgb,var(--danger)_82%,black_18%)]",
       },
       size: {
         default: "h-10",
