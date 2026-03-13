@@ -19,7 +19,7 @@ export default async function Home() {
       headerMeta={(
         <Link
           className="block rounded-[24px] transition-transform duration-200 hover:-translate-y-0.5"
-          href={announcementDay ? `/archive?day=${announcementDay}` : "/archive"}
+          href="/archive"
         >
           <div className="rounded-[24px] border border-border/80 bg-white/70 px-5 py-4 shadow-sm transition-colors hover:bg-white/85">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">

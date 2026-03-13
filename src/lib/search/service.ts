@@ -31,12 +31,23 @@ export async function getAnnouncementDays(limit = 90) {
 }
 
 async function getArchiveAnnouncementDays(limit = 90) {
+  const activeHomepageAnnouncementDay = await resolveActiveHomepageAnnouncementDay();
   const days = await prisma.paper.findMany({
     where: {
       isDemoData: false,
-      publishedItems: {
-        some: {},
+      technicalBriefs: {
+        some: {
+          isCurrent: true,
+          usedFallbackAbstract: false,
+        },
       },
+      ...(activeHomepageAnnouncementDay
+        ? {
+            announcementDay: {
+              not: activeHomepageAnnouncementDay,
+            },
+          }
+        : {}),
     },
     select: { announcementDay: true },
     distinct: ["announcementDay"],
@@ -241,6 +252,7 @@ export async function getArchiveResults(options: {
   highSignalOnly?: boolean;
 }) {
   const settings = await getAppSettings();
+  const activeHomepageAnnouncementDay = await resolveActiveHomepageAnnouncementDay({ settings });
   const search = options.search?.trim() ?? "";
   const category = options.category ?? "all";
   const announcementDay = options.announcementDay ?? "all";
@@ -249,10 +261,22 @@ export async function getArchiveResults(options: {
   const papers = await prisma.paper.findMany({
     where: {
       isDemoData: false,
-      publishedItems: {
-        some: announcementDay !== "all" ? { announcementDay } : {},
+      technicalBriefs: {
+        some: {
+          isCurrent: true,
+          usedFallbackAbstract: false,
+        },
       },
-      ...(announcementDay !== "all" ? { announcementDay } : {}),
+      AND: [
+        ...(activeHomepageAnnouncementDay
+          ? [{
+              announcementDay: {
+                not: activeHomepageAnnouncementDay,
+              },
+            }]
+          : []),
+        ...(announcementDay !== "all" ? [{ announcementDay }] : []),
+      ],
       ...(category !== "all"
         ? {
             OR: [

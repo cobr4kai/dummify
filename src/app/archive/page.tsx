@@ -97,7 +97,7 @@ export default async function ArchivePage({
       {papers.length === 0 ? (
         <EmptyState
           title="No papers match this archive view."
-          description="Try loosening the search filters or publishing papers to the homepage first."
+          description="Try loosening the search filters or wait for more PDF-backed executive briefs to finish processing."
         />
       ) : (
         <section className="grid gap-4">
