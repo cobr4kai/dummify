@@ -138,6 +138,18 @@ export default async function PaperDetailPage({
               In v1, PaperBrief runs full-PDF analysis only for the final daily brief papers. This paper is still available in the archive and on arXiv.
             </CardDescription>
           </CardHeader>
+          {score?.rationale ? (
+            <CardContent>
+              <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Scoring note
+                </p>
+                <p className="mt-2 text-sm leading-7 text-foreground/90">
+                  {score.rationale}
+                </p>
+              </div>
+            </CardContent>
+          ) : null}
         </Card>
       )}
 

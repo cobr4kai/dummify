@@ -293,7 +293,7 @@ export function AdminEditionTable({
                         </div>
                       </td>
                       <td className="max-w-[420px] px-3 py-4">
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           <div className="flex flex-wrap items-center gap-2">
                             {row.paper.primaryCategory ? (
                               <Badge variant="muted">{row.paper.primaryCategory}</Badge>
@@ -305,14 +305,6 @@ export function AdminEditionTable({
                           </div>
                           <div>
                             <p className="font-semibold text-foreground">{row.paper.title}</p>
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                              {row.paper.authorsText}
-                            </p>
-                          </div>
-                          <div className="rounded-[18px] border border-border/70 bg-background/45 px-3 py-2 text-xs leading-5 text-foreground/80">
-                            {row.paper.technicalBriefs[0]?.oneLineVerdict ??
-                              row.score?.rationale ??
-                              "No brief or score rationale is available yet."}
                           </div>
                           <a
                             href={row.paper.abstractUrl}
@@ -333,7 +325,7 @@ export function AdminEditionTable({
                         </td>
                       ))}
                       <td className="rounded-r-[20px] px-3 py-4">
-                        <form action={togglePublishedPaperAction} className="space-y-2">
+                        <form action={togglePublishedPaperAction}>
                           <SortStateInputs
                             sortDirection={currentSortDirection}
                             sortKey={currentSortKey}
@@ -359,13 +351,6 @@ export function AdminEditionTable({
                                   : "secondary"
                             }
                           />
-                          <p className="text-xs leading-5 text-muted-foreground">
-                            {row.isPublished
-                              ? "Removes this paper from the curated homepage set."
-                              : hasCuratedHomepage
-                                ? "Adds this paper to the curated homepage set and keeps the current curated mode active."
-                                : "Starts a curated homepage with this paper and triggers PDF-backed brief generation if needed."}
-                          </p>
                         </form>
                       </td>
                     </tr>
