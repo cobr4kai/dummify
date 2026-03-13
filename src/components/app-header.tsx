@@ -16,7 +16,7 @@ export function AppHeader({
   currentPath?: string;
   headerMeta?: React.ReactNode;
 }) {
-  const showInternalNav = currentPath === "/archive" || currentPath === "/admin";
+  const showInternalNav = currentPath === "/admin";
   const navItems = showInternalNav ? internalNavItems : [];
 
   return (

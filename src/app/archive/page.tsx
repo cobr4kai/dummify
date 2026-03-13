@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +12,6 @@ type SearchParams = Promise<{
   q?: string;
   day?: string;
   category?: string;
-  sort?: string;
-  highSignalOnly?: string;
 }>;
 
 export default async function ArchivePage({
@@ -26,31 +23,25 @@ export default async function ArchivePage({
   const query = typeof params.q === "string" ? params.q : "";
   const day = typeof params.day === "string" ? params.day : "all";
   const category = typeof params.category === "string" ? params.category : "all";
-  const sort = params.sort === "date" ? "date" : "score";
-  const highSignalOnly = params.highSignalOnly === "on";
 
   const { papers, categories, days } = await getArchiveResults({
     search: query,
     announcementDay: day,
     category,
-    sort,
-    highSignalOnly,
+    sort: "date",
+    highSignalOnly: false,
   });
 
   return (
-    <PageShell currentPath="/archive">
-      <section className="mb-6 grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card>
-          <CardHeader>
-            <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
-              Browse archive
-            </p>
-            <CardTitle>Search by day, topic, or keyword</CardTitle>
-            <CardDescription>
-              Search the real papers that were actually published to the homepage, including older days.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+    <PageShell
+      currentPath="/archive"
+      headerMeta={(
+        <div className="rounded-[24px] border border-border/80 bg-white/70 px-5 py-4 shadow-sm">
+          <p className="font-serif text-3xl leading-none text-foreground">Archive</p>
+        </div>
+      )}
+    >
+      <section className="mb-6">
         <Card>
           <CardContent className="pt-6">
             <form className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -93,26 +84,7 @@ export default async function ArchivePage({
                   ))}
                 </select>
               </label>
-              <label className="space-y-2 text-sm font-medium">
-                Sort
-                <select
-                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
-                  defaultValue={sort}
-                  name="sort"
-                >
-                  <option value="score">Score</option>
-                  <option value="date">Date</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-3 text-sm text-foreground sm:col-span-2 xl:col-span-3">
-                <input
-                  defaultChecked={highSignalOnly}
-                  name="highSignalOnly"
-                  type="checkbox"
-                />
-                Only show high-signal papers
-              </label>
-              <div className="sm:col-span-2 xl:col-span-1">
+              <div className="sm:col-span-2 xl:col-span-1 xl:self-end">
                 <Button className="w-full" type="submit">
                   Update archive
                 </Button>
@@ -133,9 +105,6 @@ export default async function ArchivePage({
             <Card key={paper.id}>
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="highlight">
-                    Score {Math.round(paper.scores[0]?.totalScore ?? 0)}
-                  </Badge>
                   <Badge variant="muted">{paper.primaryCategory ?? "Mixed"}</Badge>
                   <Badge variant="muted">{formatShortDate(paper.announcementDay)}</Badge>
                 </div>
@@ -149,9 +118,6 @@ export default async function ArchivePage({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Button asChild size="sm">
-                    <Link href={`/papers/${paper.id}`}>Open detail</Link>
-                  </Button>
                   <Button asChild size="sm" variant="secondary">
                     <a href={paper.abstractUrl} rel="noreferrer" target="_blank">
                       arXiv abstract
