@@ -18,14 +18,17 @@ import { EXECUTIVE_SCORE_COMPONENT_METADATA } from "@/lib/scoring/model";
 import { getAdminSnapshot } from "@/lib/search/service";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import {
+  formatWeekLabel,
   formatLongDateTime,
   formatShortDate,
   getArxivAnnouncementDateString,
+  getWeekStart,
 } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
+  week?: string;
   day?: string;
   notice?: string;
   fetched?: string;
@@ -83,12 +86,17 @@ export default async function AdminPage({
 }) {
   await requireAdmin("/admin");
   const params = await searchParams;
-  const selectedDay = typeof params.day === "string" && params.day ? params.day : null;
+  const selectedWeek =
+    typeof params.week === "string" && params.week
+      ? params.week
+      : typeof params.day === "string" && params.day
+        ? getWeekStart(params.day)
+        : null;
   const sortKey = typeof params.sort === "string" && params.sort ? params.sort : null;
   const sortDirection = typeof params.dir === "string" && params.dir ? params.dir : null;
   const currentArxivAnnouncementDay = getArxivAnnouncementDateString();
   const snapshot = await getAdminSnapshot({
-    announcementDay: selectedDay,
+    weekStart: selectedWeek,
   });
   const focusPaperId = typeof params.focusPaper === "string" && params.focusPaper
     ? params.focusPaper
@@ -117,7 +125,7 @@ export default async function AdminPage({
               Control room
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-foreground/78 sm:text-base">
-              Configure ingestion, curate the live homepage, and inspect the health of the briefing pipeline without leaving the workspace.
+              Run manual daily ingest jobs, curate the live weekly edition, and inspect the health of the briefing pipeline without leaving the workspace.
             </p>
           </div>
           <div className="mt-5 flex flex-wrap gap-2 lg:mt-0">
@@ -125,7 +133,10 @@ export default async function AdminPage({
               {snapshot.activeHomepageIsCurated ? "Curated homepage live" : "Homepage waiting for curation"}
             </Badge>
               <Badge variant="muted">
-                Latest brief {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
+                Latest ingest {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
+              </Badge>
+              <Badge variant="muted">
+                Active edition {snapshot.activeHomepageWeekLabel ?? "none"}
               </Badge>
             </div>
           </div>
@@ -143,8 +154,8 @@ export default async function AdminPage({
                     {notice.description}
                   </CardDescription>
                 </div>
-                {snapshot.selectedDay ? (
-                  <Badge variant="muted">Edition {formatShortDate(snapshot.selectedDay)}</Badge>
+                {snapshot.selectedWeek ? (
+                  <Badge variant="muted">{snapshot.selectedWeekLabel}</Badge>
                 ) : null}
               </div>
             </CardHeader>
@@ -160,7 +171,7 @@ export default async function AdminPage({
             </p>
             <CardTitle>Admin and settings</CardTitle>
             <CardDescription>
-              Configure the daily briefing pipeline and get explicit feedback as actions run and
+              Configure the daily ingest pipeline and get explicit feedback as actions run and
               finish.
             </CardDescription>
           </CardHeader>
@@ -175,7 +186,7 @@ export default async function AdminPage({
               Premium synthesis {env.OPENAI_ENABLE_PREMIUM_SYNTHESIS ? "enabled" : "disabled"}
             </Badge>
             <Badge variant="muted">
-              Latest brief {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
+              Latest ingest {snapshot.latestDay ? formatShortDate(snapshot.latestDay) : "none"}
             </Badge>
             <form action={logoutAction}>
               <AdminSubmitButton
@@ -243,8 +254,8 @@ export default async function AdminPage({
                 </p>
                 <CardTitle>What visitors see right now</CardTitle>
                 <CardDescription>
-                  This tracks the single announcement day currently powering `/`, independent of
-                  whichever day you are previewing below in the editor.
+                  This tracks the single weekly edition currently powering `/`, independent of
+                  whichever week you are previewing below in the editor.
                 </CardDescription>
               </div>
               <Badge
@@ -260,12 +271,10 @@ export default async function AdminPage({
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  Active day
+                  Active week
                 </p>
                 <p className="mt-2 text-sm leading-6 text-foreground">
-                  {snapshot.activeHomepageAnnouncementDay
-                    ? formatShortDate(snapshot.activeHomepageAnnouncementDay)
-                    : "No active day yet"}
+                  {snapshot.activeHomepageWeekLabel ?? "No active week yet"}
                 </p>
               </div>
               <div className="rounded-[24px] border border-border/80 bg-white/60 p-4">
@@ -274,7 +283,7 @@ export default async function AdminPage({
                 </p>
                 <p className="mt-2 text-sm leading-6 text-foreground">
                   {snapshot.activeHomepageIsCurated
-                    ? "Curated homepage selection"
+                    ? "Curated weekly selection"
                     : "No curated papers selected"}
                 </p>
               </div>
@@ -307,32 +316,32 @@ export default async function AdminPage({
               action={setActiveHomepageDayAction}
               className="grid gap-3 rounded-[24px] border border-border/80 bg-white/60 p-4 xl:grid-cols-[1fr_auto]"
             >
-              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <input name="selectedWeek" type="hidden" value={snapshot.selectedWeek ?? ""} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <label className="space-y-2 text-sm font-medium">
-                Active homepage day
+                Active homepage week
                 <select
                   className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
-                  defaultValue={snapshot.activeHomepageAnnouncementDay ?? snapshot.latestDay ?? ""}
-                  name="activeHomepageAnnouncementDay"
+                  defaultValue={snapshot.activeHomepageWeekStart ?? snapshot.latestCompletedWeekStart ?? ""}
+                  name="activeHomepageWeekStart"
                 >
-                  {snapshot.days.map((day) => (
-                    <option key={day} value={day}>
-                      {formatShortDate(day)}
+                  {snapshot.weeks.map((week) => (
+                    <option key={week} value={week}>
+                      {formatWeekLabel(week)}
                     </option>
                   ))}
                 </select>
               </label>
               <div className="xl:self-end">
                 <AdminSubmitButton
-                  idleLabel="Set live homepage day"
-                  pendingLabel="Setting live homepage day..."
+                  idleLabel="Set live homepage week"
+                  pendingLabel="Setting live homepage week..."
                   type="submit"
                 />
               </div>
               <p className="text-xs leading-5 text-muted-foreground xl:col-span-2">
-                The editor below can load any stored day, but only this one is actually shown on the
-                public homepage. If the active day has no curated papers, the homepage stays empty
+                The editor below can load any stored week, but only this one is actually shown on the
+                public homepage. If the active week has no curated papers, the homepage stays empty
                 until you add them manually.
               </p>
             </form>
@@ -358,20 +367,20 @@ export default async function AdminPage({
 
       <section className="mb-6">
         <AdminEditionTable
-          activeHomepageAnnouncementDay={snapshot.activeHomepageAnnouncementDay}
-          days={snapshot.days}
+          activeHomepageWeekStart={snapshot.activeHomepageWeekStart}
           focusPaperId={focusPaperId}
           key={[
-            snapshot.selectedDay ?? "no-day",
+            snapshot.selectedWeek ?? "no-week",
             sortKey ?? "default-sort",
             sortDirection ?? "default-dir",
             focusPaperId ?? "no-focus",
           ].join(":")}
           papers={snapshot.editionPapers}
           publishedPaperIds={snapshot.publishedPaperIds}
-          selectedDay={snapshot.selectedDay}
+          selectedWeek={snapshot.selectedWeek}
           sortDirection={sortDirection}
           sortKey={sortKey}
+          weeks={snapshot.weeks}
         />
       </section>
 
@@ -380,8 +389,8 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Run ingestion</CardTitle>
             <CardDescription>
-              Trigger the primary daily brief pipeline or backfill historical paper windows. Each
-              button stays busy until the page comes back with updated results.
+              Trigger the manual daily ingest pipeline or backfill historical paper windows. The
+              public site still rolls those stored days up into weekly editions.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5 xl:grid-cols-2">
@@ -389,8 +398,8 @@ export default async function AdminPage({
               action={runDailyRefreshAction}
               className="space-y-3 rounded-[24px] border border-border/80 bg-white/60 p-4"
             >
-              <p className="text-sm font-semibold text-foreground">Daily refresh</p>
-              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <p className="text-sm font-semibold text-foreground">Daily ingest</p>
+              <input name="selectedWeek" type="hidden" value={snapshot.selectedWeek ?? ""} />
               <input name="announcementDay" type="hidden" value={currentArxivAnnouncementDay} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <div className="rounded-[22px] border border-border/80 bg-white/60 p-4">
@@ -406,13 +415,13 @@ export default async function AdminPage({
                 Recompute executive briefs
               </label>
               <AdminSubmitButton
-                idleLabel="Refresh daily brief"
-                pendingLabel="Refreshing daily brief..."
+                idleLabel="Run daily ingest"
+                pendingLabel="Running daily ingest..."
                 type="submit"
               />
               <p className="text-xs leading-5 text-muted-foreground">
                 This only pulls the current arXiv RSS announcement day. Use Historical fetch for
-                older dates like {snapshot.selectedDay ? formatShortDate(snapshot.selectedDay) : "past editions"}.
+                older dates like {snapshot.selectedWeekLabel ?? "past weeks"}.
               </p>
             </form>
             <form
@@ -420,7 +429,7 @@ export default async function AdminPage({
               className="space-y-3 rounded-[24px] border border-border/80 bg-white/60 p-4"
             >
               <p className="text-sm font-semibold text-foreground">Historical fetch</p>
-              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <input name="selectedWeek" type="hidden" value={snapshot.selectedWeek ?? ""} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <label className="space-y-2 text-sm font-medium">
                 From
@@ -465,7 +474,7 @@ export default async function AdminPage({
           </CardHeader>
           <CardContent>
             <form action={updateCategoriesAction} className="space-y-3">
-              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <input name="selectedWeek" type="hidden" value={snapshot.selectedWeek ?? ""} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               {snapshot.categories.map((category) => (
                 <label
@@ -504,7 +513,7 @@ export default async function AdminPage({
           </CardHeader>
           <CardContent>
             <form action={updateSettingsAction} className="grid gap-4 sm:grid-cols-2">
-              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <input name="selectedWeek" type="hidden" value={snapshot.selectedWeek ?? ""} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <label className="space-y-2 text-sm font-medium">
                 Featured count (reserved)
@@ -630,7 +639,7 @@ export default async function AdminPage({
               <div className="sm:col-span-2 mt-2 space-y-2">
                 <p className="text-sm font-semibold text-foreground">Ranking weights</p>
                 <p className="text-xs leading-5 text-muted-foreground">
-                  The visible ranking model now uses five criteria designed for business readers. Save changes, then run a manual daily refresh to rescore the current day with the new mix.
+                  The visible ranking model now uses five criteria designed for business readers. Save changes, then run a manual daily ingest to rescore newly ingested papers with the new mix.
                 </p>
               </div>
               {RANKING_WEIGHT_FIELDS.map(({ key, description }) => (
@@ -657,7 +666,7 @@ export default async function AdminPage({
               </div>
             </form>
             <form action={resetSettingsAction} className="mt-3">
-              <input name="selectedDay" type="hidden" value={snapshot.selectedDay ?? ""} />
+              <input name="selectedWeek" type="hidden" value={snapshot.selectedWeek ?? ""} />
               <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
               <AdminSubmitButton
                 idleLabel="Reset defaults"
@@ -741,17 +750,17 @@ function getAdminNotice(input: {
   switch (input.notice) {
     case "daily-refresh-day-mismatch":
       return {
-        title: "Daily refresh only supports the live RSS day",
+        title: "Daily ingest only supports the live RSS day",
         description:
-          `Daily refresh currently ingests only the active arXiv RSS announcement day (${formatShortDate(input.currentArxivAnnouncementDay)}). Use Historical fetch when you want to repopulate an older stored day.`,
+          `Daily ingest currently pulls only the active arXiv RSS announcement day (${formatShortDate(input.currentArxivAnnouncementDay)}). Use Historical fetch when you want to repopulate older stored days for a prior week.`,
         variant: "highlight",
       };
     case "daily-refresh":
       return {
-        title: "Daily refresh finished",
+        title: "Daily ingest finished",
         description: buildRunSummary(
           input,
-          "The selected daily briefing run completed and the homepage/admin state has been refreshed.",
+          "The selected daily ingest run completed and the weekly edition state has been refreshed.",
         ),
         variant: "success",
       };
@@ -768,7 +777,7 @@ function getAdminNotice(input: {
       return {
         title: "Settings saved",
         description:
-          "Your briefing settings were saved. Run a manual daily refresh to rescore the current day with the updated ranking mix.",
+          "Your briefing settings were saved. Run a manual daily ingest to rescore freshly ingested papers with the updated ranking mix.",
         variant: "success",
       };
     case "settings-reset":
@@ -787,9 +796,9 @@ function getAdminNotice(input: {
       };
     case "homepage-day-set":
       return {
-        title: "Live homepage day updated",
+        title: "Live homepage week updated",
         description:
-          "The public homepage now resolves from the selected active announcement day. If that day has no curated papers yet, the homepage will stay empty until you add them.",
+          "The public homepage now resolves from the selected active week. If that week has no curated papers yet, the homepage will stay empty until you add them.",
         variant: "success",
       };
     case "paper-published":
@@ -797,17 +806,17 @@ function getAdminNotice(input: {
         title: "Curated set updated",
         description:
           input.briefStatus === "ready"
-            ? "That paper is now part of the curated set for the selected day, and its PDF-backed executive brief is ready."
+            ? "That paper is now part of the curated set for the selected week, and its PDF-backed executive brief is ready."
             : input.briefStatus === "fallback"
-              ? "That paper is now part of the curated set for the selected day, but PDF extraction fell back to abstract-only mode, so no homepage brief will appear until a full-PDF brief is available."
-              : "That paper is now part of the curated set for the selected day, but it still needs a PDF-backed executive brief.",
+              ? "That paper is now part of the curated set for the selected week, but PDF extraction fell back to abstract-only mode, so no homepage brief will appear until a full-PDF brief is available."
+              : "That paper is now part of the curated set for the selected week, but it still needs a PDF-backed executive brief.",
         variant: input.briefStatus === "ready" ? "success" : "highlight",
       };
     case "paper-removed":
       return {
         title: "Curated set updated",
         description:
-          "That paper was removed from the curated set for the selected day. If no curated papers remain for that day, the homepage for that day will stay empty until you add papers back.",
+          "That paper was removed from the curated set for the selected week. If no curated papers remain for that week, the homepage for that week will stay empty until you add papers back.",
         variant: "highlight",
       };
     default:

@@ -15,8 +15,8 @@ export function EmptyState({
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">
-          Try seeding demo data with `npx prisma db seed`, ingesting today&apos;s
-          arXiv brief from Admin, or checking your category filters.
+          Try seeding demo data with `npx prisma db seed`, ingesting a recent
+          arXiv day from Admin, or checking your category filters.
         </p>
       </CardContent>
     </Card>

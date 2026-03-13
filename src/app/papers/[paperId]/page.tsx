@@ -99,11 +99,11 @@ export default async function PaperDetailPage({
               <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
                 {paper.authorsText}
               </p>
-            </div>
+              </div>
 
             <div className="flex flex-wrap gap-3 lg:max-w-sm lg:justify-end">
               <Button asChild size="sm" variant="secondary">
-                <Link href="/">Back to daily brief</Link>
+                <Link href="/">Back to weekly brief</Link>
               </Button>
               <Button asChild size="sm" variant="secondary">
                 <a href={paper.abstractUrl} rel="noreferrer" target="_blank">
@@ -168,7 +168,7 @@ export default async function PaperDetailPage({
                   ? technicalBrief.usedFallbackAbstract
                     ? "Abstract-based brief"
                     : "PDF-backed brief"
-                  : "Not in the final daily top list yet"}
+                  : "Not in the final weekly edition yet"}
               </p>
             </div>
           </CardContent>
@@ -196,7 +196,7 @@ export default async function PaperDetailPage({
           <CardHeader>
             <CardTitle>No executive brief yet</CardTitle>
             <CardDescription>
-              In v1, PaperBrief runs full-PDF analysis only for the final daily brief papers. This paper is still available in the archive and on arXiv.
+              In v1, Abstracted runs full-PDF analysis only for papers included in the final weekly edition. This paper is still available in the archive and on arXiv.
             </CardDescription>
           </CardHeader>
           {score?.rationale ? (

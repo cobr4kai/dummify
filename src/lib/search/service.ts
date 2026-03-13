@@ -1,11 +1,24 @@
 import { BriefMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getPublishedPaperIdsForDay } from "@/lib/publishing/service";
+import { getPublishedPaperIdsForWeek } from "@/lib/publishing/service";
 import { getAppSettings, getCategoryConfigs, type AppSettings } from "@/lib/settings/service";
 import { hasPdfBackedBrief } from "@/lib/technical/brief-status";
+import {
+  formatWeekLabel,
+  getCurrentWeekStart,
+  getWeekEnd,
+  getWeekStart,
+  getWeekStarts,
+} from "@/lib/utils/dates";
 import { normalizeSearchText } from "@/lib/utils/strings";
 
 export type SortMode = "score" | "date";
+
+type EditionWeek = {
+  weekStart: string;
+  weekEnd: string;
+  weekLabel: string;
+};
 
 export async function getLatestAnnouncementDay() {
   const latest = await prisma.paper.findFirst({
@@ -16,7 +29,14 @@ export async function getLatestAnnouncementDay() {
   return latest?.announcementDay ?? null;
 }
 
-export async function getAnnouncementDays(limit = 90) {
+export async function getLatestCompletedAnnouncementDay(limit = 365) {
+  const currentWeekStart = getCurrentWeekStart();
+  const days = await getAnnouncementDays(limit);
+
+  return days.find((day) => getWeekStart(day) < currentWeekStart) ?? null;
+}
+
+export async function getAnnouncementDays(limit = 365) {
   const days = await prisma.paper.findMany({
     select: { announcementDay: true },
     distinct: ["announcementDay"],
@@ -27,8 +47,16 @@ export async function getAnnouncementDays(limit = 90) {
   return days.map((day) => day.announcementDay);
 }
 
-async function getArchiveAnnouncementDays(limit = 90) {
-  const activeHomepageAnnouncementDay = await resolveActiveHomepageAnnouncementDay();
+export async function getAnnouncementWeeks(limit = 52) {
+  const days = await getAnnouncementDays(limit * 7);
+  return getWeekStarts(days, limit);
+}
+
+async function getArchiveAnnouncementWeeks(limit = 52) {
+  const activeHomepageWeekStart = await resolveActiveHomepageWeekStart();
+  const activeHomepageWeekEnd = activeHomepageWeekStart
+    ? getWeekEnd(activeHomepageWeekStart)
+    : null;
   const days = await prisma.paper.findMany({
     where: {
       isDemoData: false,
@@ -38,10 +66,13 @@ async function getArchiveAnnouncementDays(limit = 90) {
           usedFallbackAbstract: false,
         },
       },
-      ...(activeHomepageAnnouncementDay
+      ...(activeHomepageWeekStart && activeHomepageWeekEnd
         ? {
-            announcementDay: {
-              not: activeHomepageAnnouncementDay,
+            NOT: {
+              announcementDay: {
+                gte: activeHomepageWeekStart,
+                lte: activeHomepageWeekEnd,
+              },
             },
           }
         : {}),
@@ -49,30 +80,46 @@ async function getArchiveAnnouncementDays(limit = 90) {
     select: { announcementDay: true },
     distinct: ["announcementDay"],
     orderBy: { announcementDay: "desc" },
-    take: limit,
+    take: limit * 7,
   });
 
-  return days.map((day) => day.announcementDay);
+  return getWeekStarts(days.map((day) => day.announcementDay), limit);
 }
 
-export async function resolveActiveHomepageAnnouncementDay(options?: {
+export async function resolveActiveHomepageWeekStart(options?: {
   settings?: AppSettings;
-  latestDay?: string | null;
+  latestCompletedDay?: string | null;
 }) {
   const settings = options?.settings ?? (await getAppSettings());
-  const latestDay = options?.latestDay ?? (await getLatestAnnouncementDay());
+  const latestCompletedDay =
+    options?.latestCompletedDay ?? (await getLatestCompletedAnnouncementDay());
   const configuredDay = settings.activeHomepageAnnouncementDay;
 
   if (!configuredDay) {
-    return latestDay;
+    return latestCompletedDay ? getWeekStart(latestCompletedDay) : null;
   }
 
+  const configuredWeekStart = getWeekStart(configuredDay);
+  const configuredWeekEnd = getWeekEnd(configuredWeekStart);
   const existingPaper = await prisma.paper.findFirst({
-    where: { announcementDay: configuredDay },
+    where: {
+      announcementDay: {
+        gte: configuredWeekStart,
+        lte: configuredWeekEnd,
+      },
+    },
     select: { id: true },
   });
 
-  return existingPaper ? configuredDay : latestDay;
+  return existingPaper ? configuredWeekStart : latestCompletedDay ? getWeekStart(latestCompletedDay) : null;
+}
+
+function buildEditionWeek(weekStart: string): EditionWeek {
+  return {
+    weekStart,
+    weekEnd: getWeekEnd(weekStart),
+    weekLabel: formatWeekLabel(weekStart),
+  };
 }
 
 function sortEditionPapers<
@@ -107,12 +154,16 @@ function buildHomepageSnapshot<
   };
 }
 
-async function getEditionDataForDay(announcementDay: string) {
+async function getEditionDataForWeek(weekStart: string) {
+  const weekEnd = getWeekEnd(weekStart);
   const [publishedPaperIds, editionPapers] = await Promise.all([
-    getPublishedPaperIdsForDay(announcementDay),
+    getPublishedPaperIdsForWeek(weekStart),
     prisma.paper.findMany({
       where: {
-        announcementDay,
+        announcementDay: {
+          gte: weekStart,
+          lte: weekEnd,
+        },
       },
       include: {
         scores: {
@@ -134,25 +185,30 @@ async function getEditionDataForDay(announcementDay: string) {
   return {
     publishedPaperIds,
     editionPapers: sortEditionPapers(editionPapers),
+    weekEnd,
   };
 }
 
-export async function getDailyBrief(options: {
+export async function getWeeklyBrief(options: {
+  weekStart?: string | null;
   announcementDay?: string | null;
   category?: string | "all";
   sort?: SortMode;
 }) {
   const settings = await getAppSettings();
-  const latestDay = await getLatestAnnouncementDay();
-  const announcementDay =
-    options.announcementDay ??
-    (await resolveActiveHomepageAnnouncementDay({ settings, latestDay }));
+  const latestCompletedDay = await getLatestCompletedAnnouncementDay();
+  const resolvedWeekStart =
+    options.weekStart ??
+    (options.announcementDay ? getWeekStart(options.announcementDay) : null) ??
+    (await resolveActiveHomepageWeekStart({ settings, latestCompletedDay }));
 
-  if (!announcementDay) {
+  if (!resolvedWeekStart) {
     return {
       papers: [],
       categories: await getCategoryConfigs(),
-      announcementDay: null,
+      weekStart: null,
+      weekEnd: null,
+      weekLabel: null,
       isCurated: false,
       settings,
     };
@@ -160,13 +216,14 @@ export async function getDailyBrief(options: {
 
   const category = options.category ?? "all";
   const sort = options.sort ?? "score";
-  const publishedPaperIds = await getPublishedPaperIdsForDay(announcementDay);
+  const publishedPaperIds = await getPublishedPaperIdsForWeek(resolvedWeekStart);
+  const editionWeek = buildEditionWeek(resolvedWeekStart);
 
   if (publishedPaperIds.length === 0) {
     return {
       papers: [],
       categories: await getCategoryConfigs(),
-      announcementDay,
+      ...editionWeek,
       isCurated: false,
       settings,
     };
@@ -174,7 +231,10 @@ export async function getDailyBrief(options: {
 
   const papers = await prisma.paper.findMany({
     where: {
-      announcementDay,
+      announcementDay: {
+        gte: editionWeek.weekStart,
+        lte: editionWeek.weekEnd,
+      },
       id: { in: publishedPaperIds },
       ...(category !== "all"
         ? {
@@ -209,40 +269,58 @@ export async function getDailyBrief(options: {
     },
   });
 
-  const filtered = papers
-    .sort((left, right) => {
-      const leftScore = left.scores[0]?.totalScore ?? 0;
-      const rightScore = right.scores[0]?.totalScore ?? 0;
+  const filtered = papers.sort((left, right) => {
+    const leftScore = left.scores[0]?.totalScore ?? 0;
+    const rightScore = right.scores[0]?.totalScore ?? 0;
 
-      if (sort === "date") {
-        return new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime();
-      }
+    if (sort === "date") {
+      return new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime();
+    }
 
-      return rightScore - leftScore;
-    });
+    return rightScore - leftScore;
+  });
 
   return {
     papers: filtered,
     categories: await getCategoryConfigs(),
-    announcementDay,
+    ...editionWeek,
     isCurated: true,
     settings,
   };
 }
 
+export async function getDailyBrief(options: {
+  announcementDay?: string | null;
+  weekStart?: string | null;
+  category?: string | "all";
+  sort?: SortMode;
+}) {
+  return getWeeklyBrief(options);
+}
+
 export async function getArchiveResults(options: {
   search?: string;
+  week?: string | "all";
   announcementDay?: string | "all";
   category?: string | "all";
   sort?: SortMode;
   highSignalOnly?: boolean;
 }) {
   const settings = await getAppSettings();
-  const activeHomepageAnnouncementDay = await resolveActiveHomepageAnnouncementDay({ settings });
+  const activeHomepageWeekStart = await resolveActiveHomepageWeekStart({ settings });
+  const activeHomepageWeekEnd = activeHomepageWeekStart
+    ? getWeekEnd(activeHomepageWeekStart)
+    : null;
   const search = options.search?.trim() ?? "";
   const category = options.category ?? "all";
-  const announcementDay = options.announcementDay ?? "all";
+  const week =
+    options.week ??
+    (options.announcementDay && options.announcementDay !== "all"
+      ? getWeekStart(options.announcementDay)
+      : "all");
   const sort = options.sort ?? "score";
+  const selectedWeek = week ?? "all";
+  const selectedWeekEnd = selectedWeek !== "all" ? getWeekEnd(selectedWeek) : null;
 
   const papers = await prisma.paper.findMany({
     where: {
@@ -254,14 +332,24 @@ export async function getArchiveResults(options: {
         },
       },
       AND: [
-        ...(activeHomepageAnnouncementDay
+        ...(activeHomepageWeekStart && activeHomepageWeekEnd
           ? [{
-              announcementDay: {
-                not: activeHomepageAnnouncementDay,
+              NOT: {
+                announcementDay: {
+                  gte: activeHomepageWeekStart,
+                  lte: activeHomepageWeekEnd,
+                },
               },
             }]
           : []),
-        ...(announcementDay !== "all" ? [{ announcementDay }] : []),
+        ...(selectedWeek !== "all" && selectedWeekEnd
+          ? [{
+              announcementDay: {
+                gte: selectedWeek,
+                lte: selectedWeekEnd,
+              },
+            }]
+          : []),
       ],
       ...(category !== "all"
         ? {
@@ -315,7 +403,7 @@ export async function getArchiveResults(options: {
   return {
     papers: filtered,
     categories: await getCategoryConfigs(),
-    days: await getArchiveAnnouncementDays(),
+    weeks: await getArchiveAnnouncementWeeks(),
     settings,
   };
 }
@@ -348,9 +436,13 @@ export async function getPaperDetail(paperId: string) {
 }
 
 export async function getAdminSnapshot(options?: {
+  weekStart?: string | null;
   announcementDay?: string | null;
 }) {
-  const [settings, categories, runs, latestDay, days] = await Promise.all([
+  const requestedWeekStart =
+    options?.weekStart ??
+    (options?.announcementDay ? getWeekStart(options.announcementDay) : null);
+  const [settings, categories, runs, latestDay, latestCompletedDay, days] = await Promise.all([
     getAppSettings(),
     getCategoryConfigs(),
     prisma.ingestionRun.findMany({
@@ -358,14 +450,16 @@ export async function getAdminSnapshot(options?: {
       take: 10,
     }),
     getLatestAnnouncementDay(),
+    getLatestCompletedAnnouncementDay(),
     getAnnouncementDays(),
   ]);
 
-  const activeHomepageAnnouncementDay = await resolveActiveHomepageAnnouncementDay({
+  const weeks = getWeekStarts(days, 52);
+  const activeHomepageWeekStart = await resolveActiveHomepageWeekStart({
     settings,
-    latestDay,
+    latestCompletedDay,
   });
-  const selectedDay = options?.announcementDay ?? activeHomepageAnnouncementDay ?? latestDay;
+  const selectedWeek = requestedWeekStart ?? activeHomepageWeekStart ?? weeks[0] ?? null;
 
   const technicalBriefCount = await prisma.paperTechnicalBrief.count({
     where: { isCurrent: true },
@@ -375,10 +469,10 @@ export async function getAdminSnapshot(options?: {
     where: { isCurrent: true },
   });
 
-  const selectedEdition = selectedDay ? await getEditionDataForDay(selectedDay) : null;
+  const selectedEdition = selectedWeek ? await getEditionDataForWeek(selectedWeek) : null;
   const activeEdition =
-    activeHomepageAnnouncementDay && activeHomepageAnnouncementDay !== selectedDay
-      ? await getEditionDataForDay(activeHomepageAnnouncementDay)
+    activeHomepageWeekStart && activeHomepageWeekStart !== selectedWeek
+      ? await getEditionDataForWeek(activeHomepageWeekStart)
       : selectedEdition;
   const activeHomepageSnapshot = activeEdition
     ? buildHomepageSnapshot(
@@ -397,9 +491,14 @@ export async function getAdminSnapshot(options?: {
     categories,
     runs,
     latestDay,
-    days,
-    selectedDay,
-    activeHomepageAnnouncementDay,
+    latestCompletedWeekStart: latestCompletedDay ? getWeekStart(latestCompletedDay) : null,
+    weeks,
+    selectedWeek,
+    selectedWeekEnd: selectedWeek ? getWeekEnd(selectedWeek) : null,
+    selectedWeekLabel: selectedWeek ? formatWeekLabel(selectedWeek) : null,
+    activeHomepageWeekStart,
+    activeHomepageWeekEnd: activeHomepageWeekStart ? getWeekEnd(activeHomepageWeekStart) : null,
+    activeHomepageWeekLabel: activeHomepageWeekStart ? formatWeekLabel(activeHomepageWeekStart) : null,
     publishedPaperIds: selectedEdition?.publishedPaperIds ?? [],
     publishedCount: selectedEdition?.publishedPaperIds.length ?? 0,
     editionPapers: selectedEdition?.editionPapers ?? [],

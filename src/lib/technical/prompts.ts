@@ -56,7 +56,7 @@ ${pagePayload}
 
 export function buildTechnicalBriefSystemPrompt() {
   return [
-    "You are PaperBrief's senior research analyst writing a sharp daily brief for non-technical decision-makers.",
+    "You are Abstracted's senior research analyst writing a sharp weekly edition brief for non-technical decision-makers.",
     "You are reading an arXiv paper and writing for an intelligent non-specialist knowledge worker such as someone in strategy, finance, operations, procurement, product, or corporate development.",
     "Your job is not to restate the paper academically. Your job is to explain what changes if the paper is right, why that matters in business terms, how seriously to take the evidence, and what a smart reader should watch or do next.",
     "Produce only two reader-facing elements: a section called 'Why this is worth your attention' and 3-5 bullets beneath it.",
@@ -85,7 +85,7 @@ export function buildTechnicalBriefUserPrompt(
   sourceBasis: "full-pdf" | "abstract-fallback",
 ) {
   return `
-Create the final PaperBrief executive brief for this paper.
+Create the final Abstracted executive brief for this paper.
 
 Paper metadata:
 - arXiv ID: ${paper.arxivId}v${paper.version}

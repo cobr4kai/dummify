@@ -35,6 +35,59 @@ export function endOfDay(dateString: string) {
   return new Date(`${dateString}T23:59:59.999Z`);
 }
 
+export function addDays(dateString: string, offsetDays: number) {
+  const nextDate = startOfDay(dateString);
+  nextDate.setUTCDate(nextDate.getUTCDate() + offsetDays);
+  return toAnnouncementDay(nextDate);
+}
+
+export function getWeekStart(date: Date | string) {
+  const dateString = toDateOnlyString(date);
+  const weekday = startOfDay(dateString).getUTCDay();
+  const offset = weekday === 0 ? -6 : 1 - weekday;
+  return addDays(dateString, offset);
+}
+
+export function getWeekEnd(date: Date | string) {
+  return addDays(getWeekStart(date), 6);
+}
+
+export function formatWeekLabel(weekStart: string) {
+  return `Week of ${formatShortDate(weekStart)}`;
+}
+
+export function formatWeekRange(weekStart: string) {
+  const weekEnd = getWeekEnd(weekStart);
+  const startDate = startOfDay(weekStart);
+  const endDate = startOfDay(weekEnd);
+
+  const sameMonth = startDate.getUTCMonth() === endDate.getUTCMonth();
+  const sameYear = startDate.getUTCFullYear() === endDate.getUTCFullYear();
+  const startMonth = startDate.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  const endMonth = endDate.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  const startDay = startDate.getUTCDate();
+  const endDay = endDate.getUTCDate();
+  const endYear = endDate.getUTCFullYear();
+
+  if (sameMonth && sameYear) {
+    return `${startMonth} ${startDay}-${endDay}, ${endYear}`;
+  }
+
+  if (sameYear) {
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${endYear}`;
+  }
+
+  return `${startMonth} ${startDay}, ${startDate.getUTCFullYear()} - ${endMonth} ${endDay}, ${endYear}`;
+}
+
+export function getCurrentWeekStart(date = new Date()) {
+  return getWeekStart(getPacificDateString(date));
+}
+
+export function isSameWeek(left: Date | string, right: Date | string) {
+  return getWeekStart(left) === getWeekStart(right);
+}
+
 export function toArxivDateStamp(date: Date) {
   const year = date.getUTCFullYear();
   const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
@@ -71,6 +124,11 @@ export function isExpectedQuietAnnouncementDay(dateString: string) {
   return weekday === 5 || weekday === 6;
 }
 
+export function getWeekStarts(days: string[], limit?: number) {
+  const uniqueWeeks = Array.from(new Set(days.map((day) => getWeekStart(day))));
+  return typeof limit === "number" ? uniqueWeeks.slice(0, limit) : uniqueWeeks;
+}
+
 function toDisplayDate(date: Date | string) {
   if (date instanceof Date) {
     return date;
@@ -83,4 +141,22 @@ function toDisplayDate(date: Date | string) {
   }
 
   return new Date(date);
+}
+
+function toDateOnlyString(date: Date | string) {
+  if (date instanceof Date) {
+    return toAnnouncementDay(date);
+  }
+
+  const dateOnlyMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    return date;
+  }
+
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new Error(`Invalid date value: ${date}`);
+  }
+
+  return toAnnouncementDay(parsedDate);
 }

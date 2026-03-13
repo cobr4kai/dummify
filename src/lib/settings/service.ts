@@ -62,17 +62,17 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 const settingDescriptions: Record<keyof AppSettings, string> = {
   featuredPaperCount: "Legacy featured paper count retained for compatibility.",
-  genAiFeaturedCount: "Number of papers to feature in the daily frontier brief.",
+  genAiFeaturedCount: "Number of papers to feature in the weekly frontier edition.",
   genAiShortlistSize:
-    "Metadata-ranked shortlist size used before selecting the final daily brief.",
+    "Metadata-ranked shortlist size used before selecting the final weekly edition.",
   activeHomepageAnnouncementDay:
-    "Single announcement day currently shown on the public homepage.",
+    "Anchor date for the single weekly edition currently shown on the public homepage.",
   highBusinessRelevanceThreshold:
     "Minimum total score used for the archive high-signal toggle.",
   audienceFitThreshold: "Legacy audience threshold retained for compatibility.",
   rankingWeights: "Legacy score weights retained for compatibility.",
   genAiRankingWeights:
-    "Editable heuristic weights for the canonical daily brief score, with extra emphasis on frontier relevance, real-world impact, evidence strength, and audience pull.",
+    "Editable heuristic weights for the canonical weekly edition score, with extra emphasis on frontier relevance, real-world impact, evidence strength, and audience pull.",
   genAiUsePremiumSynthesis:
     "Whether to use the premium synthesis model when the environment allows it.",
   pdfCacheDir: "Local directory used to cache official arXiv PDFs and extracted page text.",

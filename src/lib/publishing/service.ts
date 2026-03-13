@@ -1,4 +1,5 @@
 import { assertPrismaRuntimeCompatibility, prisma } from "@/lib/db";
+import { getWeekEnd } from "@/lib/utils/dates";
 
 export async function getPublishedPaperIdsForDay(announcementDay: string) {
   assertPrismaRuntimeCompatibility();
@@ -15,6 +16,21 @@ export async function getPublishedPaperCountForDay(announcementDay: string) {
   return prisma.publishedPaper.count({
     where: { announcementDay },
   });
+}
+
+export async function getPublishedPaperIdsForWeek(weekStart: string) {
+  assertPrismaRuntimeCompatibility();
+  const items = await prisma.publishedPaper.findMany({
+    where: {
+      announcementDay: {
+        gte: weekStart,
+        lte: getWeekEnd(weekStart),
+      },
+    },
+    select: { paperId: true },
+  });
+
+  return Array.from(new Set(items.map((item) => item.paperId)));
 }
 
 export async function setPublishedPaperState(input: {

@@ -3,7 +3,7 @@ import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { cn } from "@/lib/utils/cn";
 
 const publicNavItems = [
-  { href: "/", label: "Daily Brief" },
+  { href: "/", label: "Weekly Brief" },
   { href: "/archive", label: "Archive" },
 ];
 

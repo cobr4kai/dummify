@@ -17,7 +17,7 @@ import {
   ensurePaperTechnicalBrief,
   getCurrentTechnicalBrief,
 } from "@/lib/technical/service";
-import { getArxivAnnouncementDateString } from "@/lib/utils/dates";
+import { getArxivAnnouncementDateString, getWeekStart } from "@/lib/utils/dates";
 
 export async function logoutAction() {
   await clearAdminSession();
@@ -27,7 +27,7 @@ export async function logoutAction() {
 export async function runDailyRefreshAction(formData: FormData) {
   await requireAdmin("/admin");
   const announcementDay = readString(formData.get("announcementDay"));
-  const selectedDay = readString(formData.get("selectedDay"));
+  const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
   const currentArxivAnnouncementDay = getArxivAnnouncementDateString();
@@ -35,7 +35,7 @@ export async function runDailyRefreshAction(formData: FormData) {
 
   if (requestedAnnouncementDay !== currentArxivAnnouncementDay) {
     redirectToAdmin({
-      selectedDay: requestedAnnouncementDay,
+      selectedWeek: getWeekStart(requestedAnnouncementDay),
       notice: "daily-refresh-day-mismatch",
       sortKey,
       sortDirection,
@@ -52,7 +52,7 @@ export async function runDailyRefreshAction(formData: FormData) {
 
   revalidateAll();
   redirectToAdmin({
-    selectedDay: requestedAnnouncementDay ?? selectedDay,
+    selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
     notice: "daily-refresh",
     fetched: result.fetchedCount,
     upserted: result.upsertedCount,
@@ -66,7 +66,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
   await requireAdmin("/admin");
   const from = readString(formData.get("from"));
   const to = readString(formData.get("to"));
-  const selectedDay = readString(formData.get("selectedDay"));
+  const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
@@ -85,7 +85,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
 
   revalidateAll();
   redirectToAdmin({
-    selectedDay: selectedDay ?? to,
+    selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
     notice: "historical-refresh",
     fetched: result.fetchedCount,
     upserted: result.upsertedCount,
@@ -97,7 +97,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
 
 export async function updateSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
-  const selectedDay = readString(formData.get("selectedDay"));
+  const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   const genAiRankingWeights = {
@@ -133,7 +133,7 @@ export async function updateSettingsAction(formData: FormData) {
 
   revalidateAll();
   redirectToAdmin({
-    selectedDay,
+    selectedWeek,
     notice: "settings-saved",
     sortKey,
     sortDirection,
@@ -142,13 +142,13 @@ export async function updateSettingsAction(formData: FormData) {
 
 export async function resetSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
-  const selectedDay = readString(formData.get("selectedDay"));
+  const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   await resetAppSettings();
   revalidateAll();
   redirectToAdmin({
-    selectedDay,
+    selectedWeek,
     notice: "settings-reset",
     sortKey,
     sortDirection,
@@ -157,7 +157,7 @@ export async function resetSettingsAction(formData: FormData) {
 
 export async function updateCategoriesAction(formData: FormData) {
   await requireAdmin("/admin");
-  const selectedDay = readString(formData.get("selectedDay"));
+  const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
   const categories = await getCategoryConfigs();
 
@@ -172,7 +172,7 @@ export async function updateCategoriesAction(formData: FormData) {
 
   revalidateAll();
   redirectToAdmin({
-    selectedDay,
+    selectedWeek,
     notice: "categories-saved",
     sortKey,
     sortDirection,
@@ -181,19 +181,19 @@ export async function updateCategoriesAction(formData: FormData) {
 
 export async function setActiveHomepageDayAction(formData: FormData) {
   await requireAdmin("/admin");
-  const selectedDay = readString(formData.get("selectedDay"));
-  const activeHomepageAnnouncementDay = readString(
-    formData.get("activeHomepageAnnouncementDay"),
+  const selectedWeek = readString(formData.get("selectedWeek"));
+  const activeHomepageWeekStart = readString(
+    formData.get("activeHomepageWeekStart"),
   );
   const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   await updateAppSettings({
-    activeHomepageAnnouncementDay: activeHomepageAnnouncementDay ?? null,
+    activeHomepageAnnouncementDay: activeHomepageWeekStart ?? null,
   });
 
   revalidateAll();
   redirectToAdmin({
-    selectedDay: selectedDay ?? activeHomepageAnnouncementDay,
+    selectedWeek: selectedWeek ?? activeHomepageWeekStart,
     notice: "homepage-day-set",
     sortKey,
     sortDirection,
@@ -232,7 +232,7 @@ export async function togglePublishedPaperAction(formData: FormData) {
 
   revalidateAll();
   redirectToAdmin({
-    selectedDay: announcementDay,
+    selectedWeek: getWeekStart(announcementDay),
     focusPaperId: paperId,
     notice: nextPublishedState ? "paper-published" : "paper-removed",
     briefStatus,
@@ -248,7 +248,7 @@ function revalidateAll() {
 }
 
 function redirectToAdmin(input: {
-  selectedDay?: string;
+  selectedWeek?: string;
   notice?: string;
   fetched?: number;
   upserted?: number;
@@ -260,8 +260,8 @@ function redirectToAdmin(input: {
 }): never {
   const search = new URLSearchParams();
 
-  if (input.selectedDay) {
-    search.set("day", input.selectedDay);
+  if (input.selectedWeek) {
+    search.set("week", input.selectedWeek);
   }
 
   if (input.notice) {

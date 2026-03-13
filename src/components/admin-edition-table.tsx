@@ -19,7 +19,7 @@ import {
 } from "@/lib/technical/brief-status";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
-import { formatShortDate } from "@/lib/utils/dates";
+import { formatWeekLabel } from "@/lib/utils/dates";
 import { parseJsonValue } from "@/lib/utils/json";
 
 const scoreColumns = [
@@ -38,15 +38,16 @@ type AdminEditionSortDirection = "asc" | "desc";
 type ScoreBreakdownRecord = z.infer<typeof executiveScoreBreakdownRecordSchema>;
 
 type AdminEditionTableProps = {
-  days: string[];
-  selectedDay: string | null;
-  activeHomepageAnnouncementDay?: string | null;
+  weeks: string[];
+  selectedWeek: string | null;
+  activeHomepageWeekStart?: string | null;
   publishedPaperIds: string[];
   focusPaperId?: string | null;
   sortKey?: string | null;
   sortDirection?: string | null;
   papers: Array<{
     id: string;
+    announcementDay: string;
     title: string;
     authorsText: string;
     abstractUrl: string;
@@ -82,9 +83,9 @@ type AdminEditionRow = {
 };
 
 export function AdminEditionTable({
-  days,
-  selectedDay,
-  activeHomepageAnnouncementDay,
+  weeks,
+  selectedWeek,
+  activeHomepageWeekStart,
   publishedPaperIds,
   focusPaperId,
   sortKey,
@@ -102,10 +103,10 @@ export function AdminEditionTable({
     homePagePaperIds.length - homePageBriefReadyCount,
     0,
   );
-  const isActiveHomepageDay = Boolean(
-    selectedDay &&
-    activeHomepageAnnouncementDay &&
-    selectedDay === activeHomepageAnnouncementDay,
+  const isActiveHomepageWeek = Boolean(
+    selectedWeek &&
+    activeHomepageWeekStart &&
+    selectedWeek === activeHomepageWeekStart,
   );
   const initialSortKey = readSortKey(sortKey);
   const initialSortDirection = readSortDirection(sortDirection, initialSortKey);
@@ -124,7 +125,7 @@ export function AdminEditionTable({
     compareRows(left, right, currentSortKey, currentSortDirection),
   );
   const activeSortLabel = getSortLabel(currentSortKey);
-  const statusColumnLabel = isActiveHomepageDay ? "Live status" : "Edition status";
+  const statusColumnLabel = isActiveHomepageWeek ? "Live status" : "Edition status";
 
   function handleSort(requestedSortKey: AdminEditionSortKey) {
     const nextSortDirection = getNextSortDirection(
@@ -136,7 +137,7 @@ export function AdminEditionTable({
     setCurrentSortKey(requestedSortKey);
     setCurrentSortDirection(nextSortDirection);
     replaceAdminSortUrl({
-      selectedDay,
+      selectedWeek,
       sortDirection: nextSortDirection,
       sortKey: requestedSortKey,
     });
@@ -150,17 +151,17 @@ export function AdminEditionTable({
             <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
               Edition editor
             </p>
-            <CardTitle>Curate the published front page</CardTitle>
+            <CardTitle>Curate the weekly edition</CardTitle>
             <CardDescription>
-              Review one announcement day as a score table, then add or remove papers from the
-              selected edition. Nothing goes live until you explicitly add papers, and changes only
-              affect the public homepage immediately when this day matches the active homepage day.
+              Review one week as a score table, then add or remove papers from the selected
+              edition. Nothing goes live until you explicitly add papers, and changes only affect
+              the public homepage immediately when this week matches the active homepage week.
             </CardDescription>
           </div>
-          {selectedDay ? (
+          {selectedWeek ? (
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={hasCuratedHomepage ? "success" : "muted"}>
-                {isActiveHomepageDay
+                {isActiveHomepageWeek
                   ? hasCuratedHomepage
                     ? "Curated homepage"
                     : "Homepage empty"
@@ -170,16 +171,16 @@ export function AdminEditionTable({
               </Badge>
               <Badge variant="muted">Scored pool {papers.length}</Badge>
               <Badge variant="muted">
-                {isActiveHomepageDay ? "Live now" : "Selected"} {homePagePaperIds.length}
+                {isActiveHomepageWeek ? "Live now" : "Selected"} {homePagePaperIds.length}
               </Badge>
               <Badge
                 variant={homePageMissingBriefCount === 0 ? "success" : "highlight"}
               >
                 PDF briefs ready {homePageBriefReadyCount}/{homePagePaperIds.length}
               </Badge>
-              {!isActiveHomepageDay && activeHomepageAnnouncementDay ? (
+              {!isActiveHomepageWeek && activeHomepageWeekStart ? (
                 <Badge variant="highlight">
-                  Active day {formatShortDate(activeHomepageAnnouncementDay)}
+                  Active week {formatWeekLabel(activeHomepageWeekStart)}
                 </Badge>
               ) : null}
             </div>
@@ -192,16 +193,16 @@ export function AdminEditionTable({
             sortKey={currentSortKey}
           />
           <label className="space-y-2 text-sm font-medium">
-            Announcement day
+            Edition week
             <select
               className="field-control h-11 min-w-[220px] rounded-2xl px-4 text-sm"
-              defaultValue={selectedDay ?? ""}
-              name="day"
+              defaultValue={selectedWeek ?? ""}
+              name="week"
             >
-              {days.length === 0 ? <option value="">No days yet</option> : null}
-              {days.map((day) => (
-                <option key={day} value={day}>
-                  {formatShortDate(day)}
+              {weeks.length === 0 ? <option value="">No weeks yet</option> : null}
+              {weeks.map((week) => (
+                <option key={week} value={week}>
+                  {formatWeekLabel(week)}
                 </option>
               ))}
             </select>
@@ -210,25 +211,25 @@ export function AdminEditionTable({
         </form>
       </CardHeader>
       <CardContent>
-        {!selectedDay ? (
+        {!selectedWeek ? (
           <p className="text-sm text-muted-foreground">
             Ingest papers first, then come back here to curate a published edition.
           </p>
         ) : papers.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            There are no papers stored for {formatShortDate(selectedDay)} yet.
+            There are no papers stored for {formatWeekLabel(selectedWeek)} yet.
           </p>
         ) : (
           <div className="space-y-3">
             <div className="stat-panel rounded-[24px] p-4">
               <p className="text-sm leading-6 text-muted-foreground">
-                {isActiveHomepageDay
+                {isActiveHomepageWeek
                   ? hasCuratedHomepage
                     ? "The homepage is currently using the curated set below. Rows marked 'On homepage now' are live immediately, and their brief badge tells you whether a PDF-backed executive brief is already attached."
-                    : "This is the active homepage day, but nothing is live yet because no curated papers have been selected."
+                    : "This is the active homepage week, but nothing is live yet because no curated papers have been selected."
                   : hasCuratedHomepage
-                    ? "This selected day already has a curated set saved. You are editing that saved edition, but it is not currently live on the homepage."
-                    : "This selected day has no curated set yet. Use the action buttons below to choose exactly which papers should go live when you are ready."}
+                    ? "This selected week already has a curated set saved. You are editing that saved edition, but it is not currently live on the homepage."
+                    : "This selected week has no curated set yet. Use the action buttons below to choose exactly which papers should go live when you are ready."}
               </p>
               {homePageMissingBriefCount > 0 ? (
                 <p className="mt-2 text-sm font-medium text-highlight">
@@ -240,7 +241,7 @@ export function AdminEditionTable({
                 </p>
               ) : (
                 <p className="mt-2 text-sm font-medium text-muted-foreground">
-                  No papers are selected for this day yet.
+                  No papers are selected for this week yet.
                 </p>
               )}
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -298,10 +299,10 @@ export function AdminEditionTable({
                         <div className="flex max-w-[220px] flex-col items-start gap-2">
                           <Badge variant={row.isOnHomepage ? "success" : "muted"}>
                             {row.isOnHomepage
-                              ? isActiveHomepageDay
+                              ? isActiveHomepageWeek
                                 ? "On homepage now"
                                 : "In selected edition"
-                              : isActiveHomepageDay
+                              : isActiveHomepageWeek
                                 ? "Off homepage"
                                 : "Outside selected edition"}
                           </Badge>
@@ -367,7 +368,7 @@ export function AdminEditionTable({
                             sortDirection={currentSortDirection}
                             sortKey={currentSortKey}
                           />
-                          <input name="announcementDay" type="hidden" value={selectedDay} />
+                          <input name="announcementDay" type="hidden" value={row.paper.announcementDay} />
                           <input name="paperId" type="hidden" value={row.paper.id} />
                           <input
                             name="published"
@@ -459,15 +460,16 @@ function SortableHeader({
 }
 
 function replaceAdminSortUrl(input: {
-  selectedDay: string | null;
+  selectedWeek: string | null;
   sortKey: AdminEditionSortKey;
   sortDirection: AdminEditionSortDirection;
 }) {
   const params = new URLSearchParams(window.location.search);
 
-  if (input.selectedDay) {
-    params.set("day", input.selectedDay);
+  if (input.selectedWeek) {
+    params.set("week", input.selectedWeek);
   } else {
+    params.delete("week");
     params.delete("day");
   }
 

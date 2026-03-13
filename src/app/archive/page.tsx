@@ -7,12 +7,13 @@ import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { getArchiveResults } from "@/lib/search/service";
-import { formatShortDate } from "@/lib/utils/dates";
+import { formatShortDate, formatWeekLabel, getWeekStart } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   q?: string;
+  week?: string;
   day?: string;
   category?: string;
 }>;
@@ -24,12 +25,16 @@ export default async function ArchivePage({
 }) {
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q : "";
-  const day = typeof params.day === "string" ? params.day : "all";
+  const week = typeof params.week === "string"
+    ? params.week
+    : typeof params.day === "string"
+      ? getWeekStart(params.day)
+      : "all";
   const category = typeof params.category === "string" ? params.category : "all";
 
-  const { papers, categories, days } = await getArchiveResults({
+  const { papers, categories, weeks } = await getArchiveResults({
     search: query,
-    announcementDay: day,
+    week,
     category,
     sort: "date",
     highSignalOnly: false,
@@ -72,16 +77,16 @@ export default async function ArchivePage({
                 />
               </label>
               <label className="space-y-2 text-sm font-medium">
-                Day
+                Week
                 <select
                   className="field-control h-11 w-full rounded-2xl px-4 text-sm"
-                  defaultValue={day}
-                  name="day"
+                  defaultValue={week}
+                  name="week"
                 >
-                  <option value="all">All days</option>
-                  {days.map((option) => (
+                  <option value="all">All weeks</option>
+                  {weeks.map((option) => (
                     <option key={option} value={option}>
-                      {formatShortDate(option)}
+                      {formatWeekLabel(option)}
                     </option>
                   ))}
                 </select>
@@ -103,7 +108,7 @@ export default async function ArchivePage({
               </label>
               <div className="sm:col-span-2 xl:col-span-1 xl:self-end">
                 <Button className="w-full" type="submit">
-                  Update archive
+                  Update weekly archive
                 </Button>
               </div>
             </form>
@@ -114,7 +119,7 @@ export default async function ArchivePage({
       {papers.length === 0 ? (
         <EmptyState
           title="No papers match this archive view."
-          description="Try loosening the search filters or wait for more PDF-backed executive briefs to finish processing."
+          description="Try loosening the search filters or wait for more PDF-backed executive briefs from prior weeks to finish processing."
         />
       ) : (
         <section className="grid gap-4">

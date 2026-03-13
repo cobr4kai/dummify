@@ -4,12 +4,12 @@ import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { getDailyBrief } from "@/lib/search/service";
-import { formatShortDate } from "@/lib/utils/dates";
+import { formatWeekRange } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const { papers, announcementDay } = await getDailyBrief({
+  const { papers, weekLabel, weekStart } = await getDailyBrief({
     category: "all",
     sort: "score",
   });
@@ -34,10 +34,13 @@ export default async function Home() {
             >
               <div className="panel-soft rounded-[28px] px-5 py-4 shadow-[var(--shadow-card)] sm:px-6">
                 <p className="eyebrow text-[11px] font-medium text-muted-foreground">
-                  Edition date
+                  Edition week
                 </p>
                 <p className="editorial-title mt-2 text-[1.95rem] text-foreground sm:text-[2.1rem]">
-                  {announcementDay ? formatShortDate(announcementDay) : "No live edition"}
+                  {weekLabel ?? "No live edition"}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {weekStart ? formatWeekRange(weekStart) : "No completed week has been curated yet."}
                 </p>
               </div>
             </Link>
@@ -47,12 +50,12 @@ export default async function Home() {
     >
       {papers.length === 0 ? (
         <EmptyState
-          title="No papers match this brief."
-          description="No curated papers are live for the current homepage day yet."
+          title="No papers match this weekly edition."
+          description="No curated papers are live for the current homepage week yet."
         />
       ) : (
         <section className="space-y-4">
-          {/* TODO: Add an opening note that synthesizes the full top-10 edition into one cross-paper summary. */}
+          {/* TODO: Add an opening note that synthesizes the full weekly edition into one cross-paper summary. */}
           {papers.map((paper) => (
             <PaperCard key={paper.id} paper={paper} />
           ))}
