@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
+import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { getArchiveResults } from "@/lib/search/service";
 import { formatShortDate } from "@/lib/utils/dates";
 
@@ -37,26 +39,19 @@ export default async function ArchivePage({
     <PageShell
       currentPath="/archive"
       headerContent={(
-        <div className="lg:grid lg:grid-cols-[1.3fr_0.85fr] lg:items-end lg:gap-8">
-          <div className="max-w-3xl">
-            <p className="eyebrow text-[11px] font-medium text-muted-foreground">
-              Reader archive
-            </p>
-            <h1 className="editorial-display mt-4 text-4xl text-foreground sm:text-[4rem] lg:text-[3.55rem]">
-              Archive
+        <div className="lg:flex lg:items-start lg:justify-between lg:gap-8">
+          <Link className="block max-w-3xl lg:pt-1" href="/">
+            <h1 className="editorial-display text-3xl text-foreground sm:text-[3.45rem] lg:text-[3rem]">
+              {APP_NAME}
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/80 sm:text-[1.08rem] sm:leading-8">
-              Search stored editions, filter by announcement day or category, and revisit the briefs that made it onto the front page.
+            <p className="mt-3 max-w-2xl text-base leading-7 text-foreground/78 sm:text-[1.18rem] sm:leading-8 lg:text-[1.28rem] lg:leading-[1.45]">
+              {APP_TAGLINE}
             </p>
-          </div>
-          <div className="mt-6 grid gap-3 lg:mt-0">
-            <div className="panel-soft rounded-[26px] px-5 py-4">
-              <p className="eyebrow text-[11px] font-medium text-muted-foreground">
-                Visible results
-              </p>
-              <p className="metric-value mt-3 text-4xl text-foreground">{papers.length}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {day === "all" ? "All stored announcement days" : `Filtered to ${formatShortDate(day)}`}.
+          </Link>
+          <div className="mt-5 flex flex-col gap-3 lg:mt-1 lg:w-full lg:max-w-[18rem] lg:items-end">
+            <div className="panel-soft w-full rounded-[28px] px-5 py-4 shadow-[var(--shadow-card)] sm:px-6">
+              <p className="editorial-title text-[1.95rem] text-foreground sm:text-[2.1rem]">
+                Archive
               </p>
             </div>
           </div>
