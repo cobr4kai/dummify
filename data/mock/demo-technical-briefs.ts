@@ -16,7 +16,7 @@ export const demoTechnicalBriefFixtures: TechnicalBriefFixture[] = [
     arxivId: "2603.08877",
     brief: {
       oneLineVerdict:
-        "This is a highly usable operator paper: it suggests better GenAI search quality can come from smarter orchestration before teams spend more on larger models.",
+        "This paper suggests the next useful gains in AI search may come from orchestration, not just bigger models. The authors show that a small number of extra searches, hybrid retrieval, and light re-ranking can improve results before costs start rising faster than the benefit. If that pattern holds in production, product and finance teams should rethink the assumption that quality gains require immediately moving to a more expensive model tier.",
       keyStats: [
         {
           label: "Search depth",
@@ -33,38 +33,32 @@ export const demoTechnicalBriefFixtures: TechnicalBriefFixture[] = [
       ],
       focusTags: ["agents", "inference", "infra"],
       whyItMatters:
-        "For executives, the message is simple: some of the next quality gains in GenAI search may come from better retrieval orchestration and tighter cost controls, not just bigger model spend.",
+        "Some of the next practical quality gains in GenAI search may come from better orchestration and tighter budget controls, not just higher model spend.",
       whatToIgnore:
-        "Do not read this as proof that every RAG stack improves the same way or that orchestration fully replaces model upgrades; the evidence is still task- and dataset-specific.",
+        "This does not prove every search-heavy workflow should add more orchestration complexity or that model upgrades stop mattering.",
       bullets: [
         {
-          label: "Core thesis",
-          text: "This paper matters because it argues that better search orchestration can improve answer quality in agentic search without immediately paying up for a larger base model, which is exactly the kind of operating leverage decision-makers should care about.",
-          impactArea: "thesis",
+          label: "Where leverage moves",
+          text: "The leverage point here is system design, not model weights alone. Teams building research assistants or enterprise search copilots may get a better near-term return from tuning search depth, retrieval mix, and budget caps than from buying a larger model by default.",
+          impactArea: "implication",
           citations: [cite(1, "Abstract"), cite(6, "Main results")],
         },
         {
-          label: "Core mechanism",
-          text: "What is novel is not a new model family but a disciplined orchestration design that combines modestly deeper search, hybrid retrieval, light re-ranking, and explicit budget controls under deployment-like constraints.",
-          impactArea: "method-or-proposal",
+          label: "What to ask vendors",
+          text: "Ask vendors which part of their quality lift comes from orchestration versus raw model size. If they cannot show where search depth, re-ranking, or budget controls actually change results, you may be paying for more compute rather than smarter design.",
+          impactArea: "vendor-question",
           citations: [cite(3, "Method"), cite(5, "System design")],
         },
         {
-          label: "Practical credibility",
-          text: "The proposal is believable in practice because the paper evaluates the orchestration choices under explicit cost and quality tradeoffs rather than treating retrieval design as a purely conceptual layer above the model.",
-          impactArea: "implementation",
-          citations: [cite(5, "System design"), cite(6, "Cost-quality tradeoff")],
+          label: "What to watch next",
+          text: "The adoption signal to watch is whether these gains survive messier enterprise data and real usage budgets. If the effect persists outside benchmark-style datasets, this becomes a practical operating playbook rather than a lab optimization.",
+          impactArea: "adoption-signal",
+          citations: [cite(6, "Cost-quality tradeoff"), cite(7, "Ablation grid")],
         },
         {
-          label: "Results",
-          text: "The key result is that most of the quality gain appears to come from a relatively small increase in search depth plus hybrid retrieval and re-ranking, which is useful, but it is not evidence of a universal leap and should be read as a cost-quality optimization rather than a breakthrough benchmark jump.",
-          impactArea: "evidence",
-          citations: [cite(6, "Main results"), cite(7, "Ablation grid"), cite(9, "Limitations")],
-        },
-        {
-          label: "Broader takeaway",
-          text: "The broader takeaway is that a meaningful share of GenAI performance and margin improvement may come from the system wrapped around the model rather than the model weights themselves, so teams should benchmark orchestration levers before defaulting to bigger-model spend.",
-          impactArea: "assessment",
+          label: "What still limits it",
+          text: "This is still a bounded optimization result, not proof that every agentic RAG stack should become more complex. The paper matters most if your workflow is already search-heavy and your margins are sensitive to tool-call and token costs.",
+          impactArea: "limitation",
           citations: [cite(7, "Datasets"), cite(8, "Operational guidance"), cite(9, "Limitations")],
         },
       ],
@@ -100,7 +94,7 @@ export const demoTechnicalBriefFixtures: TechnicalBriefFixture[] = [
     arxivId: "2603.08852",
     brief: {
       oneLineVerdict:
-        "This is a stack paper, not a model-breakthrough paper, but it matters because protocol design may become a real lever for agent latency, control, and auditability.",
+        "This paper argues that the next bottleneck in multi-agent AI may be the handoff layer, not the model itself. By making identity, trust, provenance, and payload choices explicit in the protocol, the authors show a plausible route to lower latency and token overhead. If that idea spreads, competition among agent platforms could move toward control-plane quality and governance features rather than headline model performance alone.",
       keyStats: [
         {
           label: "Latency",
@@ -117,38 +111,32 @@ export const demoTechnicalBriefFixtures: TechnicalBriefFixture[] = [
       ],
       focusTags: ["agents", "infra", "inference"],
       whyItMatters:
-        "If multi-agent systems become more common, the control plane around routing, trust, provenance, and session design may become as important as model choice itself.",
+        "If multi-agent systems become more common, protocol design could become a meaningful cost, control, and interoperability lever.",
       whatToIgnore:
-        "Do not read this as proof that multi-agent systems are the default future of enterprise AI; the upside here depends heavily on adoption and architecture assumptions.",
+        "This is not proof that multi-agent architectures automatically improve end-user outcomes or are the default enterprise answer.",
       bullets: [
         {
-          label: "Core thesis",
-          text: "The bottom-line message is that protocol design can materially change how well multi-agent GenAI systems perform in practice, which means the control layer around agents may become almost as important as the models themselves.",
-          impactArea: "thesis",
+          label: "Where this bites",
+          text: "If multi-agent systems keep spreading, protocol design becomes an operating-cost and governance lever. That shifts attention from 'which model is best' to how work moves, how context is packaged, and how actions are audited across agents.",
+          impactArea: "implication",
           citations: [cite(1, "Abstract"), cite(2, "Protocol overview")],
         },
         {
-          label: "Core mechanism",
-          text: "The protocol is built around explicit model identity, trust domains, provenance, governed sessions, and payload negotiation, with the central claim that these traits should be first-class protocol elements rather than hidden metadata or bolt-on extensions.",
-          impactArea: "method-or-proposal",
+          label: "What to ask vendors",
+          text: "Ask vendors what their agent handoff protocol exposes about cost, routing, provenance, and trust boundaries. If those controls are opaque, you may be buying lock-in and governance risk along with the product.",
+          impactArea: "vendor-question",
           citations: [cite(3, "Identity cards"), cite(4, "Trust domains")],
         },
         {
-          label: "Practical credibility",
-          text: "The proposal is more credible than a pure thought experiment because the paper includes a working implementation added as a plugin to a live agent runtime, showing the protocol can function as a practical reference design rather than only an architectural sketch.",
-          impactArea: "implementation",
+          label: "What to watch next",
+          text: "Watch whether major frameworks or standards bodies start treating these protocol primitives as defaults rather than optional extras. That would be a stronger market-readiness signal than one isolated research implementation.",
+          impactArea: "watch",
           citations: [cite(5, "Reference implementation"), cite(8, "Platform implications")],
         },
         {
-          label: "Results",
-          text: "In the experiments, the strongest result is not a dramatic answer-quality jump but a meaningful efficiency story: identity-aware routing reduces latency on easier tasks and governed sessions lower token overhead, while the quality gains remain more modest and sensitive to the evaluation setup.",
-          impactArea: "evidence",
-          citations: [cite(6, "Latency results"), cite(7, "Session efficiency"), cite(9, "Limitations")],
-        },
-        {
-          label: "Broader takeaway",
-          text: "The broader takeaway is that even if AI-native protocols do not automatically improve answer quality, they can still materially improve latency, token efficiency, governance, and security, which makes protocol design a real part of the GenAI stack conversation rather than a side issue.",
-          impactArea: "assessment",
+          label: "What still limits it",
+          text: "The evidence here is strongest on efficiency and control, not on dramatic quality improvement. That makes the paper more relevant to platform, security, and infrastructure teams than to anyone expecting a sudden leap in end-user outcomes.",
+          impactArea: "limitation",
           citations: [cite(7, "Evaluation setup"), cite(9, "Limitations")],
         },
       ],
@@ -184,42 +172,36 @@ export const demoTechnicalBriefFixtures: TechnicalBriefFixture[] = [
     arxivId: "2603.08938",
     brief: {
       oneLineVerdict:
-        "This is a strategic signal more than an operational playbook: it sketches where AI-native software stacks could go if agent platforms mature.",
+        "This is not an operating manual for deploying agent operating systems tomorrow; it is a directional paper about where software interfaces could move if agent platforms mature. The important idea is that the center of gravity shifts from standalone apps to orchestration, memory, permissions, and persistent knowledge. That challenges the assumption that AI's long-term value will sit mainly in the chat interface rather than in the control layer underneath it.",
       keyStats: [],
       focusTags: ["agents", "infra", "data"],
       whyItMatters:
-        "Even without a blockbuster benchmark result, the paper is useful because it frames a possible future stack where orchestration, context, and persistent knowledge become the real product surface.",
+        "The paper is useful because it frames a possible future stack where orchestration, memory, and permissions become the real product surface.",
       whatToIgnore:
-        "Do not mistake this for proof that agent operating systems are ready for enterprise deployment now; it is primarily a research agenda and architectural thesis.",
+        "This is still a research agenda and architecture thesis, not evidence of near-term enterprise readiness.",
       bullets: [
         {
-          label: "Core thesis",
-          text: "This is a strategic signal more than an operator playbook: the paper argues for an AI-native software layer where agents and natural language coordination sit above traditional app-centric interfaces.",
-          impactArea: "thesis",
+          label: "Where value could move",
+          text: "If this thesis is right, workflow software starts to look more like a skill ecosystem attached to an orchestration layer than a bundle of standalone applications. That would change where platform power, switching costs, and integration value accumulate.",
+          impactArea: "implication",
           citations: [cite(1, "Abstract"), cite(2, "System vision")],
         },
         {
-          label: "Core mechanism",
-          text: "The core idea is an operating-system-like layer in which an agent kernel coordinates tools, workflows, context, and persistent knowledge, reframing the stack around orchestration rather than a single assistant replying to prompts.",
-          impactArea: "method-or-proposal",
+          label: "Assumption to revisit",
+          text: "Revisit the assumption that adding an assistant on top of existing apps is the end state. The paper points toward a deeper stack shift in which intent routing, memory, and knowledge graphs become the real product surface.",
+          impactArea: "assumption",
           citations: [cite(3, "Agent kernel"), cite(4, "Skills model")],
         },
         {
-          label: "Practical credibility",
-          text: "This is less concrete than the other briefs because it is mostly an architectural thesis, but it is still useful as a reference model for where workflow memory, knowledge graphs, and orchestration primitives could converge if agent platforms mature.",
-          impactArea: "implementation",
-          citations: [cite(5, "Architecture discussion"), cite(6, "Data ecosystem")],
+          label: "What to watch next",
+          text: "The adoption signal to watch is not more demos; it is whether vendors start shipping durable memory, permissioning, workflow mining, and cross-tool orchestration as tightly integrated features. Without that infrastructure, the vision stays conceptual.",
+          impactArea: "adoption-signal",
+          citations: [cite(5, "Architecture discussion"), cite(6, "Data ecosystem"), cite(7, "Workflow mining")],
         },
         {
-          label: "Results",
-          text: "There is no true headline result here, which is itself important: this is not a benchmark paper and does not prove near-term product readiness, so it should be read as a directional map of the stack rather than as evidence of immediate commercial advantage.",
-          impactArea: "evidence",
-          citations: [cite(5, "Architecture discussion"), cite(9, "Open challenges")],
-        },
-        {
-          label: "Broader takeaway",
-          text: "The broader takeaway is that if GenAI products evolve toward persistent agents and intent-driven software, the real strategic control points may shift toward orchestration, memory, permissions, and knowledge infrastructure rather than the chat interface alone.",
-          impactArea: "assessment",
+          label: "What still limits it",
+          text: "This remains early and under-evidenced as a product thesis. It is useful for scenario planning and platform strategy, but not yet a reason to budget for near-term enterprise rollout.",
+          impactArea: "limitation",
           citations: [cite(9, "Open challenges")],
         },
       ],

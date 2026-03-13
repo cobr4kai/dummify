@@ -126,11 +126,12 @@ export const BRIEF_FOCUS_TAGS = [
 export type BriefFocusTag = (typeof BRIEF_FOCUS_TAGS)[number];
 
 export const EXECUTIVE_BRIEF_BULLET_AREAS = [
-  "thesis",
-  "method-or-proposal",
-  "implementation",
-  "evidence",
-  "assessment",
+  "implication",
+  "watch",
+  "vendor-question",
+  "assumption",
+  "adoption-signal",
+  "limitation",
 ] as const;
 
 export type ExecutiveBriefBulletArea = (typeof EXECUTIVE_BRIEF_BULLET_AREAS)[number];

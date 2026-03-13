@@ -48,7 +48,7 @@ export const chunkEvidenceSchema = z.object({
 });
 
 export const technicalBriefSchema = z.object({
-  oneLineVerdict: z.string().min(40).max(560),
+  oneLineVerdict: z.string().min(60).max(900),
   keyStats: z
     .array(
       z.object({
@@ -68,16 +68,18 @@ export const technicalBriefSchema = z.object({
         label: z.string().min(3).max(80),
         text: z.string().min(40).max(700),
         impactArea: z.enum([
-          "thesis",
-          "method-or-proposal",
-          "implementation",
-          "evidence",
-          "assessment",
+          "implication",
+          "watch",
+          "vendor-question",
+          "assumption",
+          "adoption-signal",
+          "limitation",
         ]),
         citations: z.array(citationSchema).max(6),
       }),
     )
-    .length(5),
+    .min(3)
+    .max(5),
   confidenceNotes: z.array(z.string().min(8).max(220)).min(1).max(6),
   evidence: z
     .array(

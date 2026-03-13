@@ -3,6 +3,10 @@ import { demoPaperFixtures } from "../../data/mock/demo-fixtures";
 import { demoTechnicalBriefFixtures } from "../../data/mock/demo-technical-briefs";
 import { MockTechnicalBriefProvider } from "@/lib/providers/mock-technical-provider";
 import {
+  buildTechnicalBriefSystemPrompt,
+  buildTechnicalBriefUserPrompt,
+} from "@/lib/technical/prompts";
+import {
   normalizeHookText,
   resolveTechnicalSynthesisModel,
 } from "@/lib/providers/openai-technical-provider";
@@ -15,8 +19,9 @@ describe("technical brief contracts", () => {
   it("accepts the seeded executive brief schema", () => {
     const parsed = technicalBriefSchema.parse(demoTechnicalBriefFixtures[0].brief);
 
-    expect(parsed.oneLineVerdict).toContain("operator paper");
-    expect(parsed.bullets).toHaveLength(5);
+    expect(parsed.oneLineVerdict).toContain("orchestration");
+    expect(parsed.bullets.length).toBeGreaterThanOrEqual(3);
+    expect(parsed.bullets.length).toBeLessThanOrEqual(5);
     expect(parsed.keyStats[0]?.citations[0]?.page).toBeGreaterThan(0);
   });
 
@@ -57,8 +62,28 @@ describe("technical brief contracts", () => {
 
     expect(provider.isAvailable()).toBe(true);
     expect(provider.resolveModel(false)).toBe("demo-fixture");
-    expect(brief.bullets).toHaveLength(5);
-    expect(brief.whyItMatters).toContain("executives");
+    expect(brief.bullets.length).toBeGreaterThanOrEqual(3);
+    expect(brief.bullets.length).toBeLessThanOrEqual(5);
+    expect(brief.bullets.some((bullet) => bullet.impactArea === "vendor-question")).toBe(
+      true,
+    );
+    expect(brief.whyItMatters).toContain("orchestration");
+  });
+
+  it("guides the live brief prompt toward a simple business-reader structure", () => {
+    const prompt = buildTechnicalBriefUserPrompt(
+      demoPaperFixtures[0].paper,
+      [],
+      "abstract-fallback",
+    );
+
+    expect(buildTechnicalBriefSystemPrompt()).toContain(
+      "Produce only two reader-facing elements",
+    );
+    expect(buildTechnicalBriefSystemPrompt()).toContain("3-5 bullets");
+    expect(prompt).toContain("2-4 sentence");
+    expect(prompt).toContain("Do not invent extra sections or audience tabs");
+    expect(prompt).toContain("what to ask");
   });
 
   it("falls back to the extraction model when premium synthesis is disabled", () => {

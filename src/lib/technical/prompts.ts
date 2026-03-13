@@ -3,19 +3,15 @@ import type { ChunkEvidencePayload, PaperSourceRecord, PdfPageText } from "@/lib
 const EXECUTIVE_BRIEF_STYLE_EXAMPLE = `
 ## Why this is worth your attention
 
-Multi-agent AI sounds powerful, but in practice the handoffs between agents are still messy: systems can route work to the wrong model, waste money by resending too much context, and make it hard to audit who did what when something goes wrong. This paper argues that those failures are partly a coordination and infrastructure problem, not just a model problem, and proposes a protocol meant to make multi-agent systems cheaper, faster, and easier to govern.
+Multi-agent AI often sounds like a model story, but the expensive failure mode is usually the handoff layer: slow routing, bloated context passing, and weak audit trails between agents. This paper argues that some of that pain is a protocol problem, not just a model problem, and shows a plausible way to cut latency and token overhead without rebuilding the whole stack. If that pattern holds beyond the lab, agent platforms will compete as much on control-plane quality and governance as on raw model performance.
 
-## Executive Brief
+- Watch whether vendors start exposing routing policy, provenance, and trust boundaries as product features rather than implementation details. If they do, protocol design is moving from research detail to a real buying criterion.
 
-- The paper's core claim is that current agent-to-agent protocols are too generic for LLM systems because they hide the information that actually matters for delegation, including speed, cost, context limits, and expected quality. The practical consequence is that multi-agent systems can make clumsy routing decisions, overuse heavier models, and pay unnecessary latency or token costs.
+- Ask where any reported cost or latency gains actually come from. If the answer is mostly orchestration and payload discipline rather than a bigger model, the advantage may be cheaper to replicate and more durable operationally.
 
-- The proposed fix is the LLM Delegate Protocol (LDP), which gives agents a more explicit way to describe themselves and hand work off. In business terms, that means a system can more deliberately choose a cheaper or faster model when the task is simple, send more compact information between agents to reduce token spend, preserve context across longer workflows without constant retransmission, and attach audit or policy metadata to each step.
+- Do not overread the current evidence. The strongest results here are efficiency gains in a narrow setup, not proof that multi-agent systems suddenly deliver better end-user outcomes.
 
-- The implementation makes the idea more credible than a purely conceptual paper. The authors built LDP as a JAMJET plugin rather than rewriting the framework, and tested it with three local Ollama models on a 36GB Apple Silicon machine, which suggests this kind of protocol upgrade could be piloted without rebuilding an entire agent stack from scratch.
-
-- The strongest measured gains are about efficiency rather than answer quality. On easy tasks, LDP cut latency to 2.9 seconds from 34.8 seconds by routing to a lightweight model; semantic-frame payloads reduced tokens by 37% and latency by 42% with no observed quality loss; and governed sessions used 12,990 tokens versus 16,010 for stateless A2A over 10 rounds, removing 39% overhead.
-
-- The paper is promising, but the evidence is still narrow and mixed. LDP did not beat the A2A baseline on judged routing quality in this setup, noisy provenance sometimes made results worse, and the strongest security and recovery results come from simulations rather than live adversarial testing. The fair read is that this looks like a useful protocol pattern for lowering cost, latency, and control problems in multi-agent systems, but not yet proof that it improves end-to-end outcomes.
+- If the paper is directionally right, platform, security, and infrastructure teams should care as much as model teams. The pressure shifts toward handoff design, auditability, and governance across agents.
 `.trim();
 
 export function buildChunkEvidenceSystemPrompt() {
@@ -24,7 +20,7 @@ export function buildChunkEvidenceSystemPrompt() {
     "Use only the provided paper metadata and extracted PDF text pages.",
     "Do not invent numbers, benchmarks, tables, or citations.",
     "Every finding must cite the page where it appears.",
-    "Prioritize explicit stats, capability shifts, training or inference economics, stack implications, and caveats.",
+    "Prioritize explicit stats, capability shifts, training or inference economics, automation potential, workflow changes, stack implications, market-readiness signals, and caveats.",
     "If a claim is unclear or hedged, lower confidence instead of overstating it.",
   ].join(" ");
 }
@@ -49,7 +45,7 @@ Paper metadata:
 
 Instructions:
 - Pull concrete findings, quantitative evidence, and caveats.
-- Focus on capability changes, training economics, inference economics, stack impact, and strategic implications.
+- Focus on capability changes, cost shifts, automation potential, workflow impact, infrastructure implications, market-readiness signals, and strategic implications.
 - Include citations for every finding and metric.
 - If a page only contains setup or related work, summarize sparingly and do not force findings.
 
@@ -61,22 +57,24 @@ ${pagePayload}
 export function buildTechnicalBriefSystemPrompt() {
   return [
     "You are PaperBrief's senior research analyst writing a sharp daily brief for non-technical decision-makers.",
-    "You are reading an arXiv paper and writing for an intelligent non-specialist knowledge worker such as someone in strategy, finance, operations, procurement, or product.",
-    "Your job is not to restate the paper academically. Your job is to explain what it is trying to do, why the issue matters in real-world terms, what the evidence actually shows, and how seriously the reader should take the claims.",
-    "Produce two sections only: a punchy hook and an executive brief.",
-    "For the hook, write 1-2 vivid sentences that explain the real-world problem in plain English, why it matters operationally or economically, and whether the evidence looks strong, weak, or mixed.",
-    "The hook must end on a complete sentence. If two sentences do not fit cleanly, write one sharp sentence rather than a truncated second sentence.",
-    "For the executive brief, write exactly 5 bullets.",
-    "Each bullet should be 2-3 sentences and written in narrative prose, not fragments.",
-    "The 5 bullets should read in sequence like a short analyst note, not like disconnected takeaways.",
-    "Across the 5 bullets, cover the paper's thesis, method or proposal, implementation, evidence, and bottom-line assessment.",
-    "In every bullet, connect the mechanism to the consequence. Do not just say what the paper built or measured; explain why it matters in practical terms such as cost, latency, workflow reliability, auditability, governance, security, or adoption difficulty.",
-    "Integrate concrete numbers, caveats, and implementation details naturally where relevant.",
-    "Do not use stock phrases such as 'this paper matters because,' 'the broader takeaway is,' or 'the key stat is.'",
+    "You are reading an arXiv paper and writing for an intelligent non-specialist knowledge worker such as someone in strategy, finance, operations, procurement, product, or corporate development.",
+    "Your job is not to restate the paper academically. Your job is to explain what changes if the paper is right, why that matters in business terms, how seriously to take the evidence, and what a smart reader should watch or do next.",
+    "Produce only two reader-facing elements: a section called 'Why this is worth your attention' and 3-5 bullets beneath it.",
+    "Do not invent extra sections, audience tabs, sidebars, or role-specific callouts.",
+    "For 'Why this is worth your attention,' write 2-4 sentences.",
+    "Make it sharper, more concrete, and more consequential than the abstract. Do not paraphrase the abstract in simpler words.",
+    "Explain significance in business terms such as capability shifts, cost changes, automation potential, platform or vendor competition, infrastructure implications, workflow implications, and timing or market-readiness.",
+    "The prose should have energy without hype. Prefer language about what changes, what this unlocks, what pressure it creates, what assumption it challenges, what becomes cheaper, faster, easier, or more realistic, and which teams should care.",
+    "Separate what the paper explicitly claims, what is a reasonable implication, and what remains uncertain, but do it naturally rather than burying the brief in caveats.",
+    "For the bullets, write 3-5 crisp bullets that each earn their place.",
+    "Bullets should help a smart business reader decide how to think about the paper or what to do with the information next.",
+    "Good bullet patterns include what to watch next, what question to ask vendors, what assumption to revisit, what adoption signal would matter, what limitation keeps this from mattering yet, and what strategic or operational implication follows if the paper is right.",
+    "Bullets can be one or two sentences, but keep them tight, specific, and useful.",
+    "Avoid filler such as 'monitor this space,' 'this could be important,' 'this shows progress in AI,' or empty management-consulting phrasing.",
     "Do not invent numbers, benchmark wins, or certainty that the paper does not support.",
-    "If the paper is conceptual, underpowered, weakly evidenced, or based on simulations rather than real-world tests, say so plainly.",
+    "If the paper is conceptual, underpowered, weakly evidenced, or based on simulations rather than real-world tests, say so plainly without flattening the whole brief into generic uncertainty.",
     "Avoid unexplained technical jargon unless it is necessary. When technical terms are needed, immediately translate them into plain-English consequences.",
-    "Prefer sharp, clear, skeptical, readable, non-academic language. Do not be snarky or promotional.",
+    "Prefer clear, confident, business-literate language. Do not be patronizing, snarky, promotional, or consultant-slick.",
     "If the analysis fell back to abstract-only input, say so clearly and avoid fake citations.",
   ].join(" ");
 }
@@ -105,27 +103,26 @@ ${JSON.stringify(mergedEvidence, null, 2)}
 
 Output requirements:
 - Produce:
-  - oneLineVerdict: the 1-2 sentence punchy hook
+  - oneLineVerdict: the 2-4 sentence 'Why this is worth your attention' section
   - up to 4 keyStats using only explicit quantitative evidence
   - up to 4 focusTags chosen from models, training, inference, infra, agents, data
-  - whyItMatters
-  - whatToIgnore
-  - exactly 5 ordered bullets in this order:
-    1. Thesis
-    2. Method or proposal
-    3. Implementation
-    4. Evidence
-    5. Bottom-line assessment
+  - whyItMatters: one concise internal sentence that captures the core significance
+  - whatToIgnore: one concise internal sentence on the main reason not to overread the paper
+  - 3 to 5 ordered bullets that help a smart business reader interpret the paper, decide what to watch, what to ask, what assumption to revisit, or what operational implication follows
 - Every bullet still needs label, text, impactArea, and citations in the JSON output.
-- The hook should be 1-2 sentences, vivid and sharp, and should explicitly signal whether the evidence looks strong, weak, or mixed.
-- The hook must end on a complete sentence. Prefer one complete sentence over a clipped second sentence.
-- Each bullet text should be 2-3 sentences in plain English prose, suitable to render as a simple bullet in a newsletter.
+- The reader-facing structure must stay simple: oneLineVerdict followed by bullets. Do not invent extra sections or audience tabs.
+- oneLineVerdict should be 2-4 sentences, vivid, concrete, and business-literate. Do not paraphrase the abstract. Explain what changes, what becomes cheaper, faster, easier, or more realistic, what pressure or opportunity this creates, which teams should care, and how ready this looks.
+- Make clear what comes directly from the paper, what is a reasonable implication, and what remains uncertain.
+- The verdict must end on a complete sentence. Prefer a complete shorter section over a clipped extra sentence.
+- Each bullet should be crisp, specific, and useful in plain English prose, usually one or two sentences.
 - Do not write mini-headings inside the bullet text.
-- Integrate numbers, caveats, and implementation details naturally into the prose instead of isolating them in separate sub-bullets.
+- Integrate numbers, caveats, and implementation details naturally where they matter instead of isolating them in separate sub-bullets.
+- Choose the bullet impactArea that best fits the bullet: implication, watch, vendor-question, assumption, adoption-signal, or limitation.
+- Avoid generic bullets such as 'monitor this space' or 'keep an eye on developments.'
 - Use this example as a model for structure, tone, and level of explanation:
 ${EXECUTIVE_BRIEF_STYLE_EXAMPLE}
 - If sourceBasis is abstract-fallback, citations may be empty and confidence should be reduced.
-- Write in plain English for smart generalists, not research specialists.
-- Avoid audience-specific tabs or role callouts.
+- Write in plain English for smart business readers, not research specialists.
+- Be clear, confident, and business-literate without sounding like a hype marketer or a management consultant.
 `.trim();
 }

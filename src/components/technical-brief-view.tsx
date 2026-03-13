@@ -75,7 +75,7 @@ export function TechnicalBriefView({
           </div>
           <CardTitle>Executive brief</CardTitle>
           <CardDescription className="text-base leading-7">
-            Five narrative bullets that translate the paper into business consequences for operators, strategy, finance, procurement, and product teams.
+            A short business-reader brief that explains why the paper matters now and what to watch or do next.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
