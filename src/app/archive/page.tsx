@@ -1,12 +1,22 @@
+import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { getArchiveResults } from "@/lib/search/service";
+import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { formatShortDate } from "@/lib/utils/dates";
+import { parseJsonValue } from "@/lib/utils/json";
 
 export const dynamic = "force-dynamic";
+
+const bulletSchema = z.array(
+  z.object({
+    label: z.string().optional(),
+    text: z.string(),
+  }),
+);
 
 type SearchParams = Promise<{
   q?: string;
@@ -101,32 +111,45 @@ export default async function ArchivePage({
         />
       ) : (
         <section className="grid gap-4">
-          {papers.map((paper) => (
-            <Card key={paper.id}>
-              <CardHeader>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="muted">{paper.primaryCategory ?? "Mixed"}</Badge>
-                  <Badge variant="muted">{formatShortDate(paper.announcementDay)}</Badge>
-                </div>
-                <CardTitle>{paper.title}</CardTitle>
-                <CardDescription>{paper.authorsText}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div className="max-w-4xl space-y-3">
-                  <p className="text-sm leading-7 text-foreground/90">
-                    {paper.technicalBriefs[0]?.oneLineVerdict ?? paper.abstract}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Button asChild size="sm" variant="secondary">
-                    <a href={paper.abstractUrl} rel="noreferrer" target="_blank">
-                      arXiv abstract
-                    </a>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {papers.map((paper) => {
+            const brief = paper.technicalBriefs[0] ?? null;
+            const bullets = parseJsonValue(brief?.bulletsJson ?? [], bulletSchema, []);
+            const verdict = brief?.oneLineVerdict
+              ? stripTechnicalBriefHeading(brief.oneLineVerdict)
+              : paper.abstract;
+
+            return (
+              <Card key={paper.id}>
+                <CardHeader>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="muted">{paper.primaryCategory ?? "Mixed"}</Badge>
+                    <Badge variant="muted">{formatShortDate(paper.announcementDay)}</Badge>
+                  </div>
+                  <CardTitle>{paper.title}</CardTitle>
+                  <CardDescription>{paper.authorsText}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="max-w-4xl space-y-3">
+                    <p className="text-sm leading-7 text-foreground/90">{verdict}</p>
+                    {bullets.length > 0 ? (
+                      <ul className="list-disc space-y-3 pl-5 text-sm leading-7 text-foreground/90 marker:text-foreground/70">
+                        {bullets.map((bullet, index) => (
+                          <li key={`${paper.id}-${index}`}>{bullet.text}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button asChild size="sm" variant="secondary">
+                      <a href={paper.abstractUrl} rel="noreferrer" target="_blank">
+                        arXiv abstract
+                      </a>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </section>
       )}
     </PageShell>
