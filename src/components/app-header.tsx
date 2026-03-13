@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { cn } from "@/lib/utils/cn";
 
@@ -31,7 +32,7 @@ export function AppHeader({
     <header className={cn(showReaderMasthead ? "mb-8" : "nav-glass sticky top-0 z-30")} data-tone={tone}>
       {showReaderMasthead ? (
         <div className="mx-auto max-w-[1280px] px-4 pt-6 sm:px-6 lg:px-8">
-          <div className="hero-shell rounded-[36px] px-6 py-7 sm:px-8 sm:py-8">
+          <div className="hero-shell rounded-[36px] px-6 py-6 sm:px-8 sm:py-7">
             {headerContent}
           </div>
         </div>
@@ -69,6 +70,7 @@ export function AppHeader({
               })}
             </nav>
             {navMeta ? <div className="flex flex-wrap items-center gap-2 lg:ml-2">{navMeta}</div> : null}
+            <ThemeToggle className="lg:ml-2" />
           </div>
         </div>
       )}

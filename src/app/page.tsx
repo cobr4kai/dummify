@@ -2,6 +2,7 @@ import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { getDailyBrief } from "@/lib/search/service";
 import { formatShortDate } from "@/lib/utils/dates";
@@ -20,26 +21,29 @@ export default async function Home() {
       headerContent={(
         <div className="lg:flex lg:items-start lg:justify-between lg:gap-8">
           <div className="max-w-3xl lg:pt-1">
-            <h1 className="editorial-display text-4xl text-foreground sm:text-[4.35rem] lg:text-[3.9rem]">
+            <h1 className="editorial-display text-3xl text-foreground sm:text-[3.45rem] lg:text-[3rem]">
               {APP_NAME}
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/78 sm:text-[1.35rem] sm:leading-9 lg:text-[1.55rem] lg:leading-[1.45]">
+            <p className="mt-3 max-w-2xl text-base leading-7 text-foreground/78 sm:text-[1.18rem] sm:leading-8 lg:text-[1.28rem] lg:leading-[1.45]">
               {APP_TAGLINE}
             </p>
           </div>
-          <Link
-            className="mt-5 block rounded-[28px] transition-transform duration-200 hover:-translate-y-0.5 lg:mt-1 lg:w-full lg:max-w-[20rem]"
-            href="/archive"
-          >
-            <div className="panel-soft rounded-[28px] px-5 py-4 shadow-[var(--shadow-card)] sm:px-6">
-              <p className="eyebrow text-[11px] font-medium text-muted-foreground">
-                Edition date
-              </p>
-              <p className="editorial-title mt-2 text-[2.15rem] text-foreground sm:text-[2.35rem]">
-                {announcementDay ? formatShortDate(announcementDay) : "No live edition"}
-              </p>
-            </div>
-          </Link>
+          <div className="mt-5 flex flex-col gap-3 lg:mt-1 lg:w-full lg:max-w-[18rem] lg:items-end">
+            <ThemeToggle className="self-start lg:self-end" />
+            <Link
+              className="block w-full rounded-[28px] transition-transform duration-200 hover:-translate-y-0.5"
+              href="/archive"
+            >
+              <div className="panel-soft rounded-[28px] px-5 py-4 shadow-[var(--shadow-card)] sm:px-6">
+                <p className="eyebrow text-[11px] font-medium text-muted-foreground">
+                  Edition date
+                </p>
+                <p className="editorial-title mt-2 text-[1.95rem] text-foreground sm:text-[2.1rem]">
+                  {announcementDay ? formatShortDate(announcementDay) : "No live edition"}
+                </p>
+              </div>
+            </Link>
+          </div>
         </div>
       )}
     >

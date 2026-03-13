@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Outfit } from "next/font/google";
+import Script from "next/script";
 import { ParticleField } from "@/components/particle-field";
+import { themeInitScript } from "@/lib/theme";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -35,8 +37,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
       <body className={`${outfit.variable} ${cormorantGaramond.variable} antialiased`}>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeInitScript}
+        </Script>
         <ParticleField />
         <div className="app-chrome">{children}</div>
       </body>
