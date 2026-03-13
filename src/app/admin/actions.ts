@@ -91,12 +91,9 @@ export async function updateSettingsAction(formData: FormData) {
   const genAiRankingWeights = {
     frontierRelevance: Number(formData.get("frontierRelevance") ?? 0),
     capabilityImpact: Number(formData.get("capabilityImpact") ?? 0),
-    trainingEconomicsImpact: Number(formData.get("trainingEconomicsImpact") ?? 0),
-    inferenceEconomicsImpact: Number(formData.get("inferenceEconomicsImpact") ?? 0),
-    platformStackImpact: Number(formData.get("platformStackImpact") ?? 0),
-    strategicBusinessImpact: Number(formData.get("strategicBusinessImpact") ?? 0),
+    realWorldImpact: Number(formData.get("realWorldImpact") ?? 0),
     evidenceStrength: Number(formData.get("evidenceStrength") ?? 0),
-    claritySignal: Number(formData.get("claritySignal") ?? 0),
+    audiencePull: Number(formData.get("audiencePull") ?? 0),
   };
 
   await updateAppSettings({

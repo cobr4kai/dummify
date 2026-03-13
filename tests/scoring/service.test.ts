@@ -27,21 +27,23 @@ describe("computeBriefScore", () => {
     expect(score.breakdown.frontierRelevance.weight).toBe(
       DEFAULT_GENAI_RANKING_WEIGHTS.frontierRelevance,
     );
-    expect(score.breakdown.inferenceEconomicsImpact.rawScore).toBeGreaterThanOrEqual(45);
-    expect(score.breakdown.platformStackImpact.rawScore).toBeGreaterThanOrEqual(45);
+    expect(score.breakdown.realWorldImpact.rawScore).toBeGreaterThanOrEqual(45);
+    expect(score.breakdown.audiencePull.rawScore).toBeGreaterThanOrEqual(45);
     expect(score.rationale.length).toBeGreaterThan(20);
   });
 
-  it("tilts default weights toward real impact, user interest, and evidence", () => {
-    expect(DEFAULT_GENAI_RANKING_WEIGHTS.strategicBusinessImpact).toBeGreaterThan(
-      DEFAULT_GENAI_RANKING_WEIGHTS.trainingEconomicsImpact,
-    );
-    expect(DEFAULT_GENAI_RANKING_WEIGHTS.evidenceStrength).toBeGreaterThan(
-      DEFAULT_GENAI_RANKING_WEIGHTS.platformStackImpact,
-    );
+  it("uses the new five-criterion default weight model", () => {
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.frontierRelevance).toBe(0.26);
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.capabilityImpact).toBe(0.22);
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.realWorldImpact).toBe(0.24);
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.evidenceStrength).toBe(0.12);
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.audiencePull).toBe(0.16);
     expect(DEFAULT_GENAI_RANKING_WEIGHTS.frontierRelevance).toBeGreaterThan(
-      DEFAULT_GENAI_RANKING_WEIGHTS.claritySignal,
+      DEFAULT_GENAI_RANKING_WEIGHTS.evidenceStrength,
     );
+    expect(
+      Object.values(DEFAULT_GENAI_RANKING_WEIGHTS).reduce((sum, value) => sum + value, 0),
+    ).toBeCloseTo(1, 5);
   });
 
   it("preserves score transparency for weaker, more conceptual papers", () => {
@@ -53,7 +55,7 @@ describe("computeBriefScore", () => {
     });
 
     expect(score.totalScore).toBeGreaterThan(0);
-    expect(score.breakdown.claritySignal.rawScore).toBeLessThanOrEqual(60);
+    expect(score.breakdown.audiencePull.rawScore).toBeLessThanOrEqual(60);
     expect(score.frontierRelevanceScore).toBeLessThan(
       DEFAULT_HIGH_BUSINESS_RELEVANCE_THRESHOLD,
     );
@@ -121,8 +123,29 @@ describe("computeBriefScore", () => {
       },
     });
 
-    expect(withoutMetadata.breakdown.strategicBusinessImpact.rawScore).toBeLessThan(
-      withMetadata.breakdown.strategicBusinessImpact.rawScore,
+    expect(withoutMetadata.breakdown.realWorldImpact.rawScore).toBeLessThan(
+      withMetadata.breakdown.realWorldImpact.rawScore,
     );
+  });
+
+  it("rewards topics with natural business-reader relevance through audience pull", () => {
+    const highPull = computeBriefScore({
+      title: "Agent Workflows for Enterprise Knowledge Work",
+      abstract:
+        "We show how agent workflows reduce handoff friction in enterprise search, automate parts of knowledge work, and improve deployment readiness for production assistants.",
+      categories: ["cs.AI", "cs.MA"],
+    });
+
+    const lowPull = computeBriefScore({
+      title: "Asymptotic Properties of a New Loss Function",
+      abstract:
+        "We analyze theorem-level convergence properties of a loss function under simplified assumptions and discuss narrow technical edge cases.",
+      categories: ["stat.ML"],
+    });
+
+    expect(highPull.breakdown.audiencePull.rawScore).toBeGreaterThan(
+      lowPull.breakdown.audiencePull.rawScore,
+    );
+    expect(highPull.totalScore).toBeGreaterThan(lowPull.totalScore);
   });
 });

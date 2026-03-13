@@ -13,7 +13,7 @@ import {
 } from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { EXECUTIVE_COMPONENT_LABELS } from "@/lib/scoring/keywords";
+import { EXECUTIVE_SCORE_COMPONENT_METADATA } from "@/lib/scoring/model";
 import { getAdminSnapshot } from "@/lib/search/service";
 import {
   hasPdfBackedBrief,
@@ -49,36 +49,29 @@ const RANKING_WEIGHT_FIELDS: Array<{
   description: string;
 }> = [
   {
-    key: "strategicBusinessImpact",
-    description: "How much this could change real workflows, business decisions, or deployment value.",
-  },
-  {
     key: "frontierRelevance",
-    description: "How likely a user or operator is to care about this topic right now.",
-  },
-  {
-    key: "evidenceStrength",
-    description: "How much hard empirical support the claims appear to have.",
+    description:
+      "Directly targets modern frontier-model, multimodal, agentic, or deployment-relevant AI systems.",
   },
   {
     key: "capabilityImpact",
-    description: "Whether the paper meaningfully changes what the system can do.",
+    description:
+      "Claims a meaningful change in what AI systems can do or how well they perform.",
   },
   {
-    key: "inferenceEconomicsImpact",
-    description: "Potential effect on serving cost, latency, or throughput.",
+    key: "realWorldImpact",
+    description:
+      "Could materially affect cost, deployment, workflow automation, productization, or business decision-making.",
   },
   {
-    key: "platformStackImpact",
-    description: "How much it could change tooling, infrastructure, or deployment choices.",
+    key: "evidenceStrength",
+    description:
+      "Includes credible comparative evidence, benchmark structure, or support strong enough to take the claim seriously.",
   },
   {
-    key: "trainingEconomicsImpact",
-    description: "Potential effect on training or post-training cost and efficiency.",
-  },
-  {
-    key: "claritySignal",
-    description: "How legible and actionable the framing looks for a generalist reader.",
+    key: "audiencePull",
+    description:
+      "Addresses a topic that smart non-research readers are likely to care about immediately, not just technical specialists.",
   },
 ];
 
@@ -442,7 +435,7 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Brief settings</CardTitle>
             <CardDescription>
-              Control output counts, ranking weights, high-signal threshold, and the score bias toward real-world impact and user interest.
+              Control output counts, ranking weights, high-signal threshold, and the score bias toward frontier relevance, real-world impact, and audience pull.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -573,12 +566,12 @@ export default async function AdminPage({
               <div className="sm:col-span-2 mt-2 space-y-2">
                 <p className="text-sm font-semibold text-foreground">Ranking weights</p>
                 <p className="text-xs leading-5 text-muted-foreground">
-                  The default mix now leans toward real-world impact, user interest, and hard evidence. Save changes, then run a manual daily refresh to rescore the current day with the new mix.
+                  The visible ranking model now uses five criteria designed for business readers. Save changes, then run a manual daily refresh to rescore the current day with the new mix.
                 </p>
               </div>
               {RANKING_WEIGHT_FIELDS.map(({ key, description }) => (
                 <label key={key} className="space-y-2 text-sm font-medium">
-                  {EXECUTIVE_COMPONENT_LABELS[key]}
+                  {EXECUTIVE_SCORE_COMPONENT_METADATA[key].label}
                   <span className="block text-xs leading-5 text-muted-foreground">
                     {description}
                   </span>

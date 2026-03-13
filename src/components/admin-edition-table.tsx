@@ -10,6 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  executiveScoreBreakdownRecordSchema,
+  normalizeExecutiveScoreBreakdown,
+} from "@/lib/scoring/model";
+import {
   getHomepageBriefState,
   hasPdfBackedBrief,
   prioritizePapersWithPdfBackedBriefs,
@@ -19,27 +23,12 @@ import { cn } from "@/lib/utils/cn";
 import { formatShortDate } from "@/lib/utils/dates";
 import { parseJsonValue } from "@/lib/utils/json";
 
-const breakdownSchema = z.record(
-  z.string(),
-  z.object({
-    key: z.string(),
-    label: z.string(),
-    rawScore: z.number(),
-    weight: z.number(),
-    weightedScore: z.number(),
-    reason: z.string(),
-  }),
-);
-
 const scoreColumns = [
-  { key: "strategicBusinessImpact", label: "Real-world" },
-  { key: "frontierRelevance", label: "Interest" },
+  { key: "frontierRelevance", label: "Frontier" },
   { key: "capabilityImpact", label: "Capability" },
-  { key: "evidenceStrength", label: "Proof" },
-  { key: "inferenceEconomicsImpact", label: "Inference" },
-  { key: "platformStackImpact", label: "Platform" },
-  { key: "trainingEconomicsImpact", label: "Training" },
-  { key: "claritySignal", label: "Clarity" },
+  { key: "realWorldImpact", label: "Real-world" },
+  { key: "evidenceStrength", label: "Evidence" },
+  { key: "audiencePull", label: "Audience" },
 ] as const satisfies ReadonlyArray<{
   key: ExecutiveScoreComponentKey;
   label: string;
@@ -47,7 +36,7 @@ const scoreColumns = [
 
 type AdminEditionSortKey = "liveStatus" | "paper" | "total" | ExecutiveScoreComponentKey;
 type AdminEditionSortDirection = "asc" | "desc";
-type ScoreBreakdownRecord = z.infer<typeof breakdownSchema>;
+type ScoreBreakdownRecord = z.infer<typeof executiveScoreBreakdownRecordSchema>;
 
 type AdminEditionTableProps = {
   days: string[];
@@ -473,7 +462,9 @@ function buildRow(input: {
   publishedSet: Set<string>;
 }): AdminEditionRow {
   const score = input.paper.scores[0];
-  const breakdown = parseJsonValue(score?.breakdown ?? {}, breakdownSchema, {});
+  const breakdown = normalizeExecutiveScoreBreakdown(
+    parseJsonValue(score?.breakdown ?? {}, executiveScoreBreakdownRecordSchema, {}),
+  );
   const briefState = getHomepageBriefState(input.paper.technicalBriefs);
   const hasPdfBrief = briefState === "pdf-ready";
   const isPublished = input.publishedSet.has(input.paper.id);

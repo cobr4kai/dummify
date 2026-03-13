@@ -2,9 +2,12 @@ import { DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS } from "@/config/defaults";
 import {
   EXECUTIVE_CATEGORY_BOOSTS,
   EXECUTIVE_COMPONENT_KEYWORDS,
-  EXECUTIVE_COMPONENT_LABELS,
   EXECUTIVE_PRIORITY_FEED_CATEGORIES,
 } from "@/lib/scoring/keywords";
+import {
+  defaultReasonForVisibleComponent,
+  EXECUTIVE_SCORE_COMPONENT_METADATA,
+} from "@/lib/scoring/model";
 import type {
   ExecutiveScoreBreakdown,
   ExecutiveScoreComponentKey,
@@ -89,7 +92,7 @@ function computeExecutiveComponentScore(
     }
   }
 
-  if (key === "strategicBusinessImpact") {
+  if (key === "realWorldImpact") {
     const institutionSignal = readInstitutionSignal(sourceMetadata);
     if (institutionSignal > 0) {
       rawScore += institutionSignal;
@@ -106,13 +109,13 @@ function computeExecutiveComponentScore(
 
   return {
     key,
-    label: EXECUTIVE_COMPONENT_LABELS[key],
+    label: EXECUTIVE_SCORE_COMPONENT_METADATA[key].label,
     rawScore,
     weight,
     weightedScore: round(rawScore * weight),
     reason:
       topReason?.reason ??
-      defaultReasonForComponent(EXECUTIVE_COMPONENT_LABELS[key], rawScore),
+      defaultReasonForVisibleComponent(key, rawScore),
   };
 }
 
@@ -122,7 +125,7 @@ function baseComponentScore(key: ExecutiveScoreComponentKey, abstract: string) {
   const averageSentenceLength = keywordCount / sentenceCount;
   const acronymCount = (abstract.match(/\b[A-Z]{2,}\b/g) ?? []).length;
 
-  if (key === "claritySignal") {
+  if (key === "audiencePull") {
     let score = 40;
 
     if (averageSentenceLength <= 24) {
@@ -146,19 +149,7 @@ function baseComponentScore(key: ExecutiveScoreComponentKey, abstract: string) {
     return 28;
   }
 
-  return 22;
-}
-
-function defaultReasonForComponent(label: string, rawScore: number) {
-  if (rawScore >= 75) {
-    return `${label} is a strong signal in the title and abstract.`;
-  }
-
-  if (rawScore >= 50) {
-    return `${label} appears meaningfully in the paper framing.`;
-  }
-
-  return `${label} is present but not dominant in the abstract.`;
+  return key === "realWorldImpact" ? 24 : 22;
 }
 
 function applyCrossListBonus(

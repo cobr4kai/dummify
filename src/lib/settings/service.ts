@@ -5,10 +5,24 @@ import {
   DEFAULT_CATEGORIES,
   DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
   LEGACY_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+  PREVIOUS_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
 } from "@/config/defaults";
+import {
+  LEGACY_EXECUTIVE_SCORE_COMPONENTS,
+  mapLegacyWeightsToVisible,
+  type LegacyExecutiveScoringWeights,
+} from "@/lib/scoring/model";
 import type { ExecutiveScoringWeights } from "@/lib/types";
 
 const executiveRankingWeightsSchema = z.object({
+  frontierRelevance: z.number(),
+  capabilityImpact: z.number(),
+  realWorldImpact: z.number(),
+  evidenceStrength: z.number(),
+  audiencePull: z.number(),
+});
+
+const legacyExecutiveRankingWeightsSchema = z.object({
   frontierRelevance: z.number(),
   capabilityImpact: z.number(),
   trainingEconomicsImpact: z.number(),
@@ -51,7 +65,7 @@ const settingDescriptions: Record<keyof AppSettings, string> = {
   audienceFitThreshold: "Legacy audience threshold retained for compatibility.",
   rankingWeights: "Legacy score weights retained for compatibility.",
   genAiRankingWeights:
-    "Editable heuristic weights for the canonical daily brief score, with extra emphasis on real-world impact, user interest, and evidence.",
+    "Editable heuristic weights for the canonical daily brief score, with extra emphasis on frontier relevance, real-world impact, evidence strength, and audience pull.",
   genAiUsePremiumSynthesis:
     "Whether to use the premium synthesis model when the environment allows it.",
   pdfCacheDir: "Local directory used to cache official arXiv PDFs and extracted page text.",
@@ -143,8 +157,12 @@ export async function getAppSettings(): Promise<AppSettings> {
       typeof raw.audienceFitThreshold === "number"
         ? raw.audienceFitThreshold
         : DEFAULT_APP_SETTINGS.audienceFitThreshold,
-    rankingWeights: parseExecutiveWeights(raw.rankingWeights),
-    genAiRankingWeights: parseExecutiveWeights(raw.genAiRankingWeights),
+    rankingWeights:
+      parseExecutiveWeights(raw.rankingWeights) ??
+      DEFAULT_APP_SETTINGS.rankingWeights,
+    genAiRankingWeights:
+      parseExecutiveWeights(raw.genAiRankingWeights) ??
+      DEFAULT_APP_SETTINGS.genAiRankingWeights,
     genAiUsePremiumSynthesis:
       typeof raw.genAiUsePremiumSynthesis === "boolean"
         ? raw.genAiUsePremiumSynthesis
@@ -275,23 +293,28 @@ async function upgradeLegacyRankingWeightDefaults() {
   });
 
   const updates = settings.flatMap((setting) => {
-    const parsed = executiveRankingWeightsSchema.safeParse(setting.value);
-    if (!parsed.success) {
+    const legacyParsed = legacyExecutiveRankingWeightsSchema.safeParse(setting.value);
+
+    if (!legacyParsed.success) {
       return [];
     }
 
-    if (!weightsMatch(parsed.data, LEGACY_EXECUTIVE_BRIEF_RANKING_WEIGHTS)) {
-      return [];
-    }
-
-    if (weightsMatch(parsed.data, DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS)) {
-      return [];
-    }
+    const nextValue =
+      weightsMatchLegacy(
+        legacyParsed.data,
+        LEGACY_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+      ) ||
+      weightsMatchLegacy(
+        legacyParsed.data,
+        PREVIOUS_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+      )
+        ? DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS
+        : normalizeWeights(mapLegacyWeightsToVisible(legacyParsed.data));
 
     return [
       prisma.appSetting.update({
         where: { key: setting.key },
-        data: { value: DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS },
+        data: { value: nextValue },
       }),
     ];
   });
@@ -301,11 +324,15 @@ async function upgradeLegacyRankingWeightDefaults() {
   }
 }
 
-function weightsMatch(left: ExecutiveScoringWeights, right: ExecutiveScoringWeights) {
-  return (Object.keys(left) as Array<keyof ExecutiveScoringWeights>).every(
+function weightsMatchLegacy(
+  left: LegacyExecutiveScoringWeights,
+  right: LegacyExecutiveScoringWeights,
+) {
+  return LEGACY_EXECUTIVE_SCORE_COMPONENTS.every(
     (key) => Math.abs(left[key] - right[key]) < 0.0001,
   );
 }
+
 function normalizeWeights(weights: ExecutiveScoringWeights) {
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
 
@@ -326,5 +353,10 @@ function parseExecutiveWeights(value: unknown) {
     return parsed.data;
   }
 
-  return DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS;
+  const legacyParsed = legacyExecutiveRankingWeightsSchema.safeParse(value);
+  if (legacyParsed.success) {
+    return normalizeWeights(mapLegacyWeightsToVisible(legacyParsed.data));
+  }
+
+  return null;
 }

@@ -25,12 +25,9 @@ export type MaturityEstimate = (typeof MATURITY_ESTIMATES)[number];
 export const EXECUTIVE_SCORE_COMPONENTS = [
   "frontierRelevance",
   "capabilityImpact",
-  "trainingEconomicsImpact",
-  "inferenceEconomicsImpact",
-  "platformStackImpact",
-  "strategicBusinessImpact",
+  "realWorldImpact",
   "evidenceStrength",
-  "claritySignal",
+  "audiencePull",
 ] as const;
 
 export type ExecutiveScoreComponentKey = (typeof EXECUTIVE_SCORE_COMPONENTS)[number];
