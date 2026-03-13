@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { togglePublishedPaperAction } from "@/app/admin/actions";
@@ -116,8 +119,12 @@ export function AdminEditionTable({
     homePagePaperIds.length - homePageBriefReadyCount,
     0,
   );
-  const currentSortKey = readSortKey(sortKey);
-  const currentSortDirection = readSortDirection(sortDirection, currentSortKey);
+  const initialSortKey = readSortKey(sortKey);
+  const initialSortDirection = readSortDirection(sortDirection, initialSortKey);
+  const [currentSortKey, setCurrentSortKey] = useState<AdminEditionSortKey>(initialSortKey);
+  const [currentSortDirection, setCurrentSortDirection] = useState<AdminEditionSortDirection>(
+    initialSortDirection,
+  );
   const rows = papers.map((paper) => buildRow({
     paper,
     focusPaperId,
@@ -129,6 +136,22 @@ export function AdminEditionTable({
     compareRows(left, right, currentSortKey, currentSortDirection),
   );
   const activeSortLabel = getSortLabel(currentSortKey);
+
+  function handleSort(requestedSortKey: AdminEditionSortKey) {
+    const nextSortDirection = getNextSortDirection(
+      currentSortKey,
+      currentSortDirection,
+      requestedSortKey,
+    );
+
+    setCurrentSortKey(requestedSortKey);
+    setCurrentSortDirection(nextSortDirection);
+    replaceAdminSortUrl({
+      selectedDay,
+      sortDirection: nextSortDirection,
+      sortKey: requestedSortKey,
+    });
+  }
 
   return (
     <Card>
@@ -221,22 +244,22 @@ export function AdminEditionTable({
                       currentSortDirection={currentSortDirection}
                       currentSortKey={currentSortKey}
                       label="Live status"
+                      onSort={handleSort}
                       requestedSortKey="liveStatus"
-                      selectedDay={selectedDay}
                     />
                     <SortableHeader
                       currentSortDirection={currentSortDirection}
                       currentSortKey={currentSortKey}
                       label="Paper"
+                      onSort={handleSort}
                       requestedSortKey="paper"
-                      selectedDay={selectedDay}
                     />
                     <SortableHeader
                       currentSortDirection={currentSortDirection}
                       currentSortKey={currentSortKey}
                       label="Total"
+                      onSort={handleSort}
                       requestedSortKey="total"
-                      selectedDay={selectedDay}
                     />
                     {scoreColumns.map((column) => (
                       <SortableHeader
@@ -244,8 +267,8 @@ export function AdminEditionTable({
                         currentSortDirection={currentSortDirection}
                         currentSortKey={currentSortKey}
                         label={column.label}
+                        onSort={handleSort}
                         requestedSortKey={column.key}
-                        selectedDay={selectedDay}
                       />
                     ))}
                     <th className="px-3 py-2">Action</th>
@@ -385,42 +408,61 @@ function SortableHeader({
   currentSortDirection,
   requestedSortKey,
   label,
-  selectedDay,
+  onSort,
 }: {
   currentSortKey: AdminEditionSortKey;
   currentSortDirection: AdminEditionSortDirection;
   requestedSortKey: AdminEditionSortKey;
   label: string;
-  selectedDay: string | null;
+  onSort: (requestedSortKey: AdminEditionSortKey) => void;
 }) {
   const isActive = currentSortKey === requestedSortKey;
-  const nextDirection = getNextSortDirection(
-    currentSortKey,
-    currentSortDirection,
-    requestedSortKey,
-  );
-  const params = new URLSearchParams();
-  if (selectedDay) {
-    params.set("day", selectedDay);
-  }
-  params.set("sort", requestedSortKey);
-  params.set("dir", nextDirection);
 
   return (
-    <th className="px-3 py-2">
-      <Link
+    <th
+      aria-sort={
+        isActive
+          ? currentSortDirection === "asc"
+            ? "ascending"
+            : "descending"
+          : "none"
+      }
+      className="px-3 py-2"
+    >
+      <button
         className={cn(
           "inline-flex items-center gap-2 rounded-full px-2 py-1 transition-colors hover:bg-foreground/5 hover:text-foreground",
           isActive ? "text-foreground" : null,
         )}
-        href={`/admin?${params.toString()}`}
-        prefetch={false}
+        onClick={() => onSort(requestedSortKey)}
+        type="button"
       >
         <span>{label}</span>
         <span aria-hidden>{isActive ? (currentSortDirection === "asc" ? "^" : "v") : "<>"}</span>
-      </Link>
+      </button>
     </th>
   );
+}
+
+function replaceAdminSortUrl(input: {
+  selectedDay: string | null;
+  sortKey: AdminEditionSortKey;
+  sortDirection: AdminEditionSortDirection;
+}) {
+  const params = new URLSearchParams(window.location.search);
+
+  if (input.selectedDay) {
+    params.set("day", input.selectedDay);
+  } else {
+    params.delete("day");
+  }
+
+  params.set("sort", input.sortKey);
+  params.set("dir", input.sortDirection);
+
+  const query = params.toString();
+  const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+  window.history.replaceState(window.history.state, "", nextUrl);
 }
 
 function buildRow(input: {

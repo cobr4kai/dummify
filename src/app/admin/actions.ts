@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
@@ -26,8 +27,7 @@ export async function runDailyRefreshAction(formData: FormData) {
   await requireAdmin("/admin");
   const announcementDay = readString(formData.get("announcementDay"));
   const selectedDay = readString(formData.get("selectedDay"));
-  const sortKey = readString(formData.get("sort"));
-  const sortDirection = readString(formData.get("dir"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
   const result = await runIngestionJob({
@@ -55,8 +55,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
   const from = readString(formData.get("from"));
   const to = readString(formData.get("to"));
   const selectedDay = readString(formData.get("selectedDay"));
-  const sortKey = readString(formData.get("sort"));
-  const sortDirection = readString(formData.get("dir"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
   if (!from || !to) {
@@ -87,8 +86,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
 export async function updateSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
   const selectedDay = readString(formData.get("selectedDay"));
-  const sortKey = readString(formData.get("sort"));
-  const sortDirection = readString(formData.get("dir"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   const genAiRankingWeights = {
     frontierRelevance: Number(formData.get("frontierRelevance") ?? 0),
@@ -136,8 +134,7 @@ export async function updateSettingsAction(formData: FormData) {
 export async function resetSettingsAction(formData: FormData) {
   await requireAdmin("/admin");
   const selectedDay = readString(formData.get("selectedDay"));
-  const sortKey = readString(formData.get("sort"));
-  const sortDirection = readString(formData.get("dir"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   await resetAppSettings();
   revalidateAll();
@@ -152,8 +149,7 @@ export async function resetSettingsAction(formData: FormData) {
 export async function updateCategoriesAction(formData: FormData) {
   await requireAdmin("/admin");
   const selectedDay = readString(formData.get("selectedDay"));
-  const sortKey = readString(formData.get("sort"));
-  const sortDirection = readString(formData.get("dir"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
   const categories = await getCategoryConfigs();
 
   await updateCategoryConfigs(
@@ -179,8 +175,7 @@ export async function togglePublishedPaperAction(formData: FormData) {
   const announcementDay = readString(formData.get("announcementDay"));
   const paperId = readString(formData.get("paperId"));
   const published = readString(formData.get("published"));
-  const sortKey = readString(formData.get("sort"));
-  const sortDirection = readString(formData.get("dir"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   if (!announcementDay || !paperId) {
     redirect("/admin");
@@ -282,4 +277,36 @@ function readString(value: FormDataEntryValue | null) {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function readAdminSortState(formData: FormData) {
+  const refererSortState = await readAdminSortStateFromReferer();
+
+  return {
+    sortKey: refererSortState.sortKey ?? readString(formData.get("sort")),
+    sortDirection: refererSortState.sortDirection ?? readString(formData.get("dir")),
+  };
+}
+
+async function readAdminSortStateFromReferer() {
+  const referer = (await headers()).get("referer");
+  if (!referer) {
+    return {
+      sortKey: undefined,
+      sortDirection: undefined,
+    };
+  }
+
+  try {
+    const url = new URL(referer);
+    return {
+      sortKey: readString(url.searchParams.get("sort")),
+      sortDirection: readString(url.searchParams.get("dir")),
+    };
+  } catch {
+    return {
+      sortKey: undefined,
+      sortDirection: undefined,
+    };
+  }
 }

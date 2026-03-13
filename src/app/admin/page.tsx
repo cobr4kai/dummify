@@ -305,6 +305,12 @@ export default async function AdminPage({
           days={snapshot.days}
           featuredCount={snapshot.settings.genAiFeaturedCount}
           focusPaperId={focusPaperId}
+          key={[
+            snapshot.selectedDay ?? "no-day",
+            sortKey ?? "default-sort",
+            sortDirection ?? "default-dir",
+            focusPaperId ?? "no-focus",
+          ].join(":")}
           papers={snapshot.editionPapers}
           publishedPaperIds={snapshot.publishedPaperIds}
           selectedDay={snapshot.selectedDay}
