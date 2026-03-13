@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
@@ -27,9 +26,14 @@ export default async function Home({
     <PageShell
       currentPath="/"
       headerMeta={(
-        <Badge variant="muted">
-          {announcementDay ? `Edition ${formatShortDate(announcementDay)}` : "Edition unavailable"}
-        </Badge>
+        <div className="rounded-[24px] border border-border/80 bg-white/70 px-5 py-4 shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Edition date
+          </p>
+          <p className="mt-2 font-serif text-3xl leading-none text-foreground">
+            {announcementDay ? formatShortDate(announcementDay) : "No data"}
+          </p>
+        </div>
       )}
     >
       {papers.length === 0 ? (
