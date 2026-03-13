@@ -168,12 +168,24 @@
   border-color: var(--border);
 }
 
-.border,
-.border-t,
-.border-b,
-.border-l,
-.border-r {
+.border {
   border-width: 0.5px;
+}
+
+.border-t {
+  border-top-width: 0.5px;
+}
+
+.border-b {
+  border-bottom-width: 0.5px;
+}
+
+.border-l {
+  border-left-width: 0.5px;
+}
+
+.border-r {
+  border-right-width: 0.5px;
 }
 
 html {
