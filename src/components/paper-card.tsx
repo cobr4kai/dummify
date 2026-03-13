@@ -25,12 +25,8 @@ type PaperCardProps = {
     authorsText: string;
     categoriesJson: Prisma.JsonValue;
     abstractUrl: string;
-    scores: Array<{
-      totalScore: number;
-    }>;
     technicalBriefs: Array<{
       oneLineVerdict: string;
-      focusTagsJson: Prisma.JsonValue;
       bulletsJson: Prisma.JsonValue;
       sourceBasis: string;
       usedFallbackAbstract: boolean;
@@ -40,32 +36,31 @@ type PaperCardProps = {
 
 export function PaperCard({ paper }: PaperCardProps) {
   const brief = paper.technicalBriefs[0];
-  const categories = parseJsonValue(paper.categoriesJson, stringArraySchema, []);
-  const score = paper.scores[0];
-  const focusTags = parseJsonValue(brief?.focusTagsJson ?? [], stringArraySchema, []);
+  const categories = parseJsonValue(paper.categoriesJson, stringArraySchema, []).filter((category) =>
+    /^cs\.[A-Z]+$/i.test(category),
+  );
   const bullets = parseJsonValue(brief?.bulletsJson ?? [], bulletSchema, []);
 
   return (
     <Card className="p-6">
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="highlight">Score {Math.round(score?.totalScore ?? 0)}</Badge>
-          {focusTags.slice(0, 4).map((tag) => (
-            <Badge key={tag} variant="default">
-              {tag}
-            </Badge>
-          ))}
-          {categories.slice(0, 2).map((category) => (
-            <Badge key={category} variant="muted">
-              {category}
-            </Badge>
-          ))}
-        </div>
-
         <div className="space-y-3">
           <h3 className="font-serif text-[1.9rem] leading-[1.12] tracking-tight">
             {paper.title}
           </h3>
+          {categories.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {categories.map((category) => (
+                <Badge
+                  key={category}
+                  className="border border-border/70 bg-white/70 text-foreground/75"
+                  variant="muted"
+                >
+                  {category}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.95rem] leading-6 text-muted-foreground">
             <span>{paper.authorsText}</span>
             {brief?.sourceBasis ? (
