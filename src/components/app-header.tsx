@@ -41,7 +41,7 @@ export function AppHeader({
             <span className="editorial-display block text-[2.2rem] text-foreground sm:text-[2.65rem]">
               {APP_NAME}
             </span>
-            <span className="mt-2 block max-w-[24rem] text-sm leading-6 text-foreground/78 sm:text-[0.98rem]">
+            <span className="mt-2 block max-w-[24rem] text-sm leading-6 text-muted-foreground sm:text-[0.98rem]">
               {APP_TAGLINE}
             </span>
           </Link>

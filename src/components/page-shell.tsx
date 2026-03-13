@@ -25,7 +25,7 @@ export function PageShell({
       <div className={cn("mx-auto max-w-[1280px] px-4 pb-8 sm:px-6 lg:px-8", headerContent ? "pt-0" : "pt-6")}>
         {hero ? <section className={cn("mb-8", tone === "reader" ? "pt-2" : "pt-1")}>{hero}</section> : null}
         <main className={cn("pb-12", className)}>{children}</main>
-        <footer className="text-xs leading-5 text-muted-foreground">
+        <footer className="text-xs leading-5 text-dim-foreground">
           Thank you to arXiv for use of its open access interoperability. This product was not
           reviewed or approved by, nor does it necessarily express or reflect the policies or
           opinions of, arXiv.

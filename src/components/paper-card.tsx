@@ -59,7 +59,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
               {categories.map((category) => (
                 <Badge
                   key={category}
-                  className="panel-soft text-foreground/75"
+                  className="panel-soft text-muted-foreground"
                   variant="muted"
                 >
                   {category}

@@ -9,6 +9,7 @@
   --deep: #7c6428;
   --ink: #1c1608;
   --muted: #a89060;
+  --dim: #7c6428;
 
   --background: var(--bg0);
   --foreground: var(--ink);
@@ -53,8 +54,9 @@
   --bg2: #2c2510;
   --mid: #c4a84c;
   --deep: #7c6428;
-  --ink: #f0d870;
-  --muted: #7c6428;
+  --ink: #f2edd6;
+  --muted: #9a8860;
+  --dim: #6a5828;
 
   --background: var(--bg0);
   --foreground: var(--ink);
@@ -64,9 +66,9 @@
   --accent: var(--mid);
   --accent-foreground: var(--bg0);
   --accent-soft: color-mix(in srgb, var(--mid) 18%, var(--bg1) 82%);
-  --highlight: var(--mid);
-  --highlight-soft: color-mix(in srgb, var(--mid) 12%, var(--bg1) 88%);
-  --muted-surface: color-mix(in srgb, var(--bg2) 72%, var(--bg1) 28%);
+  --highlight: var(--deep);
+  --highlight-soft: color-mix(in srgb, var(--deep) 16%, var(--bg1) 84%);
+  --muted-surface: var(--bg2);
   --muted-foreground: var(--muted);
   --success: #9dbf83;
   --success-soft: rgba(157, 191, 131, 0.14);
@@ -77,7 +79,7 @@
   --page-glow-a: rgba(196, 168, 76, 0.08);
   --page-glow-b: rgba(124, 100, 40, 0.18);
   --page-top-wash: rgba(255, 255, 255, 0.03);
-  --surface-bg: color-mix(in srgb, var(--bg1) 92%, black 8%);
+  --surface-bg: var(--bg1);
   --surface-muted-bg: color-mix(in srgb, var(--bg1) 86%, var(--bg0) 14%);
   --panel-bg: color-mix(in srgb, var(--bg1) 82%, var(--bg0) 18%);
   --stat-bg: color-mix(in srgb, var(--bg1) 88%, var(--bg0) 12%);
@@ -100,8 +102,9 @@
     --bg2: #2c2510;
     --mid: #c4a84c;
     --deep: #7c6428;
-    --ink: #f0d870;
-    --muted: #7c6428;
+    --ink: #f2edd6;
+    --muted: #9a8860;
+    --dim: #6a5828;
 
     --background: var(--bg0);
     --foreground: var(--ink);
@@ -111,9 +114,9 @@
     --accent: var(--mid);
     --accent-foreground: var(--bg0);
     --accent-soft: color-mix(in srgb, var(--mid) 18%, var(--bg1) 82%);
-    --highlight: var(--mid);
-    --highlight-soft: color-mix(in srgb, var(--mid) 12%, var(--bg1) 88%);
-    --muted-surface: color-mix(in srgb, var(--bg2) 72%, var(--bg1) 28%);
+    --highlight: var(--deep);
+    --highlight-soft: color-mix(in srgb, var(--deep) 16%, var(--bg1) 84%);
+    --muted-surface: var(--bg2);
     --muted-foreground: var(--muted);
     --success: #9dbf83;
     --success-soft: rgba(157, 191, 131, 0.14);
@@ -124,7 +127,7 @@
     --page-glow-a: rgba(196, 168, 76, 0.08);
     --page-glow-b: rgba(124, 100, 40, 0.18);
     --page-top-wash: rgba(255, 255, 255, 0.03);
-    --surface-bg: color-mix(in srgb, var(--bg1) 92%, black 8%);
+    --surface-bg: var(--bg1);
     --surface-muted-bg: color-mix(in srgb, var(--bg1) 86%, var(--bg0) 14%);
     --panel-bg: color-mix(in srgb, var(--bg1) 82%, var(--bg0) 18%);
     --stat-bg: color-mix(in srgb, var(--bg1) 88%, var(--bg0) 12%);
@@ -148,6 +151,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-muted: var(--muted-surface);
   --color-muted-foreground: var(--muted-foreground);
+  --color-dim-foreground: var(--dim);
   --color-border: var(--border);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
@@ -280,8 +284,8 @@ a {
 
 .nav-link-active {
   border-color: var(--mid);
-  background: color-mix(in srgb, var(--mid) 16%, var(--bg1) 84%);
-  color: var(--foreground);
+  background: var(--accent);
+  color: var(--accent-foreground);
   box-shadow: var(--shadow-inset);
 }
 
@@ -345,6 +349,7 @@ a {
 
 .editorial-kicker,
 .eyebrow {
+  color: var(--dim);
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }

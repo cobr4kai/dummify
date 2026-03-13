@@ -23,7 +23,7 @@ export default async function Home() {
             <h1 className="editorial-display text-3xl text-foreground sm:text-[3.45rem] lg:text-[3rem]">
               {APP_NAME}
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-foreground/78 sm:text-[1.18rem] sm:leading-8 lg:text-[1.28rem] lg:leading-[1.45]">
+            <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground sm:text-[1.18rem] sm:leading-8 lg:text-[1.28rem] lg:leading-[1.45]">
               {APP_TAGLINE}
             </p>
           </div>

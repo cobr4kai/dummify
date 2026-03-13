@@ -96,7 +96,7 @@ export default async function PaperDetailPage({
               <h1 className="editorial-title mt-5 text-[2.9rem] text-foreground sm:text-[3.5rem] lg:text-[4rem]">
                 {paper.title}
               </h1>
-              <p className="mt-4 max-w-3xl text-base leading-7 text-foreground/78 sm:text-lg sm:leading-8">
+              <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
                 {paper.authorsText}
               </p>
             </div>
