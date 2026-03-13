@@ -110,13 +110,6 @@ export default async function PaperDetailPage({
                   View on arXiv
                 </a>
               </Button>
-              {paper.pdfUrl ? (
-                <Button asChild size="sm" variant="secondary">
-                  <a href={paper.pdfUrl} rel="noreferrer" target="_blank">
-                    Official PDF
-                  </a>
-                </Button>
-              ) : null}
             </div>
           </div>
         </section>

@@ -38,13 +38,10 @@ export function AppHeader({
       ) : (
         <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <Link href="/" className="min-w-0">
-            <span className="block text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-              Editorial brief
-            </span>
-            <span className="mt-1 block text-lg font-medium tracking-[-0.03em] text-foreground">
+            <span className="editorial-display block text-[2.2rem] text-foreground sm:text-[2.65rem]">
               {APP_NAME}
             </span>
-            <span className="mt-1 hidden text-sm text-muted-foreground sm:block">
+            <span className="mt-2 block max-w-[24rem] text-sm leading-6 text-foreground/78 sm:text-[0.98rem]">
               {APP_TAGLINE}
             </span>
           </Link>
