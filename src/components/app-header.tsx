@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { cn } from "@/lib/utils/cn";
 
@@ -70,7 +69,6 @@ export function AppHeader({
               })}
             </nav>
             {navMeta ? <div className="flex flex-wrap items-center gap-2 lg:ml-2">{navMeta}</div> : null}
-            <ThemeToggle className="lg:ml-2" />
           </div>
         </div>
       )}

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
 import { getDailyBrief } from "@/lib/search/service";
 import { formatShortDate } from "@/lib/utils/dates";
@@ -29,7 +28,6 @@ export default async function Home() {
             </p>
           </div>
           <div className="mt-5 flex flex-col gap-3 lg:mt-1 lg:w-full lg:max-w-[18rem] lg:items-end">
-            <ThemeToggle className="self-start lg:self-end" />
             <Link
               className="block w-full rounded-[28px] transition-transform duration-200 hover:-translate-y-0.5"
               href="/archive"

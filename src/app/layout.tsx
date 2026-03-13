@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond, Outfit } from "next/font/google";
 import Script from "next/script";
 import { ParticleField } from "@/components/particle-field";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { themeInitScript } from "@/lib/theme";
 import "./globals.css";
 
@@ -44,6 +45,7 @@ export default function RootLayout({
         </Script>
         <ParticleField />
         <div className="app-chrome">{children}</div>
+        <ThemeToggle className="fixed bottom-4 right-4 z-40 gap-1.5 sm:bottom-5 sm:right-5" />
       </body>
     </html>
   );

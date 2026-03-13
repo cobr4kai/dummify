@@ -1,6 +1,5 @@
 "use client";
 
-import { MoonStar, SunMedium } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { DEFAULT_THEME, isThemeMode, THEME_STORAGE_KEY, type ThemeMode } from "@/lib/theme";
 import { cn } from "@/lib/utils/cn";
@@ -32,17 +31,17 @@ export function ThemeToggle({
   return (
     <div
       className={cn(
-        "panel-soft inline-flex shrink-0 items-center gap-2 rounded-full px-2.5 py-1.5 text-muted-foreground",
+        "inline-flex shrink-0 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground",
         className,
       )}
     >
-      <SunMedium className={cn("h-3.5 w-3.5", !isDark && "text-foreground")} />
+      <span className={cn("transition-colors", !isDark && "text-foreground")}>Light</span>
       <Switch
         aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
         checked={isDark}
         onCheckedChange={handleCheckedChange}
       />
-      <MoonStar className={cn("h-3.5 w-3.5", isDark && "text-foreground")} />
+      <span className={cn("transition-colors", isDark && "text-foreground")}>Dark</span>
     </div>
   );
 }
