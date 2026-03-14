@@ -3,7 +3,7 @@ import type { ExecutiveScoringWeights } from "@/lib/types";
 
 export const APP_NAME = "Abstracted";
 export const APP_TAGLINE =
-  "arXiv papers, translated beyond the lab.";
+  "A weekly digest of the most commercially relevant arXiv papers for operators, PMs, investors, and non-research engineers.";
 export const PROJECT_CODENAME = "arXiv for Dummies";
 
 export const DEFAULT_CATEGORIES = [
