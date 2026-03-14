@@ -27,7 +27,7 @@ export default async function Home() {
               {APP_TAGLINE}
             </p>
           </div>
-          <div className="mt-5 flex flex-col gap-3 lg:mt-1 lg:w-full lg:max-w-[18rem] lg:items-end">
+          <div className="mt-5 flex flex-col gap-3 lg:mt-1 lg:w-full lg:max-w-[22rem] lg:items-end">
             <Link
               className="block w-full rounded-[28px] transition-transform duration-200 hover:-translate-y-0.5"
               href="/archive"
@@ -36,10 +36,10 @@ export default async function Home() {
                 <p className="eyebrow text-[11px] font-medium text-muted-foreground">
                   Edition week
                 </p>
-                <p className="editorial-title mt-2 text-[1.95rem] text-foreground sm:text-[2.1rem]">
+                <p className="editorial-title mt-2 whitespace-nowrap text-[1.7rem] leading-none text-foreground sm:text-[1.9rem]">
                   {weekLabel ?? "No live edition"}
                 </p>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 whitespace-nowrap text-sm text-muted-foreground">
                   {weekStart ? formatWeekRange(weekStart) : "No completed week has been curated yet."}
                 </p>
               </div>
