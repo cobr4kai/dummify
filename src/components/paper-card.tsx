@@ -7,12 +7,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { parseJsonValue } from "@/lib/utils/json";
-
-const stringArraySchema = z.array(z.string());
 const bulletSchema = z.array(
   z.object({
     label: z.string().optional(),
@@ -41,9 +38,6 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
   const verdict = brief?.oneLineVerdict
     ? stripTechnicalBriefHeading(brief.oneLineVerdict)
     : "";
-  const categories = parseJsonValue(paper.categoriesJson, stringArraySchema, []).filter((category) =>
-    /^cs\.[A-Z]+$/i.test(category),
-  );
   const bullets = parseJsonValue(brief?.bulletsJson ?? [], bulletSchema, []);
 
   return (
@@ -54,19 +48,6 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
           <h3 className="editorial-title text-[2rem] text-foreground">
             {paper.title}
           </h3>
-          {categories.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {categories.map((category) => (
-                <Badge
-                  key={category}
-                  className="panel-soft text-muted-foreground"
-                  variant="muted"
-                >
-                  {category}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.95rem] leading-6 text-muted-foreground">
             <span>{paper.authorsText}</span>
             <span className="text-border">/</span>

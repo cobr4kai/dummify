@@ -25,7 +25,6 @@ import { parseJsonValue } from "@/lib/utils/json";
 
 export const dynamic = "force-dynamic";
 
-const stringArraySchema = z.array(z.string());
 const bulletSchema = z.array(
   z.object({
     label: z.string().optional(),
@@ -63,7 +62,6 @@ export default async function PaperDetailPage({
   const detailNotice = getPaperDetailNotice(
     typeof query.notice === "string" ? query.notice : null,
   );
-  const categories = parseJsonValue(paper.categoriesJson, stringArraySchema, []);
   const adminEditableBullets = parseJsonValue(
     technicalBrief?.bulletsJson ?? [],
     bulletSchema,
@@ -87,11 +85,6 @@ export default async function PaperDetailPage({
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="highlight">arXiv {paper.arxivId}v{paper.version}</Badge>
                 <Badge variant="muted">{formatShortDate(paper.announcementDay)}</Badge>
-                {categories.map((category) => (
-                  <Badge key={category} variant="muted">
-                    {category}
-                  </Badge>
-                ))}
               </div>
               <h1 className="editorial-title mt-5 text-[2.9rem] text-foreground sm:text-[3.5rem] lg:text-[4rem]">
                 {paper.title}
