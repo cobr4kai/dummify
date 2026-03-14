@@ -819,6 +819,13 @@ function getAdminNotice(input: {
           "That paper was removed from the curated set for the selected week. If no curated papers remain for that week, the homepage for that week will stay empty until you add papers back.",
         variant: "highlight",
       };
+    case "homepage-order-saved":
+      return {
+        title: "Homepage order updated",
+        description:
+          "The curated homepage sequence was updated. The public homepage now uses this order for the selected week.",
+        variant: "success",
+      };
     default:
       return null;
   }

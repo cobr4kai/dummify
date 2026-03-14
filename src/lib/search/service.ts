@@ -122,6 +122,26 @@ function buildEditionWeek(weekStart: string): EditionWeek {
   };
 }
 
+function orderPapersByPublishedSequence<T extends { id: string }>(
+  papers: T[],
+  orderedPaperIds: string[],
+) {
+  const orderedIndex = new Map(
+    orderedPaperIds.map((paperId, index) => [paperId, index]),
+  );
+
+  return [...papers].sort((left, right) => {
+    const leftIndex = orderedIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = orderedIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex;
+    }
+
+    return 0;
+  });
+}
+
 function sortEditionPapers<
   T extends {
     scores: Array<{
@@ -215,7 +235,6 @@ export async function getWeeklyBrief(options: {
   }
 
   const category = options.category ?? "all";
-  const sort = options.sort ?? "score";
   const publishedPaperIds = await getPublishedPaperIdsForWeek(resolvedWeekStart);
   const editionWeek = buildEditionWeek(resolvedWeekStart);
 
@@ -269,16 +288,7 @@ export async function getWeeklyBrief(options: {
     },
   });
 
-  const filtered = papers.sort((left, right) => {
-    const leftScore = left.scores[0]?.totalScore ?? 0;
-    const rightScore = right.scores[0]?.totalScore ?? 0;
-
-    if (sort === "date") {
-      return new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime();
-    }
-
-    return rightScore - leftScore;
-  });
+  const filtered = orderPapersByPublishedSequence(papers, publishedPaperIds);
 
   return {
     papers: filtered,

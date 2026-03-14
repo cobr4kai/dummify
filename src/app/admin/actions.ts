@@ -6,7 +6,10 @@ import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
 import { runIngestionJob } from "@/lib/ingestion/service";
-import { setPublishedPaperState } from "@/lib/publishing/service";
+import {
+  reorderPublishedPaperForWeek,
+  setPublishedPaperState,
+} from "@/lib/publishing/service";
 import {
   getCategoryConfigs,
   resetAppSettings,
@@ -236,6 +239,33 @@ export async function togglePublishedPaperAction(formData: FormData) {
     focusPaperId: paperId,
     notice: nextPublishedState ? "paper-published" : "paper-removed",
     briefStatus,
+    sortKey,
+    sortDirection,
+  });
+}
+
+export async function reorderPublishedPaperAction(formData: FormData) {
+  await requireAdmin("/admin");
+  const weekStart = readString(formData.get("weekStart"));
+  const paperId = readString(formData.get("paperId"));
+  const direction = readString(formData.get("direction"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
+
+  if (!weekStart || !paperId || (direction !== "up" && direction !== "down")) {
+    redirect("/admin");
+  }
+
+  await reorderPublishedPaperForWeek({
+    weekStart,
+    paperId,
+    direction,
+  });
+
+  revalidateAll();
+  redirectToAdmin({
+    selectedWeek: weekStart,
+    focusPaperId: paperId,
+    notice: "homepage-order-saved",
     sortKey,
     sortDirection,
   });

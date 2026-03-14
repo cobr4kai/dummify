@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { togglePublishedPaperAction } from "@/app/admin/actions";
+import {
+  reorderPublishedPaperAction,
+  togglePublishedPaperAction,
+} from "@/app/admin/actions";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,6 +83,7 @@ type AdminEditionRow = {
   pendingLabel: string;
   liveStatusRank: number;
   totalScore: number;
+  publishedOrder: number | null;
 };
 
 export function AdminEditionTable({
@@ -93,6 +97,9 @@ export function AdminEditionTable({
   papers,
 }: AdminEditionTableProps) {
   const publishedSet = new Set(publishedPaperIds);
+  const publishedOrderMap = new Map(
+    publishedPaperIds.map((paperId, index) => [paperId, index]),
+  );
   const hasCuratedHomepage = publishedPaperIds.length > 0;
   const homePagePaperIds = publishedPaperIds;
   const homePageSet = new Set(homePagePaperIds);
@@ -120,6 +127,7 @@ export function AdminEditionTable({
     hasCuratedHomepage,
     homePageSet,
     publishedSet,
+    publishedOrderMap,
   }));
   const sortedRows = [...rows].sort((left, right) =>
     compareRows(left, right, currentSortKey, currentSortDirection),
@@ -244,6 +252,12 @@ export function AdminEditionTable({
                   No papers are selected for this week yet.
                 </p>
               )}
+              {homePagePaperIds.length > 1 ? (
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  Use the up and down arrows in each selected row to set the exact homepage order.
+                  The public homepage now follows that curated sequence.
+                </p>
+              ) : null}
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
                 Click any column heading to sort. Active sort: {activeSortLabel} ({formatSortDirectionLabel(currentSortKey, currentSortDirection)}).
               </p>
@@ -328,6 +342,11 @@ export function AdminEditionTable({
                           >
                             {row.briefLabel}
                           </Badge>
+                          {row.publishedOrder !== null ? (
+                            <Badge variant="highlight">
+                              Homepage slot {row.publishedOrder + 1}
+                            </Badge>
+                          ) : null}
                         </div>
                       </td>
                       <td className="max-w-[420px] px-3 py-4">
@@ -363,33 +382,75 @@ export function AdminEditionTable({
                         </td>
                       ))}
                       <td className="rounded-r-[20px] px-3 py-4">
-                        <form action={togglePublishedPaperAction}>
-                          <SortStateInputs
-                            sortDirection={currentSortDirection}
-                            sortKey={currentSortKey}
-                          />
-                          <input name="announcementDay" type="hidden" value={row.paper.announcementDay} />
-                          <input name="paperId" type="hidden" value={row.paper.id} />
-                          <input
-                            name="published"
-                            type="hidden"
-                            value={row.isPublished ? "false" : "true"}
-                          />
-                          <AdminSubmitButton
-                            className="w-full"
-                            idleLabel={row.actionLabel}
-                            pendingLabel={row.pendingLabel}
-                            size="sm"
-                            type="submit"
-                            variant={
-                              row.isPublished
-                                ? "danger"
-                                : row.isOnHomepage
-                                  ? "default"
-                                  : "secondary"
-                            }
-                          />
-                        </form>
+                        <div className="space-y-2">
+                          <form action={togglePublishedPaperAction}>
+                            <SortStateInputs
+                              sortDirection={currentSortDirection}
+                              sortKey={currentSortKey}
+                            />
+                            <input name="announcementDay" type="hidden" value={row.paper.announcementDay} />
+                            <input name="paperId" type="hidden" value={row.paper.id} />
+                            <input
+                              name="published"
+                              type="hidden"
+                              value={row.isPublished ? "false" : "true"}
+                            />
+                            <AdminSubmitButton
+                              className="w-full"
+                              idleLabel={row.actionLabel}
+                              pendingLabel={row.pendingLabel}
+                              size="sm"
+                              type="submit"
+                              variant={
+                                row.isPublished
+                                  ? "danger"
+                                  : row.isOnHomepage
+                                    ? "default"
+                                    : "secondary"
+                              }
+                            />
+                          </form>
+                          {selectedWeek && row.publishedOrder !== null ? (
+                            <div className="flex gap-2">
+                              <form action={reorderPublishedPaperAction} className="flex-1">
+                                <SortStateInputs
+                                  sortDirection={currentSortDirection}
+                                  sortKey={currentSortKey}
+                                />
+                                <input name="weekStart" type="hidden" value={selectedWeek} />
+                                <input name="paperId" type="hidden" value={row.paper.id} />
+                                <input name="direction" type="hidden" value="up" />
+                                <Button
+                                  className="w-full"
+                                  disabled={row.publishedOrder === 0}
+                                  size="sm"
+                                  type="submit"
+                                  variant="ghost"
+                                >
+                                  Move up
+                                </Button>
+                              </form>
+                              <form action={reorderPublishedPaperAction} className="flex-1">
+                                <SortStateInputs
+                                  sortDirection={currentSortDirection}
+                                  sortKey={currentSortKey}
+                                />
+                                <input name="weekStart" type="hidden" value={selectedWeek} />
+                                <input name="paperId" type="hidden" value={row.paper.id} />
+                                <input name="direction" type="hidden" value="down" />
+                                <Button
+                                  className="w-full"
+                                  disabled={row.publishedOrder === homePagePaperIds.length - 1}
+                                  size="sm"
+                                  type="submit"
+                                  variant="ghost"
+                                >
+                                  Move down
+                                </Button>
+                              </form>
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -487,6 +548,7 @@ function buildRow(input: {
   hasCuratedHomepage: boolean;
   homePageSet: Set<string>;
   publishedSet: Set<string>;
+  publishedOrderMap: Map<string, number>;
 }): AdminEditionRow {
   const score = input.paper.scores[0];
   const breakdown = normalizeExecutiveScoreBreakdown(
@@ -519,6 +581,7 @@ function buildRow(input: {
     (isOnHomepage ? 100 : 0) +
     (hasPdfBrief ? 20 : briefState === "abstract-fallback" ? 10 : 0) +
     (isPublished ? 5 : 0);
+  const publishedOrder = input.publishedOrderMap.get(input.paper.id) ?? null;
 
   return {
     paper: input.paper,
@@ -535,6 +598,7 @@ function buildRow(input: {
     pendingLabel,
     liveStatusRank,
     totalScore: score?.totalScore ?? -1,
+    publishedOrder,
   };
 }
 
