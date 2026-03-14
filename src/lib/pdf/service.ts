@@ -1,7 +1,5 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { WorkerMessageHandler } from "pdfjs-dist/legacy/build/pdf.worker.mjs";
 import { PdfExtractionStatus, type Paper } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { PdfExtractionResult, PdfPageText } from "@/lib/types";
@@ -10,13 +8,13 @@ import { normalizeWhitespace } from "@/lib/utils/strings";
 const PDF_CHUNK_MAX_CHARS = 18000;
 const pdfjsGlobal = globalThis as typeof globalThis & {
   pdfjsWorker?: {
-    WorkerMessageHandler: typeof WorkerMessageHandler;
+    WorkerMessageHandler: typeof import("pdfjs-dist/legacy/build/pdf.worker.mjs").WorkerMessageHandler;
+  };
+  pdfjsRuntime?: {
+    getDocument: typeof import("pdfjs-dist/legacy/build/pdf.mjs").getDocument;
+    WorkerMessageHandler: typeof import("pdfjs-dist/legacy/build/pdf.worker.mjs").WorkerMessageHandler;
   };
 };
-
-if (!pdfjsGlobal.pdfjsWorker) {
-  pdfjsGlobal.pdfjsWorker = { WorkerMessageHandler };
-}
 
 export async function ensurePaperPdfExtraction(
   paper: Pick<Paper, "id" | "arxivId" | "version" | "pdfUrl" | "abstract">,
@@ -160,6 +158,7 @@ export function chunkPdfPages(pages: PdfPageText[], maxChars = PDF_CHUNK_MAX_CHA
 }
 
 async function extractPdfPages(pdfBuffer: Buffer): Promise<PdfPageText[]> {
+  const { getDocument } = await loadPdfJsRuntime();
   const document = await getDocument({
     data: new Uint8Array(pdfBuffer),
     useSystemFonts: false,
@@ -239,4 +238,21 @@ async function fileExists(filePath: string) {
   } catch {
     return false;
   }
+}
+
+async function loadPdfJsRuntime() {
+  if (!pdfjsGlobal.pdfjsRuntime) {
+    const [{ getDocument }, { WorkerMessageHandler }] = await Promise.all([
+      import("pdfjs-dist/legacy/build/pdf.mjs"),
+      import("pdfjs-dist/legacy/build/pdf.worker.mjs"),
+    ]);
+
+    pdfjsGlobal.pdfjsWorker = { WorkerMessageHandler };
+    pdfjsGlobal.pdfjsRuntime = {
+      getDocument,
+      WorkerMessageHandler,
+    };
+  }
+
+  return pdfjsGlobal.pdfjsRuntime;
 }
