@@ -22,6 +22,7 @@ import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { isManualTechnicalBriefProvider } from "@/lib/technical/service";
 import { formatLongDateTime, formatShortDate } from "@/lib/utils/dates";
 import { parseJsonValue } from "@/lib/utils/json";
+import { formatDisplayAuthors } from "@/lib/utils/strings";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,7 @@ export default async function PaperDetailPage({
   const editableVerdict = technicalBrief
     ? stripTechnicalBriefHeading(technicalBrief.oneLineVerdict)
     : "";
+  const displayAuthorsText = formatDisplayAuthors(paper.authorsText);
   const openAlex = paper.enrichments
     .map((enrichment) => parseJsonValue(enrichment.payload, openAlexSchema, {}))
     .find((value) => Object.keys(value).length > 0);
@@ -90,7 +92,7 @@ export default async function PaperDetailPage({
                 {paper.title}
               </h1>
               <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-                {paper.authorsText}
+                {displayAuthorsText}
               </p>
               </div>
 
@@ -396,7 +398,7 @@ export default async function PaperDetailPage({
                 </p>
                 <h3 className="editorial-title mt-2 text-3xl text-foreground">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {item.authorsText}
+                  {formatDisplayAuthors(item.authorsText)}
                 </p>
                 <div className="mt-4 flex gap-3">
                   <Button asChild size="sm">

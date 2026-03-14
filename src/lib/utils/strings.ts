@@ -37,3 +37,20 @@ export function canonicalizeArxivId(rawId: string) {
     versionedId: `${arxivId}v${version}`,
   };
 }
+
+export function formatDisplayAuthors(authorsText: string, maxVisibleAuthors = 3) {
+  const authors = authorsText
+    .split(/\s*,\s*/)
+    .map((author) => normalizeWhitespace(author))
+    .filter(Boolean);
+
+  if (authors.length === 0) {
+    return normalizeWhitespace(authorsText);
+  }
+
+  if (authors.length <= maxVisibleAuthors) {
+    return authors.join(", ");
+  }
+
+  return `${authors[0]} et al.`;
+}

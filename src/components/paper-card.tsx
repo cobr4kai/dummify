@@ -10,6 +10,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { parseJsonValue } from "@/lib/utils/json";
+import { formatDisplayAuthors } from "@/lib/utils/strings";
 const bulletSchema = z.array(
   z.object({
     label: z.string().optional(),
@@ -39,6 +40,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
     ? stripTechnicalBriefHeading(brief.oneLineVerdict)
     : "";
   const bullets = parseJsonValue(brief?.bulletsJson ?? [], bulletSchema, []);
+  const displayAuthorsText = formatDisplayAuthors(paper.authorsText);
 
   return (
     <Card className="p-6">
@@ -49,7 +51,7 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
             {paper.title}
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.95rem] leading-6 text-muted-foreground">
-            <span>{paper.authorsText}</span>
+            <span>{displayAuthorsText}</span>
             <span className="text-border">/</span>
             <a
               href={paper.abstractUrl}
