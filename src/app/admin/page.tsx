@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AdminSectionNav } from "@/components/admin-section-nav";
 import { AdminEditionTable } from "@/components/admin-edition-table";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { PageShell } from "@/components/page-shell";
@@ -127,6 +128,7 @@ export default async function AdminPage({
             <p className="mt-3 max-w-2xl text-sm leading-6 text-foreground/78 sm:text-base">
               Run manual daily ingest jobs, curate the live weekly edition, and inspect the health of the briefing pipeline without leaving the workspace.
             </p>
+            <AdminSectionNav currentPath="/admin" />
           </div>
           <div className="mt-5 flex flex-wrap gap-2 lg:mt-0">
             <Badge variant={snapshot.activeHomepageIsCurated ? "success" : "muted"}>

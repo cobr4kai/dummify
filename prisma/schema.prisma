@@ -260,3 +260,16 @@ model PublishedPaper {
   @@index([announcementDay])
   @@index([paperId])
 }
+
+model EmailSignup {
+  id               String   @id @default(cuid())
+  normalizedEmail  String   @unique
+  email            String
+  submissionCount  Int      @default(1)
+  lastSubmittedAt  DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([lastSubmittedAt])
+}

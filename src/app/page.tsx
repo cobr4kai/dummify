@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignupBox } from "@/components/signup-box";
 import { EmptyState } from "@/components/empty-state";
 import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
@@ -8,11 +9,21 @@ import { formatWeekRange } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+type SearchParams = Promise<{
+  signup?: string;
+}>;
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const params = await searchParams;
   const { papers, weekLabel, weekStart } = await getDailyBrief({
     category: "all",
     sort: "score",
   });
+  const signupStatus = readSignupStatus(params.signup);
 
   return (
     <PageShell
@@ -47,6 +58,7 @@ export default async function Home() {
           </div>
         </div>
       )}
+      hero={<SignupBox layout="horizontal" status={signupStatus} />}
     >
       {papers.length === 0 ? (
         <EmptyState
@@ -63,4 +75,12 @@ export default async function Home() {
       )}
     </PageShell>
   );
+}
+
+function readSignupStatus(input: string | undefined) {
+  if (input === "success" || input === "invalid" || input === "error") {
+    return input;
+  }
+
+  return null;
 }
