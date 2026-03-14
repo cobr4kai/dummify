@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const PARTICLE_COUNT = 260;
+const DESKTOP_MIN_WIDTH = 1024;
 const MOUSE_RADIUS = 134;
 const DRAG = 0.997;
 const POINTER_FORCE = 0.006;
@@ -34,6 +35,7 @@ type Viewport = {
   width: number;
   height: number;
   dpr: number;
+  isDesktop: boolean;
 };
 
 type MouseState = {
@@ -163,7 +165,7 @@ export function ParticleField() {
     const sizes = new Float32Array(PARTICLE_COUNT);
     const alphas = new Float32Array(PARTICLE_COUNT);
     const particles = new Array<Particle>(PARTICLE_COUNT);
-    const viewport: Viewport = { width: 0, height: 0, dpr: 1 };
+    const viewport: Viewport = { width: 0, height: 0, dpr: 1, isDesktop: false };
     const mouse: MouseState = { active: false, x: 0, y: 0 };
 
     let rafId = 0;
@@ -178,6 +180,7 @@ export function ParticleField() {
       viewport.width = width;
       viewport.height = height;
       viewport.dpr = dpr;
+      viewport.isDesktop = width >= DESKTOP_MIN_WIDTH;
 
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
@@ -197,6 +200,7 @@ export function ParticleField() {
     }
 
     function resetParticle(index: number, randomizeAge = false) {
+      const profile = getParticleProfile(viewport.isDesktop);
       const direction = Math.random() * Math.PI * 2;
       const speed = randomInRange(SPEED_MIN, SPEED_MAX);
       const life = randomInRange(LIFE_MIN, LIFE_MAX);
@@ -208,8 +212,11 @@ export function ParticleField() {
         vy: Math.sin(direction) * speed,
         driftX: Math.cos(direction) * speed,
         driftY: Math.sin(direction) * speed,
-        size: randomInRange(SIZE_MIN, SIZE_MAX),
-        alphaPeak: randomInRange(ALPHA_MIN, ALPHA_MAX),
+        size: randomInRange(SIZE_MIN, SIZE_MAX) * profile.sizeMultiplier,
+        alphaPeak: Math.min(
+          randomInRange(ALPHA_MIN, ALPHA_MAX) * profile.alphaMultiplier,
+          0.9,
+        ),
         age: randomizeAge ? Math.random() * life : 0,
         life,
       };
@@ -222,7 +229,8 @@ export function ParticleField() {
     }
 
     function updateParticles() {
-      const radiusSquared = MOUSE_RADIUS * MOUSE_RADIUS;
+      const pointerRadius = viewport.isDesktop ? MOUSE_RADIUS * 1.2 : MOUSE_RADIUS;
+      const radiusSquared = pointerRadius * pointerRadius;
 
       for (let index = 0; index < PARTICLE_COUNT; index += 1) {
         const particle = particles[index];
@@ -244,7 +252,11 @@ export function ParticleField() {
           if (distanceSquared <= radiusSquared) {
             const distance = Math.max(Math.sqrt(distanceSquared), 0.0001);
             const direction = themeMode === "dark" ? -1 : 1;
-            const force = ((MOUSE_RADIUS - distance) / MOUSE_RADIUS) * POINTER_FORCE * direction;
+            const force =
+              ((pointerRadius - distance) / pointerRadius) *
+              POINTER_FORCE *
+              (viewport.isDesktop ? 1.2 : 1) *
+              direction;
             current.vx += (dx / distance) * force;
             current.vy += (dy / distance) * force;
           }
@@ -452,4 +464,18 @@ function resolveThemeMode(query: MediaQueryList): ThemeMode {
   }
 
   return query.matches ? "dark" : "light";
+}
+
+function getParticleProfile(isDesktop: boolean) {
+  if (!isDesktop) {
+    return {
+      sizeMultiplier: 1,
+      alphaMultiplier: 1,
+    };
+  }
+
+  return {
+    sizeMultiplier: 1.4,
+    alphaMultiplier: 1.55,
+  };
 }
