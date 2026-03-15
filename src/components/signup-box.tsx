@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils/cn";
 type SignupStatus = "success" | "invalid" | "error" | null;
 
 const signupMessages: Record<Exclude<SignupStatus, null>, string> = {
-  success: "You're on the list. We'll send the next operator-focused update your way.",
+  success: "You're on the list. We'll send the next update your way.",
   invalid: "Enter a valid email address to join the list.",
   error: "Something went wrong while saving your signup. Please try again.",
 };
