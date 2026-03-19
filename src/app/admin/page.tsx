@@ -14,10 +14,17 @@ import {
   updateSettingsAction,
 } from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/auth";
+import { getBriefPath } from "@/lib/brief-paths";
 import { env } from "@/lib/env";
+import {
+  executiveScoreBreakdownRecordSchema,
+  normalizeExecutiveScoreBreakdown,
+} from "@/lib/scoring/model";
 import { EXECUTIVE_SCORE_COMPONENT_METADATA } from "@/lib/scoring/model";
 import { getAdminSnapshot } from "@/lib/search/service";
+import { getHomepageBriefState } from "@/lib/technical/brief-status";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
+import { parseJsonValue } from "@/lib/utils/json";
 import {
   formatWeekLabel,
   formatLongDateTime,
@@ -102,6 +109,28 @@ export default async function AdminPage({
   const focusPaperId = typeof params.focusPaper === "string" && params.focusPaper
     ? params.focusPaper
     : null;
+  const editionTablePapers = snapshot.editionPapers.map((paper) => {
+    const score = paper.scores[0];
+    const briefState = getHomepageBriefState(paper.technicalBriefs);
+
+    return {
+      id: paper.id,
+      announcementDay: paper.announcementDay,
+      title: paper.title,
+      abstractUrl: paper.abstractUrl,
+      primaryCategory: paper.primaryCategory,
+      score: score
+        ? {
+            totalScore: score.totalScore,
+          }
+        : null,
+      scoreBreakdown: normalizeExecutiveScoreBreakdown(
+        parseJsonValue(score?.breakdown ?? {}, executiveScoreBreakdownRecordSchema, {}),
+      ),
+      briefState,
+      detailPath: briefState === "pdf-ready" ? getBriefPath(paper) : `/papers/${paper.id}`,
+    };
+  });
   const latestRun = snapshot.runs[0] ?? null;
   const notice = getAdminNotice({
     notice: typeof params.notice === "string" ? params.notice : null,
@@ -377,7 +406,7 @@ export default async function AdminPage({
             sortDirection ?? "default-dir",
             focusPaperId ?? "no-focus",
           ].join(":")}
-          papers={snapshot.editionPapers}
+          papers={editionTablePapers}
           publishedPaperIds={snapshot.publishedPaperIds}
           selectedWeek={snapshot.selectedWeek}
           sortDirection={sortDirection}

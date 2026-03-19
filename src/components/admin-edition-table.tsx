@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { Prisma } from "@prisma/client";
-import { z } from "zod";
 import {
   reorderPublishedPaperAction,
   togglePublishedPaperAction,
@@ -12,19 +10,10 @@ import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  executiveScoreBreakdownRecordSchema,
-  normalizeExecutiveScoreBreakdown,
-} from "@/lib/scoring/model";
-import { getBriefPath } from "@/lib/brief-paths";
-import {
-  getHomepageBriefState,
-  hasPdfBackedBrief,
-} from "@/lib/technical/brief-status";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { formatWeekLabel } from "@/lib/utils/dates";
-import { parseJsonValue } from "@/lib/utils/json";
+import type { ExecutiveScoreBreakdown } from "@/lib/types";
 
 const scoreColumns = [
   { key: "frontierRelevance", label: "Frontier" },
@@ -39,7 +28,7 @@ const scoreColumns = [
 
 type AdminEditionSortKey = "liveStatus" | "paper" | "total" | ExecutiveScoreComponentKey;
 type AdminEditionSortDirection = "asc" | "desc";
-type ScoreBreakdownRecord = z.infer<typeof executiveScoreBreakdownRecordSchema>;
+type BriefState = "pdf-ready" | "abstract-fallback" | "missing";
 
 type AdminEditionTableProps = {
   weeks: string[];
@@ -51,30 +40,25 @@ type AdminEditionTableProps = {
   sortDirection?: string | null;
   papers: Array<{
     id: string;
-    arxivId: string;
     announcementDay: string;
     title: string;
-    authorsText: string;
     abstractUrl: string;
     primaryCategory: string | null;
-    scores: Array<{
+    score: {
       totalScore: number;
-      rationale: string;
-      breakdown: Prisma.JsonValue;
-    }>;
-    technicalBriefs: Array<{
-      oneLineVerdict: string;
-      usedFallbackAbstract: boolean;
-    }>;
+    } | null;
+    scoreBreakdown: ExecutiveScoreBreakdown;
+    briefState: BriefState;
+    detailPath: string;
   }>;
 };
 
 type AdminEditionPaper = AdminEditionTableProps["papers"][number];
 type AdminEditionRow = {
   paper: AdminEditionPaper;
-  score: AdminEditionPaper["scores"][number] | undefined;
-  breakdown: ScoreBreakdownRecord;
-  briefState: ReturnType<typeof getHomepageBriefState>;
+  score: AdminEditionPaper["score"];
+  breakdown: ExecutiveScoreBreakdown;
+  briefState: BriefState;
   hasPdfBrief: boolean;
   isPublished: boolean;
   isOnHomepage: boolean;
@@ -106,7 +90,7 @@ export function AdminEditionTable({
   const homePagePaperIds = publishedPaperIds;
   const homePageSet = new Set(homePagePaperIds);
   const homePageBriefReadyCount = papers.filter(
-    (paper) => homePageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
+    (paper) => homePageSet.has(paper.id) && paper.briefState === "pdf-ready",
   ).length;
   const homePageMissingBriefCount = Math.max(
     homePagePaperIds.length - homePageBriefReadyCount,
@@ -360,11 +344,7 @@ export function AdminEditionTable({
                             {row.isFocused ? <Badge variant="highlight">Just updated</Badge> : null}
                             <Button asChild size="sm" variant="ghost">
                               <Link
-                                href={
-                                  row.hasPdfBrief
-                                    ? getBriefPath(row.paper)
-                                    : `/papers/${row.paper.id}`
-                                }
+                                href={row.paper.detailPath}
                               >
                                 Open detail
                               </Link>
@@ -560,11 +540,9 @@ function buildRow(input: {
   publishedSet: Set<string>;
   publishedOrderMap: Map<string, number>;
 }): AdminEditionRow {
-  const score = input.paper.scores[0];
-  const breakdown = normalizeExecutiveScoreBreakdown(
-    parseJsonValue(score?.breakdown ?? {}, executiveScoreBreakdownRecordSchema, {}),
-  );
-  const briefState = getHomepageBriefState(input.paper.technicalBriefs);
+  const score = input.paper.score;
+  const breakdown = input.paper.scoreBreakdown;
+  const briefState = input.paper.briefState;
   const hasPdfBrief = briefState === "pdf-ready";
   const isPublished = input.publishedSet.has(input.paper.id);
   const isOnHomepage = input.homePageSet.has(input.paper.id);
