@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { getCanonicalPaperPathById, getPublicBriefByPaperId, getWeekPath } from "@/lib/briefs";
 import {
   ensurePaperTechnicalBrief,
   getCurrentTechnicalBrief,
   revertManualTechnicalBriefEdits,
   saveManualTechnicalBriefEdits,
 } from "@/lib/technical/service";
+import { getWeekStart } from "@/lib/utils/dates";
 
 export async function savePaperTechnicalBriefAction(formData: FormData) {
   const paperId = readString(formData.get("paperId"));
@@ -16,7 +18,7 @@ export async function savePaperTechnicalBriefAction(formData: FormData) {
     redirect("/admin");
   }
 
-  await requireAdmin(`/papers/${paperId}`);
+  await requireAdmin(await getCanonicalPaperPathById(paperId));
   const oneLineVerdict = readString(formData.get("oneLineVerdict"));
   const bullets = formData
     .getAll("bullet")
@@ -29,8 +31,8 @@ export async function savePaperTechnicalBriefAction(formData: FormData) {
     bullets,
   });
 
-  revalidatePaperViews(paperId);
-  redirectToPaperDetail(
+  await revalidatePaperViews(paperId);
+  await redirectToPaperDetail(
     paperId,
     result === "saved" ? "brief-saved" : "brief-invalid",
   );
@@ -42,11 +44,11 @@ export async function revertPaperTechnicalBriefAction(formData: FormData) {
     redirect("/admin");
   }
 
-  await requireAdmin(`/papers/${paperId}`);
+  await requireAdmin(await getCanonicalPaperPathById(paperId));
   const result = await revertManualTechnicalBriefEdits(paperId);
 
-  revalidatePaperViews(paperId);
-  redirectToPaperDetail(
+  await revalidatePaperViews(paperId);
+  await redirectToPaperDetail(
     paperId,
     result === "reverted" ? "brief-reverted" : "brief-revert-unavailable",
   );
@@ -58,15 +60,15 @@ export async function regeneratePaperTechnicalBriefAction(formData: FormData) {
     redirect("/admin");
   }
 
-  await requireAdmin(`/papers/${paperId}`);
+  await requireAdmin(await getCanonicalPaperPathById(paperId));
   const currentBrief = await getCurrentTechnicalBrief(paperId);
   const result = await ensurePaperTechnicalBrief(paperId, {
     force: true,
     requirePdf: currentBrief ? !currentBrief.usedFallbackAbstract : false,
   });
 
-  revalidatePaperViews(paperId);
-  redirectToPaperDetail(
+  await revalidatePaperViews(paperId);
+  await redirectToPaperDetail(
     paperId,
     result === "generated"
       ? "brief-regenerated"
@@ -76,17 +78,22 @@ export async function regeneratePaperTechnicalBriefAction(formData: FormData) {
   );
 }
 
-function revalidatePaperViews(paperId: string) {
+async function revalidatePaperViews(paperId: string) {
   revalidatePath("/");
   revalidatePath("/archive");
   revalidatePath("/admin");
   revalidatePath(`/papers/${paperId}`);
+  const publicBrief = await getPublicBriefByPaperId(paperId);
+  if (publicBrief) {
+    revalidatePath(await getCanonicalPaperPathById(paperId));
+    revalidatePath(getWeekPath(getWeekStart(publicBrief.announcementDay)));
+  }
 }
 
-function redirectToPaperDetail(paperId: string, notice: string): never {
+async function redirectToPaperDetail(paperId: string, notice: string): Promise<never> {
   const search = new URLSearchParams();
   search.set("notice", notice);
-  redirect(`/papers/${paperId}?${search.toString()}`);
+  redirect(`${await getCanonicalPaperPathById(paperId)}?${search.toString()}`);
 }
 
 function readString(value: FormDataEntryValue | null) {

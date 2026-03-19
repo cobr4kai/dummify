@@ -23,6 +23,13 @@ export async function getRelatedPapers(paperId: string, limit = 4) {
   const candidates = await prisma.paper.findMany({
     where: {
       id: { not: paperId },
+      isDemoData: false,
+      technicalBriefs: {
+        some: {
+          isCurrent: true,
+          usedFallbackAbstract: false,
+        },
+      },
       OR: [
         { primaryCategory: paper.primaryCategory ?? undefined },
         { categoryText: { contains: paper.primaryCategory ?? "" } },
@@ -33,6 +40,13 @@ export async function getRelatedPapers(paperId: string, limit = 4) {
         where: {
           isCurrent: true,
           mode: BriefMode.GENAI,
+        },
+        take: 1,
+      },
+      technicalBriefs: {
+        where: {
+          isCurrent: true,
+          usedFallbackAbstract: false,
         },
         take: 1,
       },

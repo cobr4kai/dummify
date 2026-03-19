@@ -16,6 +16,7 @@ import {
   executiveScoreBreakdownRecordSchema,
   normalizeExecutiveScoreBreakdown,
 } from "@/lib/scoring/model";
+import { getBriefPath } from "@/lib/brief-paths";
 import {
   getHomepageBriefState,
   hasPdfBackedBrief,
@@ -50,6 +51,7 @@ type AdminEditionTableProps = {
   sortDirection?: string | null;
   papers: Array<{
     id: string;
+    arxivId: string;
     announcementDay: string;
     title: string;
     authorsText: string;
@@ -357,7 +359,15 @@ export function AdminEditionTable({
                             ) : null}
                             {row.isFocused ? <Badge variant="highlight">Just updated</Badge> : null}
                             <Button asChild size="sm" variant="ghost">
-                              <Link href={`/papers/${row.paper.id}`}>Open detail</Link>
+                              <Link
+                                href={
+                                  row.hasPdfBrief
+                                    ? getBriefPath(row.paper)
+                                    : `/papers/${row.paper.id}`
+                                }
+                              >
+                                Open detail
+                              </Link>
                             </Button>
                           </div>
                           <div>

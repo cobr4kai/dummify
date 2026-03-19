@@ -3,6 +3,7 @@ import { Cormorant_Garamond, Outfit } from "next/font/google";
 import Script from "next/script";
 import { ParticleField } from "@/components/particle-field";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import { themeInitScript } from "@/lib/theme";
 import "./globals.css";
 
@@ -20,16 +21,21 @@ const cormorantGaramond = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: "Abstracted",
-    template: "%s | Abstracted",
-  },
+  metadataBase: new URL(SITE_URL),
+  title: "Abstracted | AI research explained in plain English",
   icons: {
     icon: "/abstracted-favicon.svg",
     shortcut: "/abstracted-favicon.svg",
   },
-  description:
-    "Abstracted turns newly announced arXiv papers into punchy executive briefs for readers tracking what matters beyond the lab.",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    siteName: SITE_NAME,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export default function RootLayout({

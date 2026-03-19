@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import type { ReactNode } from "react";
 import { z } from "zod";
@@ -8,6 +9,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
+import { getBriefPath } from "@/lib/brief-paths";
 import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { parseJsonValue } from "@/lib/utils/json";
 import { formatDisplayAuthors } from "@/lib/utils/strings";
@@ -22,6 +24,7 @@ type PaperCardProps = {
   headerMeta?: ReactNode;
   paper: {
     id: string;
+    arxivId: string;
     title: string;
     authorsText: string;
     categoriesJson: Prisma.JsonValue;
@@ -41,15 +44,21 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
     : "";
   const bullets = parseJsonValue(brief?.bulletsJson ?? [], bulletSchema, []);
   const displayAuthorsText = formatDisplayAuthors(paper.authorsText);
+  const briefPath = getBriefPath(paper);
 
   return (
     <Card className="p-6">
       <div className="space-y-5">
         <div className="space-y-3">
           {headerMeta ? <div className="flex flex-wrap items-center gap-2">{headerMeta}</div> : null}
-          <h3 className="editorial-title text-[2rem] text-foreground">
-            {paper.title}
-          </h3>
+          <h2 className="editorial-title text-[2rem] text-foreground">
+            <Link
+              href={briefPath}
+              className="underline-offset-4 transition hover:text-foreground/80 hover:underline"
+            >
+              {paper.title}
+            </Link>
+          </h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.95rem] leading-6 text-muted-foreground">
             <span>{displayAuthorsText}</span>
             <span className="text-border">/</span>
@@ -106,6 +115,12 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
             </p>
           </section>
         )}
+        <Link
+          href={briefPath}
+          className="text-sm font-medium text-foreground underline-offset-4 transition hover:underline"
+        >
+          Read the plain-English brief
+        </Link>
       </div>
     </Card>
   );
