@@ -123,21 +123,22 @@ export default async function ArchivePage({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="eyebrow text-[11px] font-medium text-muted-foreground">
-                  Weekly editions
+                  Edition pages
                 </p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Browse canonical weekly edition pages or drill into individual briefs below.
+                  Jump to a specific week if you want its dedicated edition page. The full archive
+                  and individual briefs stay below.
                 </p>
               </div>
               <Link className="text-sm font-medium underline-offset-4 hover:underline" href="/">
-                Back to latest week
+                Back to homepage
               </Link>
             </div>
             <nav aria-label="Archive weeks" className="mt-4 flex flex-wrap gap-2">
               {weeks.map((option) => (
                 <Link
                   key={option}
-                  className="rounded-full border px-4 py-2 text-sm transition hover:bg-foreground/5"
+                  className="rounded-full border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                   href={getWeekPath(option)}
                 >
                   {formatWeekLabel(option)}

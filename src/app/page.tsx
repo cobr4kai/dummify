@@ -5,14 +5,13 @@ import { PageShell } from "@/components/page-shell";
 import { PaperCard } from "@/components/paper-card";
 import { SignupBox } from "@/components/signup-box";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
-import { getLatestPublicWeek, getPublicBriefsByWeek, getWeekPath } from "@/lib/briefs";
+import { getLatestPublicWeek, getPublicBriefsByWeek } from "@/lib/briefs";
 import {
   buildOrganizationJsonLd,
   buildPageMetadata,
   buildWebsiteJsonLd,
 } from "@/lib/seo";
 import { getDailyBrief } from "@/lib/search/service";
-import { SITE_INTRO } from "@/lib/site";
 import { formatWeekLabel, formatWeekRange } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +46,6 @@ export default async function Home({
   const weekStart = fallbackWeek?.weekStart ?? initialBrief.weekStart;
   const weekLabel = fallbackWeek ? formatWeekLabel(fallbackWeek.weekStart) : initialBrief.weekLabel;
   const signupStatus = readSignupStatus(params.signup);
-  const latestWeekHref = weekStart ? getWeekPath(weekStart) : "/archive";
 
   return (
     <PageShell
@@ -65,7 +63,7 @@ export default async function Home({
           <div className="mt-5 flex flex-col gap-3 lg:mt-1 lg:w-full lg:max-w-[22rem] lg:items-end">
             <Link
               className="block w-full rounded-[28px] transition-transform duration-200 hover:-translate-y-0.5"
-              href={latestWeekHref}
+              href="/archive"
             >
               <div className="panel-soft rounded-[28px] px-5 py-4 shadow-[var(--shadow-card)] sm:px-6">
                 <p className="eyebrow text-[11px] font-medium text-muted-foreground">
@@ -86,19 +84,6 @@ export default async function Home({
     >
       <JsonLd data={buildOrganizationJsonLd()} />
       <JsonLd data={buildWebsiteJsonLd()} />
-      <section className="mb-6">
-        <div className="panel-soft rounded-[28px] px-5 py-5 shadow-[var(--shadow-card)] sm:px-6">
-          <p className="text-sm leading-7 text-muted-foreground">{SITE_INTRO}</p>
-          <div className="mt-4 flex flex-wrap gap-4 text-sm font-medium">
-            <Link href={latestWeekHref} className="underline-offset-4 transition hover:underline">
-              Read the latest week
-            </Link>
-            <Link href="/archive" className="underline-offset-4 transition hover:underline">
-              Browse the archive
-            </Link>
-          </div>
-        </div>
-      </section>
       {papers.length === 0 ? (
         <EmptyState
           title="No papers match this weekly edition."

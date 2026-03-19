@@ -115,12 +115,6 @@ export function PaperCard({ headerMeta, paper }: PaperCardProps) {
             </p>
           </section>
         )}
-        <Link
-          href={briefPath}
-          className="text-sm font-medium text-foreground underline-offset-4 transition hover:underline"
-        >
-          Read the plain-English brief
-        </Link>
       </div>
     </Card>
   );
