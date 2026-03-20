@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { APP_NAME, APP_TAGLINE } from "@/config/defaults";
-import { getPublicWeeks, getWeekPath } from "@/lib/briefs";
+import { getWeekPath } from "@/lib/briefs";
 import {
   buildBreadcrumbJsonLd,
   buildCollectionPageJsonLd,
@@ -68,7 +68,7 @@ export default async function ArchivePage({
     sort: "date",
     highSignalOnly: false,
   });
-  const publicWeeks = await getPublicWeeks();
+  const selectedWeekLabel = week !== "all" ? formatWeekLabel(week) : null;
 
   return (
     <PageShell
@@ -123,11 +123,11 @@ export default async function ArchivePage({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="eyebrow text-[11px] font-medium text-muted-foreground">
-                  Edition pages
+                  Browse weeks
                 </p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Jump to a specific week if you want its dedicated edition page. The full archive
-                  and individual briefs stay below.
+                  Jump to a specific edition page, then use the archive below to read the linked
+                  plain-English brief cards for the week you selected.
                 </p>
               </div>
               <Link className="text-sm font-medium underline-offset-4 hover:underline" href="/">
@@ -202,40 +202,6 @@ export default async function ArchivePage({
         </Card>
       </section>
 
-      {publicWeeks.length > 0 ? (
-        <section className="mb-6">
-          <div className="panel-soft rounded-[28px] px-5 py-5 shadow-[var(--shadow-card)] sm:px-6">
-            <p className="eyebrow text-[11px] font-medium text-muted-foreground">
-              Library index
-            </p>
-            <div className="mt-4 space-y-5">
-              {publicWeeks.map((publicWeek) => (
-                <section key={publicWeek.weekStart}>
-                  <Link
-                    className="text-sm font-medium underline-offset-4 hover:underline"
-                    href={getWeekPath(publicWeek.weekStart)}
-                  >
-                    {formatWeekLabel(publicWeek.weekStart)}
-                  </Link>
-                  <ul className="mt-3 flex flex-wrap gap-2">
-                    {publicWeek.briefs.map((brief) => (
-                      <li key={brief.id}>
-                        <Link
-                          className="rounded-full border px-3 py-1.5 text-sm transition hover:bg-foreground/5"
-                          href={`/briefs/${brief.slug}`}
-                        >
-                          {brief.title}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
       {papers.length === 0 ? (
         <EmptyState
           title="No papers match this archive view."
@@ -243,6 +209,24 @@ export default async function ArchivePage({
         />
       ) : (
         <section aria-label="Archived brief library">
+          {selectedWeekLabel ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow text-[11px] font-medium text-muted-foreground">
+                  Selected week
+                </p>
+                <h2 className="editorial-title mt-2 text-[1.75rem] text-foreground">
+                  {selectedWeekLabel}
+                </h2>
+              </div>
+              <Link
+                className="text-sm font-medium underline-offset-4 hover:underline"
+                href={getWeekPath(week)}
+              >
+                Open the week page
+              </Link>
+            </div>
+          ) : null}
           <ul className="grid gap-4">
             {papers.map((paper) => (
               <li key={paper.id}>

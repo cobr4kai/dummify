@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils/cn";
@@ -29,6 +30,14 @@ export function PageShell({
           Thank you to arXiv for use of its open access interoperability. This product was not
           reviewed or approved by, nor does it necessarily express or reflect the policies or
           opinions of, arXiv.
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+            <Link className="underline-offset-4 hover:underline" href="/archive">
+              Archive
+            </Link>
+            <Link className="underline-offset-4 hover:underline" href="/sitemap">
+              HTML sitemap
+            </Link>
+          </div>
           <div className="mt-5 flex justify-center sm:hidden">
             <ThemeToggle className="gap-1.5" />
           </div>
