@@ -23,6 +23,8 @@ import {
   errorToolResult,
   handleCompareArticles,
   handleGetArticle,
+  handleListTopArticles,
+  handleSearchArticles,
   successToolResult,
 } from "@/lib/mcp/tool-handlers";
 
@@ -144,6 +146,54 @@ describe("mcp tool handlers", () => {
     expect(payload.comparison.commonTopics).toContain("protocol design");
     expect(payload.comparison.scoreRanking[0]?.articleId).toBe("paper-1");
     expect(payload.comparison.sourceBasisByArticle[1]?.sourceBasis).toBe("abstract-fallback");
+  });
+
+  it("normalizes MCP top-article inputs through the shared schema", async () => {
+    getTopArticlesContentMock.mockResolvedValue({
+      weekStart: "2026-03-16",
+      topic: "AI",
+      limit: 10,
+      articles: [],
+    });
+
+    const payload = await handleListTopArticles({
+      topic: "AI",
+    });
+
+    expect(payload.limit).toBe(10);
+    expect(getTopArticlesContentMock).toHaveBeenCalledWith(
+      {
+        topic: "AI",
+        limit: 10,
+      },
+      {},
+    );
+  });
+
+  it("normalizes MCP search inputs through the shared schema", async () => {
+    searchArticlesContentMock.mockResolvedValue({
+      query: "AI",
+      topic: null,
+      weekStart: null,
+      startDate: null,
+      endDate: null,
+      limit: 5,
+      results: [],
+    });
+
+    const payload = await handleSearchArticles({
+      query: "AI",
+      limit: 5,
+    });
+
+    expect(payload.query).toBe("AI");
+    expect(searchArticlesContentMock).toHaveBeenCalledWith(
+      {
+        query: "AI",
+        limit: 5,
+      },
+      {},
+    );
   });
 
   it("returns structured error payloads", () => {

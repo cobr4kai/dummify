@@ -57,6 +57,38 @@ describe("mcp route", () => {
     expect(payload.result.capabilities.tools).toBeDefined();
   });
 
+  it("publishes MCP-friendly tool schemas", async () => {
+    const response = await POST(
+      new Request("https://example.com/api/mcp", {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          "mcp-protocol-version": PROTOCOL_VERSION,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    const listTopTool = payload.result.tools.find(
+      (tool: { name: string }) => tool.name === "list_top_articles",
+    );
+    const getArticleTool = payload.result.tools.find(
+      (tool: { name: string }) => tool.name === "get_article",
+    );
+
+    expect(listTopTool.inputSchema.required ?? []).not.toContain("topic");
+    expect(getArticleTool.inputSchema.required ?? []).toEqual([]);
+    expect(listTopTool.outputSchema?.type).toBe("object");
+  });
+
   it("returns parse errors for malformed json", async () => {
     const response = await POST(
       new Request("https://example.com/api/mcp", {

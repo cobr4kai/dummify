@@ -3,17 +3,9 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 import {
   articleComparisonSchema,
-  articleLookupInputSchema,
   articleResponseSchema,
-  compareArticlesInputSchema,
-  searchArticlesInputSchema,
   searchArticlesResponseSchema,
-  topArticlesInputSchema,
   topArticlesResponseSchema,
-  type ArticleLookupInput,
-  type CompareArticlesInput,
-  type SearchArticlesInput,
-  type TopArticlesInput,
 } from "@repo-types/content";
 import { env } from "@/lib/env";
 import {
@@ -22,15 +14,40 @@ import {
   handleGetArticle,
   handleListTopArticles,
   handleSearchArticles,
-  mcpToolErrorSchema,
   type McpRequestContext,
   successToolResult,
 } from "@/lib/mcp/tool-handlers";
 
-const listTopArticlesOutputSchema = z.union([topArticlesResponseSchema, mcpToolErrorSchema]);
-const getArticleOutputSchema = z.union([articleResponseSchema, mcpToolErrorSchema]);
-const searchArticlesOutputSchema = z.union([searchArticlesResponseSchema, mcpToolErrorSchema]);
-const compareArticlesOutputSchema = z.union([articleComparisonSchema, mcpToolErrorSchema]);
+const mcpTopArticlesInputSchema = z.object({
+  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  limit: z.number().int().min(1).max(25).optional(),
+  topic: z.string().trim().min(1).optional(),
+});
+
+const mcpGetArticleInputSchema = z.object({
+  article_id: z.string().trim().min(1).optional(),
+  url: z.string().trim().min(1).optional(),
+  arxiv_id: z.string().trim().min(1).optional(),
+});
+
+const mcpSearchArticlesInputSchema = z.object({
+  query: z.string().trim().min(1),
+  topic: z.string().trim().min(1).optional(),
+  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  limit: z.number().int().min(1).max(25).optional(),
+});
+
+const mcpCompareArticlesInputSchema = z.object({
+  article_ids: z.array(z.string().trim().min(1)).min(2).max(5),
+  question: z.string().trim().min(1).optional(),
+});
+
+type McpTopArticlesInput = z.infer<typeof mcpTopArticlesInputSchema>;
+type McpGetArticleInput = z.infer<typeof mcpGetArticleInputSchema>;
+type McpSearchArticlesInput = z.infer<typeof mcpSearchArticlesInputSchema>;
+type McpCompareArticlesInput = z.infer<typeof mcpCompareArticlesInputSchema>;
 
 export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
   const server = new McpServer({
@@ -46,14 +63,14 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "List top ReadAbstracted articles",
       description:
         "Returns the current or requested week's top ReadAbstracted articles with metadata, ranking, topics, and summary snippets.",
-      inputSchema: topArticlesInputSchema,
-      outputSchema: listTopArticlesOutputSchema,
+      inputSchema: mcpTopArticlesInputSchema,
+      outputSchema: topArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: TopArticlesInput) => {
+    async (input: McpTopArticlesInput) => {
       try {
         const payload = await handleListTopArticles(input, context);
         return successToolResult(
@@ -72,14 +89,14 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "Open a ReadAbstracted article",
       description:
         "Returns one normalized ReadAbstracted article with safe-summary content, metadata, tags, citation metadata, and canonical links.",
-      inputSchema: articleLookupInputSchema,
-      outputSchema: getArticleOutputSchema,
+      inputSchema: mcpGetArticleInputSchema,
+      outputSchema: articleResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: ArticleLookupInput) => {
+    async (input: McpGetArticleInput) => {
       try {
         const payload = await handleGetArticle(input, context);
         return successToolResult(`Opened ${payload.article.title}.`, payload);
@@ -95,14 +112,14 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "Search ReadAbstracted articles",
       description:
         "Searches ReadAbstracted articles by query, topic, and date filters, returning structured matches with snippets and relevance scores.",
-      inputSchema: searchArticlesInputSchema,
-      outputSchema: searchArticlesOutputSchema,
+      inputSchema: mcpSearchArticlesInputSchema,
+      outputSchema: searchArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: SearchArticlesInput) => {
+    async (input: McpSearchArticlesInput) => {
       try {
         const payload = await handleSearchArticles(input, context);
         return successToolResult(
@@ -121,14 +138,14 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "Compare ReadAbstracted articles",
       description:
         "Builds a structured comparison across two to five ReadAbstracted articles without generating the final prose answer.",
-      inputSchema: compareArticlesInputSchema,
-      outputSchema: compareArticlesOutputSchema,
+      inputSchema: mcpCompareArticlesInputSchema,
+      outputSchema: articleComparisonSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: CompareArticlesInput) => {
+    async (input: McpCompareArticlesInput) => {
       try {
         const payload = await handleCompareArticles(input, context);
         return successToolResult(

@@ -1,14 +1,13 @@
 import { z, ZodError } from "zod";
 import {
   articleComparisonSchema,
+  articleLookupInputSchema,
   compareArticlesInputSchema,
+  searchArticlesInputSchema,
   type ArticleDetail,
-  type ArticleLookupInput,
   type ArticleResponse,
-  type CompareArticlesInput,
-  type SearchArticlesInput,
   type SearchArticlesResponse,
-  type TopArticlesInput,
+  topArticlesInputSchema,
   type TopArticlesResponse,
 } from "@repo-types/content";
 import {
@@ -50,17 +49,19 @@ export type McpRequestContext = {
 };
 
 export async function handleListTopArticles(
-  input: TopArticlesInput,
+  input: unknown,
   context: McpRequestContext = {},
 ) {
-  return getTopArticlesContent(input, context);
+  const parsed = topArticlesInputSchema.parse(input);
+  return getTopArticlesContent(parsed, context);
 }
 
 export async function handleGetArticle(
-  input: ArticleLookupInput,
+  input: unknown,
   context: McpRequestContext = {},
 ) {
-  const payload = await getArticleContent(input, context);
+  const parsed = articleLookupInputSchema.parse(input);
+  const payload = await getArticleContent(parsed, context);
   if (!payload) {
     throw new McpServiceError("not_found", "Article not found.", { status: 404 });
   }
@@ -69,14 +70,15 @@ export async function handleGetArticle(
 }
 
 export async function handleSearchArticles(
-  input: SearchArticlesInput,
+  input: unknown,
   context: McpRequestContext = {},
 ) {
-  return searchArticlesContent(input, context);
+  const parsed = searchArticlesInputSchema.parse(input);
+  return searchArticlesContent(parsed, context);
 }
 
 export async function handleCompareArticles(
-  input: CompareArticlesInput,
+  input: unknown,
   context: McpRequestContext = {},
 ) {
   const parsed = compareArticlesInputSchema.parse(input);
