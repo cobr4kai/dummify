@@ -59,19 +59,13 @@ export async function ensurePaperPdfExtraction(
   await fs.mkdir(path.dirname(cachePaths.pdfPath), { recursive: true });
 
   try {
-    const response = await fetch(sourceUrl, {
-      headers: {
-        "User-Agent": "PaperBrief/0.2",
-      },
-      next: { revalidate: 0 },
+    const resolvedFetch = await fetchArxivPdfBuffer({
+      pdfUrl: paper.pdfUrl,
+      arxivId: paper.arxivId,
+      version: paper.version,
     });
-
-    if (!response.ok) {
-      throw new Error(`arXiv PDF request failed with ${response.status}.`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const pdfBuffer = Buffer.from(arrayBuffer);
+    const pdfBuffer = Buffer.from(resolvedFetch.arrayBuffer);
+    const finalSourceUrl = resolvedFetch.responseUrl || resolvedFetch.sourceUrl;
     await fs.writeFile(cachePaths.pdfPath, pdfBuffer);
 
     const pages = await extractPdfPages(pdfBuffer);
@@ -79,7 +73,7 @@ export async function ensurePaperPdfExtraction(
 
     await upsertPdfCacheRecord(existing?.id, {
       paperId: paper.id,
-      sourceUrl,
+      sourceUrl: finalSourceUrl,
       filePath: cachePaths.pdfPath,
       extractedJsonPath: cachePaths.pagesPath,
       fileSizeBytes: pdfBuffer.byteLength,
@@ -92,7 +86,7 @@ export async function ensurePaperPdfExtraction(
     });
 
     return {
-      sourceUrl,
+      sourceUrl: finalSourceUrl,
       filePath: cachePaths.pdfPath,
       extractedJsonPath: cachePaths.pagesPath,
       pageCount: pages.length,
@@ -157,6 +151,45 @@ export function chunkPdfPages(pages: PdfPageText[], maxChars = PDF_CHUNK_MAX_CHA
   return chunks;
 }
 
+async function fetchArxivPdfBuffer(input: {
+  pdfUrl: string | null;
+  arxivId: string;
+  version: number;
+}) {
+  const candidates = buildArxivPdfCandidateUrls(
+    input.pdfUrl,
+    input.arxivId,
+    input.version,
+  );
+  let lastNotFound: Error | null = null;
+
+  for (const candidate of candidates) {
+    const response = await fetch(candidate, {
+      headers: {
+        "User-Agent": "PaperBrief/0.2",
+      },
+      next: { revalidate: 0 },
+    });
+
+    if (response.ok) {
+      return {
+        sourceUrl: candidate,
+        responseUrl: response.url,
+        arrayBuffer: await response.arrayBuffer(),
+      };
+    }
+
+    if (response.status === 404) {
+      lastNotFound = new Error(`arXiv PDF request failed with ${response.status}.`);
+      continue;
+    }
+
+    throw new Error(`arXiv PDF request failed with ${response.status}.`);
+  }
+
+  throw lastNotFound ?? new Error("Unknown PDF extraction error.");
+}
+
 async function extractPdfPages(pdfBuffer: Buffer): Promise<PdfPageText[]> {
   const { getDocument } = await loadPdfJsRuntime();
   const document = await getDocument({
@@ -201,6 +234,27 @@ function resolveArxivPdfUrl(pdfUrl: string | null, arxivId: string, version: num
   }
 
   return `https://arxiv.org/pdf/${arxivId}v${version}.pdf`;
+}
+
+function buildArxivPdfCandidateUrls(
+  pdfUrl: string | null,
+  arxivId: string,
+  version: number,
+) {
+  const candidates = new Set<string>();
+
+  if (pdfUrl?.startsWith("https://arxiv.org/pdf/")) {
+    candidates.add(pdfUrl);
+    candidates.add(pdfUrl.replace(/\.pdf$/i, ""));
+    candidates.add(pdfUrl.endsWith(".pdf") ? pdfUrl : `${pdfUrl}.pdf`);
+  }
+
+  candidates.add(`https://arxiv.org/pdf/${arxivId}v${version}`);
+  candidates.add(`https://arxiv.org/pdf/${arxivId}v${version}.pdf`);
+  candidates.add(`https://arxiv.org/pdf/${arxivId}`);
+  candidates.add(`https://arxiv.org/pdf/${arxivId}.pdf`);
+
+  return Array.from(candidates);
 }
 
 async function upsertPdfCacheRecord(

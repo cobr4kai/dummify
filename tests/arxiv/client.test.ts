@@ -111,4 +111,29 @@ describe("ArxivClient", () => {
       "search_query=%28cat%3Acs.AI+OR+cat%3Acs.LG%29+AND+submittedDate",
     );
   });
+
+  it("bypasses the cached API response when requested for a single-paper refetch", async () => {
+    const nowMs = 0;
+    const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "paperbrief-arxiv-"));
+    cacheRoots.push(cacheRoot);
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(atomEntryXml, { status: 200 }))
+      .mockResolvedValueOnce(new Response(atomEntryXml, { status: 200 }));
+
+    const client = new ArxivClient({
+      cacheRoot,
+      fetchFn: fetchMock,
+      nowFn: () => nowMs,
+      apiMinDelayMs: 0,
+      rssMinDelayMs: 0,
+      apiCacheTtlMinutes: 60,
+    });
+
+    await client.fetchByArxivId("2603.01234");
+    await client.fetchByArxivId("2603.01234", { bypassCache: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

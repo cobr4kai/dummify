@@ -33,6 +33,10 @@ export type ArxivClientOptions = {
   userAgent?: string;
 };
 
+type FetchXmlOptions = {
+  bypassCache?: boolean;
+};
+
 type ResolvedArxivClientOptions = Omit<Required<ArxivClientOptions>, "cacheRoot"> & {
   cacheRoot?: string;
 };
@@ -191,7 +195,7 @@ export class ArxivClient {
     return records;
   }
 
-  async fetchByArxivId(arxivId: string) {
+  async fetchByArxivId(arxivId: string, options: FetchXmlOptions = {}) {
     const xml = await this.fetchXml(
       `${this.options.apiBaseUrl}?${new URLSearchParams({
         id_list: arxivId,
@@ -199,24 +203,27 @@ export class ArxivClient {
         max_results: "1",
       }).toString()}`,
       "api",
+      options,
     );
 
     return parseAtomFeed(xml)[0] ?? null;
   }
 
-  private async fetchXml(url: string, lane: "api" | "rss") {
+  private async fetchXml(url: string, lane: "api" | "rss", options: FetchXmlOptions = {}) {
     const cacheTtlMinutes =
       lane === "api"
         ? this.options.apiCacheTtlMinutes
         : this.options.feedCacheTtlMinutes;
     const nowMs = this.options.nowFn();
-    const cached = await readCachedHttpResponse({
-      cacheRoot: this.options.cacheRoot,
-      lane,
-      nowMs,
-      ttlMinutes: cacheTtlMinutes,
-      url,
-    });
+    const cached = options.bypassCache
+      ? null
+      : await readCachedHttpResponse({
+          cacheRoot: this.options.cacheRoot,
+          lane,
+          nowMs,
+          ttlMinutes: cacheTtlMinutes,
+          url,
+        });
 
     if (cached) {
       return cached;

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { refetchPaperSource } from "@/lib/papers/refetch";
 import {
   ensurePaperTechnicalBrief,
   getCurrentTechnicalBrief,
@@ -76,6 +77,29 @@ export async function regeneratePaperTechnicalBriefAction(formData: FormData) {
   );
 }
 
+export async function refetchPaperSourceAction(formData: FormData) {
+  const paperId = readString(formData.get("paperId"));
+  if (!paperId) {
+    redirect("/admin");
+  }
+
+  await requireAdmin(`/papers/${paperId}`);
+  const result = await refetchPaperSource(paperId);
+
+  revalidatePaperViews(paperId);
+  redirectToPaperDetail(
+    paperId,
+    result.status === "metadata-refreshed-pdf-extracted"
+      ? "paper-source-refetched-pdf-extracted"
+      : result.status === "metadata-refreshed-pdf-fallback"
+        ? "paper-source-refetched-pdf-fallback"
+        : result.status === "metadata-refreshed-no-pdf-retry-needed"
+          ? "paper-source-refetched"
+          : "paper-source-refetch-failed",
+    result.versionChanged,
+  );
+}
+
 function revalidatePaperViews(paperId: string) {
   revalidatePath("/");
   revalidatePath("/archive");
@@ -83,9 +107,16 @@ function revalidatePaperViews(paperId: string) {
   revalidatePath(`/papers/${paperId}`);
 }
 
-function redirectToPaperDetail(paperId: string, notice: string): never {
+function redirectToPaperDetail(
+  paperId: string,
+  notice: string,
+  versionChanged = false,
+): never {
   const search = new URLSearchParams();
   search.set("notice", notice);
+  if (versionChanged) {
+    search.set("versionChanged", "1");
+  }
   redirect(`/papers/${paperId}?${search.toString()}`);
 }
 
