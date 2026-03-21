@@ -23,6 +23,9 @@
       }
     ],
     "paths": {
+      "@repo-types/*": [
+        "./packages/types/src/*"
+      ],
       "@/*": [
         "./src/*",
         "./*"
@@ -40,6 +43,7 @@
     ".paperbrief-build/dev/types/**/*.ts"
   ],
   "exclude": [
+    ".paperbrief-build/**/*",
     "node_modules"
   ]
 }

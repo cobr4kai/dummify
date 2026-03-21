@@ -1,0 +1,223 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { z } from "zod";
+import {
+  articleComparisonSchema,
+  articleLookupInputSchema,
+  articleResponseSchema,
+  compareArticlesInputSchema,
+  searchArticlesInputSchema,
+  searchArticlesResponseSchema,
+  topArticlesInputSchema,
+  topArticlesResponseSchema,
+  type ArticleLookupInput,
+  type CompareArticlesInput,
+  type SearchArticlesInput,
+  type TopArticlesInput,
+} from "@repo-types/content";
+import { env } from "@/lib/env";
+import {
+  errorToolResult,
+  handleCompareArticles,
+  handleGetArticle,
+  handleListTopArticles,
+  handleSearchArticles,
+  mcpToolErrorSchema,
+  type McpRequestContext,
+  successToolResult,
+} from "@/lib/mcp/tool-handlers";
+
+const listTopArticlesOutputSchema = z.union([topArticlesResponseSchema, mcpToolErrorSchema]);
+const getArticleOutputSchema = z.union([articleResponseSchema, mcpToolErrorSchema]);
+const searchArticlesOutputSchema = z.union([searchArticlesResponseSchema, mcpToolErrorSchema]);
+const compareArticlesOutputSchema = z.union([articleComparisonSchema, mcpToolErrorSchema]);
+
+export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
+  const server = new McpServer({
+    name: "readabstracted-mcp",
+    version: "0.1.0",
+    websiteUrl: resolveWebsiteUrl(context.requestOrigin),
+    description: "Read-only MCP access to ReadAbstracted article discovery, lookup, search, and comparison.",
+  });
+
+  server.registerTool(
+    "list_top_articles",
+    {
+      title: "List top ReadAbstracted articles",
+      description:
+        "Returns the current or requested week's top ReadAbstracted articles with metadata, ranking, topics, and summary snippets.",
+      inputSchema: topArticlesInputSchema,
+      outputSchema: listTopArticlesOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
+    async (input: TopArticlesInput) => {
+      try {
+        const payload = await handleListTopArticles(input, context);
+        return successToolResult(
+          `Returned ${payload.articles.length} top ReadAbstracted articles.`,
+          payload,
+        );
+      } catch (error) {
+        return errorToolResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_article",
+    {
+      title: "Open a ReadAbstracted article",
+      description:
+        "Returns one normalized ReadAbstracted article with safe-summary content, metadata, tags, citation metadata, and canonical links.",
+      inputSchema: articleLookupInputSchema,
+      outputSchema: getArticleOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
+    async (input: ArticleLookupInput) => {
+      try {
+        const payload = await handleGetArticle(input, context);
+        return successToolResult(`Opened ${payload.article.title}.`, payload);
+      } catch (error) {
+        return errorToolResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "search_articles",
+    {
+      title: "Search ReadAbstracted articles",
+      description:
+        "Searches ReadAbstracted articles by query, topic, and date filters, returning structured matches with snippets and relevance scores.",
+      inputSchema: searchArticlesInputSchema,
+      outputSchema: searchArticlesOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
+    async (input: SearchArticlesInput) => {
+      try {
+        const payload = await handleSearchArticles(input, context);
+        return successToolResult(
+          `Found ${payload.results.length} matching ReadAbstracted articles for "${payload.query}".`,
+          payload,
+        );
+      } catch (error) {
+        return errorToolResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "compare_articles",
+    {
+      title: "Compare ReadAbstracted articles",
+      description:
+        "Builds a structured comparison across two to five ReadAbstracted articles without generating the final prose answer.",
+      inputSchema: compareArticlesInputSchema,
+      outputSchema: compareArticlesOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
+    async (input: CompareArticlesInput) => {
+      try {
+        const payload = await handleCompareArticles(input, context);
+        return successToolResult(
+          `Prepared a structured comparison for ${payload.articles.length} ReadAbstracted articles.`,
+          payload,
+        );
+      } catch (error) {
+        return errorToolResult(error);
+      }
+    },
+  );
+
+  return server;
+}
+
+export async function handleReadAbstractedMcpPost(
+  request: Request,
+  context: McpRequestContext = {},
+) {
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  const server = createReadAbstractedMcpServer(context);
+
+  try {
+    await server.connect(transport);
+    const parsedBody = await parseRequestBody(request);
+    return await transport.handleRequest(
+      request,
+      typeof parsedBody === "undefined" ? undefined : { parsedBody },
+    );
+  } catch (error) {
+    return createJsonRpcErrorResponse(
+      error instanceof SyntaxError ? 400 : 500,
+      error instanceof SyntaxError ? -32700 : -32603,
+      error instanceof Error ? error.message : "Internal MCP server error.",
+    );
+  }
+}
+
+export function createMethodNotAllowedMcpResponse() {
+  return createJsonRpcErrorResponse(405, -32000, "Method not allowed. Use POST /api/mcp.", {
+    allow: "POST",
+  });
+}
+
+function resolveWebsiteUrl(requestOrigin?: string) {
+  if (env.SITE_BASE_URL) {
+    return env.SITE_BASE_URL;
+  }
+
+  if (requestOrigin) {
+    return requestOrigin.replace(/\/+$/, "");
+  }
+
+  return "http://localhost:3000";
+}
+
+async function parseRequestBody(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return undefined;
+  }
+
+  return request.json();
+}
+
+function createJsonRpcErrorResponse(
+  status: number,
+  code: number,
+  message: string,
+  options?: { allow?: string },
+) {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code,
+        message,
+      },
+      id: null,
+    }),
+    {
+      status,
+      headers: {
+        "content-type": "application/json",
+        ...(options?.allow ? { allow: options.allow } : {}),
+      },
+    },
+  );
+}

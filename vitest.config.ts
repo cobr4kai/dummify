@@ -13,6 +13,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@repo-types\/(.*)$/,
+        replacement: `${path.resolve(__dirname, "packages/types/src")}/$1`,
+      },
+      {
         find: /^@\/config\/(.*)$/,
         replacement: `${path.resolve(__dirname, "config")}/$1`,
       },

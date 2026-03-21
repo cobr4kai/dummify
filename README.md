@@ -230,6 +230,28 @@ Open [http://localhost:3000](http://localhost:3000).
 
 If you prefer the Prisma migration flow and your environment supports it cleanly, you can still use it. For this repo's checked-in SQLite workflow, the bootstrap script is the safest default on Windows.
 
+## ChatGPT App / MCP
+
+This repo now also exposes a read-only MCP endpoint for ChatGPT from the existing Next.js app.
+
+Live endpoint shape:
+
+- `POST /api/mcp`
+- `GET /api/mcp` returns method-not-allowed
+- `DELETE /api/mcp` returns method-not-allowed
+- `GET /api/mcp/health`
+
+The MCP route reuses the same content-normalization logic as the site and returns safe-summary article data only.
+
+Local commands from the repo root:
+
+```bash
+npm run dev
+npm run test:mcp
+```
+
+For ChatGPT connector testing against a deployed site, use your existing Render/onrender hostname with `/api/mcp`.
+
 ## Render Production
 
 This repo now includes a Render blueprint at [render.yaml](/C:/Users/manee/OneDrive/Desktop/dummify/render.yaml) plus Render-specific helper scripts in [render-start.mjs](/C:/Users/manee/OneDrive/Desktop/dummify/scripts/render-start.mjs) and [render-trigger-cron.mjs](/C:/Users/manee/OneDrive/Desktop/dummify/scripts/render-trigger-cron.mjs).
@@ -271,6 +293,7 @@ Operational notes:
   - optionally `PAPERBRIEF_BOOTSTRAP_BACKFILL_CATEGORIES=cs.AI,cs.LG,cs.CL,cs.MA`
   - the web startup path records completion in the production SQLite database and skips repeats on later deploys against the same disk
 - health checks use `GET /api/health`
+- the ChatGPT MCP endpoint is served from the same web service at `POST /api/mcp`
 - Render cron schedules are expressed in UTC, so the provided jobs approximate the Pacific-time cadence but will shift by one hour across DST boundaries unless you update the schedules seasonally
 - this SQLite-plus-disk setup is intended for a single web service instance, not horizontal scaling
 

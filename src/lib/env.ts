@@ -30,6 +30,7 @@ const envSchema = z.object({
   OPENALEX_API_KEY: optionalNonEmptyString,
   ADMIN_PASSWORD: optionalNonEmptyString,
   CRON_SECRET: optionalNonEmptyString,
+  SITE_BASE_URL: optionalNonEmptyString,
   ENABLE_LOCAL_CRON: z
     .enum(["true", "false"])
     .default("false")
@@ -45,5 +46,6 @@ export const env = envSchema.parse({
   OPENALEX_API_KEY: process.env.OPENALEX_API_KEY,
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
   CRON_SECRET: process.env.CRON_SECRET,
+  SITE_BASE_URL: process.env.SITE_BASE_URL,
   ENABLE_LOCAL_CRON: process.env.ENABLE_LOCAL_CRON,
 });
