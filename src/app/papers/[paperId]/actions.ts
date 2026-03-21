@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getCanonicalPaperPathById, getPublicBriefByPaperId, getWeekPath } from "@/lib/briefs";
+import { refetchPaperSource } from "@/lib/papers/refetch";
 import {
   ensurePaperTechnicalBrief,
   getCurrentTechnicalBrief,
@@ -78,6 +79,29 @@ export async function regeneratePaperTechnicalBriefAction(formData: FormData) {
   );
 }
 
+export async function refetchPaperSourceAction(formData: FormData) {
+  const paperId = readString(formData.get("paperId"));
+  if (!paperId) {
+    redirect("/admin");
+  }
+
+  await requireAdmin(await getCanonicalPaperPathById(paperId));
+  const result = await refetchPaperSource(paperId);
+
+  await revalidatePaperViews(paperId);
+  await redirectToPaperDetail(
+    paperId,
+    result.status === "metadata-refreshed-pdf-extracted"
+      ? "paper-source-refetched-pdf-extracted"
+      : result.status === "metadata-refreshed-pdf-fallback"
+        ? "paper-source-refetched-pdf-fallback"
+        : result.status === "metadata-refreshed-no-pdf-retry-needed"
+          ? "paper-source-refetched"
+        : "paper-source-refetch-failed",
+    result.versionChanged,
+  );
+}
+
 async function revalidatePaperViews(paperId: string) {
   revalidatePath("/");
   revalidatePath("/archive");
@@ -90,9 +114,16 @@ async function revalidatePaperViews(paperId: string) {
   }
 }
 
-async function redirectToPaperDetail(paperId: string, notice: string): Promise<never> {
+async function redirectToPaperDetail(
+  paperId: string,
+  notice: string,
+  versionChanged = false,
+): Promise<never> {
   const search = new URLSearchParams();
   search.set("notice", notice);
+  if (versionChanged) {
+    search.set("versionChanged", "1");
+  }
   redirect(`${await getCanonicalPaperPathById(paperId)}?${search.toString()}`);
 }
 

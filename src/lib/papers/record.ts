@@ -1,5 +1,6 @@
 import type { Paper } from "@prisma/client";
 import type { PaperSourceRecord } from "@/lib/types";
+import { toJsonInput } from "@/lib/utils/prisma";
 import { normalizeSearchText } from "@/lib/utils/strings";
 
 export function paperToSourceRecord(paper: Paper): PaperSourceRecord {
@@ -56,4 +57,42 @@ export function buildPaperSearchText(paper: Pick<
       .join(" ")
       .trim(),
   );
+}
+
+export function buildPaperPersistenceData(
+  paper: PaperSourceRecord,
+  options: {
+    isDemoData?: boolean;
+    lastSeenAt?: Date;
+  } = {},
+) {
+  return {
+    version: paper.version,
+    versionedId: paper.versionedId,
+    title: paper.title,
+    abstract: paper.abstract,
+    authorsJson: toJsonInput(paper.authors),
+    authorsText: paper.authors.join(", "),
+    categoriesJson: toJsonInput(paper.categories),
+    sourceFeedCategoriesJson: toJsonInput(paper.sourceFeedCategories),
+    categoryText: paper.categories.join(" "),
+    primaryCategory: paper.primaryCategory,
+    publishedAt: paper.publishedAt,
+    updatedAt: paper.updatedAt,
+    announcementDay: paper.announcementDay,
+    announceType: paper.announceType,
+    comment: paper.comment ?? null,
+    journalRef: paper.journalRef ?? null,
+    doi: paper.doi ?? null,
+    abstractUrl: paper.links.abs,
+    pdfUrl: paper.links.pdf,
+    links: toJsonInput(paper.links),
+    sourceMetadata: toJsonInput(paper.sourceMetadata),
+    sourcePayload: toJsonInput(paper.sourcePayload),
+    searchText: buildPaperSearchText(paper),
+    ...(options.lastSeenAt ? { lastSeenAt: options.lastSeenAt } : {}),
+    ...(typeof options.isDemoData === "boolean"
+      ? { isDemoData: options.isDemoData }
+      : {}),
+  };
 }

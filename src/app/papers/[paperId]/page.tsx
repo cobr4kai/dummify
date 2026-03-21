@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { permanentRedirect } from "next/navigation";
 import { z } from "zod";
 import {
+  refetchPaperSourceAction,
   regeneratePaperTechnicalBriefAction,
   revertPaperTechnicalBriefAction,
   savePaperTechnicalBriefAction,
@@ -54,7 +55,7 @@ export default async function PaperDetailPage({
   searchParams,
 }: {
   params: Promise<{ paperId: string }>;
-  searchParams: Promise<{ notice?: string }>;
+  searchParams: Promise<{ notice?: string; versionChanged?: string }>;
 }) {
   const { paperId } = await params;
   const query = await searchParams;
@@ -77,6 +78,7 @@ export default async function PaperDetailPage({
   const isAdmin = await isAdminAuthenticated();
   const detailNotice = getPaperDetailNotice(
     typeof query.notice === "string" ? query.notice : null,
+    query.versionChanged === "1",
   );
   const adminEditableBullets = parseJsonValue(
     technicalBrief?.bulletsJson ?? [],
@@ -131,7 +133,7 @@ export default async function PaperDetailPage({
             <CardHeader className="gap-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <Badge variant={detailNotice.variant}>Brief editor</Badge>
+                  <Badge variant={detailNotice.variant}>Admin notice</Badge>
                   <CardTitle className="mt-3">{detailNotice.title}</CardTitle>
                   <CardDescription className="mt-2 max-w-3xl">
                     {detailNotice.description}
@@ -330,10 +332,25 @@ export default async function PaperDetailPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Source and enrichment status</CardTitle>
-            <CardDescription>
-              PDF cache status plus optional OpenAlex metadata for this paper.
-            </CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <CardTitle>Source and enrichment status</CardTitle>
+                <CardDescription>
+                  PDF cache status plus optional OpenAlex metadata for this paper.
+                </CardDescription>
+              </div>
+              {isAdmin ? (
+                <form action={refetchPaperSourceAction}>
+                  <input name="paperId" type="hidden" value={paper.id} />
+                  <AdminSubmitButton
+                    idleLabel="Refetch source"
+                    pendingLabel="Refetching..."
+                    type="submit"
+                    variant="secondary"
+                  />
+                </form>
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {pdfCache ? (
@@ -440,60 +457,102 @@ type PaperDetailNotice = {
   variant: "success" | "highlight" | "danger";
 } | null;
 
-function getPaperDetailNotice(notice: string | null): PaperDetailNotice {
-  switch (notice) {
-    case "brief-saved":
-      return {
-        title: "Manual edits saved",
-        description:
-          "The current executive brief now uses your edited copy. You can still regenerate or revert later.",
-        variant: "success",
-      };
-    case "brief-regenerated":
-      return {
-        title: "Brief regenerated",
-        description:
-          "A fresh generated version is now live for this paper.",
-        variant: "success",
-      };
-    case "brief-reverted":
-      return {
-        title: "Reverted to generated copy",
-        description:
-          "The latest generated executive brief is live again.",
-        variant: "success",
-      };
-    case "brief-invalid":
-      return {
-        title: "Could not save edits",
-        description:
-          "Please keep the lead paragraph reasonably complete and include 3 to 5 non-empty bullets.",
-        variant: "danger",
-      };
-    case "brief-pdf-required":
-      return {
-        title: "Regeneration needs the PDF",
-        description:
-          "The current brief expects full-PDF regeneration, but PDF extraction was unavailable for this paper.",
-        variant: "highlight",
-      };
-    case "brief-revert-unavailable":
-      return {
-        title: "Nothing to revert",
-        description:
-          "There is no earlier generated brief version available to restore for this paper.",
-        variant: "highlight",
-      };
-    case "brief-regenerate-unavailable":
-      return {
-        title: "Could not regenerate brief",
-        description:
-          "The provider or source material was unavailable, so the brief was left unchanged.",
-        variant: "highlight",
-      };
-    default:
-      return null;
+function getPaperDetailNotice(
+  notice: string | null,
+  versionChanged = false,
+): PaperDetailNotice {
+  const resolved = (() => {
+    switch (notice) {
+      case "brief-saved":
+        return {
+          title: "Manual edits saved",
+          description:
+            "The current executive brief now uses your edited copy. You can still regenerate or revert later.",
+          variant: "success",
+        } as const;
+      case "brief-regenerated":
+        return {
+          title: "Brief regenerated",
+          description:
+            "A fresh generated version is now live for this paper.",
+          variant: "success",
+        } as const;
+      case "brief-reverted":
+        return {
+          title: "Reverted to generated copy",
+          description:
+            "The latest generated executive brief is live again.",
+          variant: "success",
+        } as const;
+      case "brief-invalid":
+        return {
+          title: "Could not save edits",
+          description:
+            "Please keep the lead paragraph reasonably complete and include 3 to 5 non-empty bullets.",
+          variant: "danger",
+        } as const;
+      case "brief-pdf-required":
+        return {
+          title: "Regeneration needs the PDF",
+          description:
+            "The current brief expects full-PDF regeneration, but PDF extraction was unavailable for this paper.",
+          variant: "highlight",
+        } as const;
+      case "brief-revert-unavailable":
+        return {
+          title: "Nothing to revert",
+          description:
+            "There is no earlier generated brief version available to restore for this paper.",
+          variant: "highlight",
+        } as const;
+      case "brief-regenerate-unavailable":
+        return {
+          title: "Could not regenerate brief",
+          description:
+            "The provider or source material was unavailable, so the brief was left unchanged.",
+          variant: "highlight",
+        } as const;
+      case "paper-source-refetched":
+        return {
+          title: "Paper source refreshed",
+          description:
+            "Fresh arXiv metadata is now stored for this paper. The current PDF cache was already healthy, so no PDF retry was needed.",
+          variant: "success",
+        } as const;
+      case "paper-source-refetched-pdf-extracted":
+        return {
+          title: "Source refreshed and PDF repaired",
+          description:
+            "Fresh arXiv metadata is now stored for this paper, and PDF extraction succeeded on retry.",
+          variant: "success",
+        } as const;
+      case "paper-source-refetched-pdf-fallback":
+        return {
+          title: "Source refreshed but PDF is still unavailable",
+          description:
+            "Fresh arXiv metadata is now stored for this paper, but PDF extraction still fell back. You can try again later if arXiv finishes publishing the file.",
+          variant: "highlight",
+        } as const;
+      case "paper-source-refetch-failed":
+        return {
+          title: "Could not refresh paper source",
+          description:
+            "arXiv did not return a usable record for this paper, or the refresh request failed. The current paper data was left as-is.",
+          variant: "danger",
+        } as const;
+      default:
+        return null;
+    }
+  })();
+
+  if (!resolved || !versionChanged) {
+    return resolved;
   }
+
+  return {
+    ...resolved,
+    description: `${resolved.description} The arXiv version changed, so use Regenerate if you want the brief content to match the refreshed source exactly.`,
+  };
 }
 
 function getNoticeCardClassName(variant: NonNullable<PaperDetailNotice>["variant"]) {
