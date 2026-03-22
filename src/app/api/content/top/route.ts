@@ -10,6 +10,9 @@ export async function GET(request: Request) {
       week: searchParams.get("week") ?? undefined,
       limit: searchParams.get("limit") ?? undefined,
       topic: searchParams.get("topic") ?? undefined,
+      audience: searchParams.get("audience") ?? undefined,
+      sort: searchParams.get("sort") ?? undefined,
+      has_extracted_pdf: searchParams.get("has_extracted_pdf") ?? undefined,
     });
 
     const payload = await getTopArticlesContent(input, {

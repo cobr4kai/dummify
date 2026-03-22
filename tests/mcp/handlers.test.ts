@@ -1,29 +1,43 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  browseArticlesContentMock,
   getArticleContentMock,
   getArticlesForComparisonMock,
   getTopArticlesContentMock,
+  openArticleContentMock,
+  resolveArticleReferenceMock,
   searchArticlesContentMock,
+  suggestArticleRefsMock,
 } = vi.hoisted(() => ({
+  browseArticlesContentMock: vi.fn(),
   getArticleContentMock: vi.fn(),
   getArticlesForComparisonMock: vi.fn(),
   getTopArticlesContentMock: vi.fn(),
+  openArticleContentMock: vi.fn(),
+  resolveArticleReferenceMock: vi.fn(),
   searchArticlesContentMock: vi.fn(),
+  suggestArticleRefsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/content/service", () => ({
+  browseArticlesContent: browseArticlesContentMock,
   getArticleContent: getArticleContentMock,
   getArticlesForComparison: getArticlesForComparisonMock,
   getTopArticlesContent: getTopArticlesContentMock,
+  openArticleContent: openArticleContentMock,
+  resolveArticleReference: resolveArticleReferenceMock,
   searchArticlesContent: searchArticlesContentMock,
+  suggestArticleRefs: suggestArticleRefsMock,
 }));
 
 import {
   errorToolResult,
+  handleBrowseArticles,
   handleCompareArticles,
   handleGetArticle,
   handleListTopArticles,
+  handleOpenArticle,
   handleSearchArticles,
   successToolResult,
 } from "@/lib/mcp/tool-handlers";
@@ -44,6 +58,11 @@ const articleOne = {
   topics: ["agent systems", "protocol design", "infra"],
   tags: ["cs.AI", "agents", "infra"],
   ranking: {
+    mode: "editorial" as const,
+    label: "Editorially prioritized this week.",
+    score: 92,
+    dimensions: [],
+    whyRanked: "High platform relevance.",
     totalScore: 92,
     rationale: "High platform relevance.",
   },
@@ -51,11 +70,46 @@ const articleOne = {
   pdfAvailability: {
     hasPdfUrl: true,
     hasExtractedText: true,
+    hasExtractedPdf: true,
     extractionStatus: "EXTRACTED" as const,
     usedFallbackAbstract: false,
     pageCount: 12,
     fileSizeBytes: 12000,
   },
+  article: {
+    id: "paper-1",
+    articleRef: "paper-1",
+    arxivId: "2603.08852",
+    title: "Agent Handoff Protocols",
+    canonicalUrl: "https://readabstracted.com/papers/paper-1",
+    arxivUrl: "https://arxiv.org/abs/2603.08852",
+    abstractUrl: "https://arxiv.org/abs/2603.08852",
+    publishedAt: "2026-03-18T15:00:00.000Z",
+    announcementDay: "2026-03-18",
+    weekStart: "2026-03-16",
+    authors: ["Alice A."],
+    categories: ["cs.AI"],
+    topics: ["agent systems", "protocol design", "infra"],
+    tags: ["cs.AI", "agents", "infra"],
+  },
+  summary: {
+    preview: "The handoff layer is becoming a platform bottleneck.",
+    quickTake: "Why the handoff layer matters now.",
+    whyItMatters: "Routing and provenance are becoming product surfaces.",
+    whyRanked: "High platform relevance.",
+    whyMatched: null,
+    abstract: "This paper studies protocol design for multi-agent systems.",
+  },
+  availability: {
+    hasPdfUrl: true,
+    hasExtractedText: true,
+    hasExtractedPdf: true,
+    extractionStatus: "EXTRACTED" as const,
+    usedFallbackAbstract: false,
+    pageCount: 12,
+    fileSizeBytes: 12000,
+  },
+  discovery: null,
   abstract: "This paper studies protocol design for multi-agent systems.",
   bestAvailableText: "This paper studies protocol design for multi-agent systems.",
   technicalBrief: {
@@ -90,6 +144,11 @@ const articleTwo = {
   publishedAt: "2026-03-20T15:00:00.000Z",
   announcementDay: "2026-03-20",
   ranking: {
+    mode: "editorial" as const,
+    label: "Editorially prioritized this week.",
+    score: 81,
+    dimensions: [],
+    whyRanked: "Useful but narrower.",
     totalScore: 81,
     rationale: "Useful but narrower.",
   },
@@ -111,14 +170,19 @@ const articleTwo = {
 
 describe("mcp tool handlers", () => {
   beforeEach(() => {
+    browseArticlesContentMock.mockReset();
     getArticleContentMock.mockReset();
     getArticlesForComparisonMock.mockReset();
     getTopArticlesContentMock.mockReset();
+    openArticleContentMock.mockReset();
+    resolveArticleReferenceMock.mockReset();
     searchArticlesContentMock.mockReset();
+    suggestArticleRefsMock.mockReset();
   });
 
   it("returns not found for missing article lookups", async () => {
     getArticleContentMock.mockResolvedValue(null);
+    suggestArticleRefsMock.mockResolvedValue([]);
 
     await expect(
       handleGetArticle({
@@ -133,11 +197,46 @@ describe("mcp tool handlers", () => {
     });
   });
 
+  it("uses the new browse/open workflow handlers", async () => {
+    browseArticlesContentMock.mockResolvedValue({
+      feed: "top",
+      query: null,
+      topic: null,
+      audience: null,
+      sort: "editorial",
+      weekStart: "2026-03-16",
+      startDate: null,
+      endDate: null,
+      limit: 10,
+      hasExtractedPdf: null,
+      topicSuggestions: ["agents"],
+      articles: [],
+    });
+    openArticleContentMock.mockResolvedValue({
+      requestedRef: "paper-1",
+      resolvedBy: "article_ref",
+      article: articleOne,
+    });
+
+    const browsePayload = await handleBrowseArticles({
+      limit: 10,
+    });
+    const openPayload = await handleOpenArticle({
+      article_ref: "paper-1",
+    });
+
+    expect(browsePayload.feed).toBe("top");
+    expect(openPayload.article.id).toBe("paper-1");
+  });
+
   it("builds structured comparison payloads without prose answers", async () => {
+    resolveArticleReferenceMock.mockResolvedValue({ paperId: "paper-1" });
+    resolveArticleReferenceMock.mockResolvedValueOnce({ paperId: "paper-1" });
+    resolveArticleReferenceMock.mockResolvedValueOnce({ paperId: "paper-2" });
     getArticlesForComparisonMock.mockResolvedValue([articleOne, articleTwo]);
 
     const payload = await handleCompareArticles({
-      article_ids: ["paper-1", "paper-2"],
+      article_refs: ["paper-1", "paper-2"],
       question: "Which one is stronger on infra platform implications?",
     });
 
@@ -150,9 +249,17 @@ describe("mcp tool handlers", () => {
 
   it("normalizes MCP top-article inputs through the shared schema", async () => {
     getTopArticlesContentMock.mockResolvedValue({
+      feed: "top",
+      query: null,
       weekStart: "2026-03-16",
+      startDate: null,
+      endDate: null,
       topic: "AI",
+      audience: null,
+      sort: "editorial",
       limit: 10,
+      hasExtractedPdf: null,
+      topicSuggestions: [],
       articles: [],
     });
 
@@ -172,12 +279,17 @@ describe("mcp tool handlers", () => {
 
   it("normalizes MCP search inputs through the shared schema", async () => {
     searchArticlesContentMock.mockResolvedValue({
+      feed: "search",
       query: "AI",
       topic: null,
+      audience: null,
+      sort: "relevance",
       weekStart: null,
       startDate: null,
       endDate: null,
       limit: 5,
+      hasExtractedPdf: null,
+      topicSuggestions: [],
       results: [],
     });
 

@@ -2,19 +2,27 @@ import { z, ZodError } from "zod";
 import {
   articleComparisonSchema,
   articleLookupInputSchema,
+  browseArticlesInputSchema,
+  browseArticlesResponseSchema,
   compareArticlesInputSchema,
+  openArticleInputSchema,
   searchArticlesInputSchema,
   type ArticleDetail,
   type ArticleResponse,
+  type BrowseArticlesResponse,
   type SearchArticlesResponse,
   topArticlesInputSchema,
   type TopArticlesResponse,
 } from "@repo-types/content";
 import {
+  browseArticlesContent,
   getArticleContent,
   getArticlesForComparison,
   getTopArticlesContent,
+  openArticleContent,
+  resolveArticleReference,
   searchArticlesContent,
+  suggestArticleRefs,
 } from "@/lib/content/service";
 
 export const mcpToolErrorSchema = z.object({
@@ -56,6 +64,34 @@ export async function handleListTopArticles(
   return getTopArticlesContent(parsed, context);
 }
 
+export async function handleBrowseArticles(
+  input: unknown,
+  context: McpRequestContext = {},
+) {
+  const parsed = browseArticlesInputSchema.parse(input);
+  return browseArticlesContent(parsed, context);
+}
+
+export async function handleOpenArticle(
+  input: unknown,
+  context: McpRequestContext = {},
+) {
+  const parsed = openArticleInputSchema.parse(input);
+  const payload = await openArticleContent(parsed, context);
+  if (!payload) {
+    const suggestions = await suggestArticleRefs(parsed.article_ref, context);
+    throw new McpServiceError("not_found", "Article not found.", {
+      status: 404,
+      details: {
+        requestedRef: parsed.article_ref,
+        suggestions,
+      },
+    });
+  }
+
+  return payload;
+}
+
 export async function handleGetArticle(
   input: unknown,
   context: McpRequestContext = {},
@@ -63,7 +99,15 @@ export async function handleGetArticle(
   const parsed = articleLookupInputSchema.parse(input);
   const payload = await getArticleContent(parsed, context);
   if (!payload) {
-    throw new McpServiceError("not_found", "Article not found.", { status: 404 });
+    const requestedRef = parsed.article_ref ?? parsed.article_id ?? parsed.url ?? parsed.arxiv_id ?? null;
+    const suggestions = requestedRef ? await suggestArticleRefs(requestedRef, context) : [];
+    throw new McpServiceError("not_found", "Article not found.", {
+      status: 404,
+      details: {
+        requestedRef,
+        suggestions,
+      },
+    });
   }
 
   return payload;
@@ -82,15 +126,23 @@ export async function handleCompareArticles(
   context: McpRequestContext = {},
 ) {
   const parsed = compareArticlesInputSchema.parse(input);
-  const articles = await getArticlesForComparison(parsed.article_ids, context);
-  const foundIds = new Set(articles.map((article) => article.id));
-  const missingIds = parsed.article_ids.filter((articleId) => !foundIds.has(articleId));
-
-  if (missingIds.length > 0) {
+  const requestedRefs = parsed.article_refs ?? parsed.article_ids ?? [];
+  const resolutions = await Promise.all(requestedRefs.map((articleRef) => resolveArticleReference(articleRef)));
+  const missingRefs = requestedRefs.filter((_, index) => !resolutions[index]?.paperId);
+  if (missingRefs.length > 0) {
     throw new McpServiceError(
       "not_found",
-      `One or more articles could not be found: ${missingIds.join(", ")}.`,
-      { status: 404, details: { missingIds } },
+      `One or more articles could not be found: ${missingRefs.join(", ")}.`,
+      { status: 404, details: { missingRefs } },
+    );
+  }
+
+  const articles = await getArticlesForComparison(parsed, context);
+  if (articles.length !== requestedRefs.length) {
+    throw new McpServiceError(
+      "not_found",
+      "One or more articles could not be loaded for comparison.",
+      { status: 404, details: { requestedRefs } },
     );
   }
 
@@ -132,6 +184,7 @@ export async function handleCompareArticles(
 
 export function successToolResult<
   T extends
+    | BrowseArticlesResponse
     | TopArticlesResponse
     | ArticleResponse
     | SearchArticlesResponse

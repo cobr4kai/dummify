@@ -4,27 +4,54 @@ import { z } from "zod";
 import {
   articleComparisonSchema,
   articleResponseSchema,
+  browseArticlesResponseSchema,
   searchArticlesResponseSchema,
   topArticlesResponseSchema,
 } from "@repo-types/content";
 import { env } from "@/lib/env";
 import {
+  handleBrowseArticles,
   errorToolResult,
   handleCompareArticles,
   handleGetArticle,
   handleListTopArticles,
+  handleOpenArticle,
   handleSearchArticles,
   type McpRequestContext,
   successToolResult,
 } from "@/lib/mcp/tool-handlers";
 
+const audienceSchema = z.enum(["builders", "researchers", "investors", "pms"]);
+const sortSchema = z.enum(["editorial", "relevance", "recency"]);
+
+const mcpBrowseArticlesInputSchema = z.object({
+  feed: z.enum(["top", "search"]).optional(),
+  query: z.string().trim().min(1).optional(),
+  topic: z.string().trim().min(1).optional(),
+  audience: audienceSchema.optional(),
+  sort: sortSchema.optional(),
+  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  has_extracted_pdf: z.boolean().optional(),
+  limit: z.number().int().min(1).max(25).optional(),
+});
+
 const mcpTopArticlesInputSchema = z.object({
   week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.number().int().min(1).max(25).optional(),
   topic: z.string().trim().min(1).optional(),
+  audience: audienceSchema.optional(),
+  sort: sortSchema.optional(),
+  has_extracted_pdf: z.boolean().optional(),
+});
+
+const mcpOpenArticleInputSchema = z.object({
+  article_ref: z.string().trim().min(1),
 });
 
 const mcpGetArticleInputSchema = z.object({
+  article_ref: z.string().trim().min(1).optional(),
   article_id: z.string().trim().min(1).optional(),
   url: z.string().trim().min(1).optional(),
   arxiv_id: z.string().trim().min(1).optional(),
@@ -33,18 +60,23 @@ const mcpGetArticleInputSchema = z.object({
 const mcpSearchArticlesInputSchema = z.object({
   query: z.string().trim().min(1),
   topic: z.string().trim().min(1).optional(),
+  audience: audienceSchema.optional(),
+  sort: sortSchema.optional(),
   week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  has_extracted_pdf: z.boolean().optional(),
   limit: z.number().int().min(1).max(25).optional(),
 });
 
 const mcpCompareArticlesInputSchema = z.object({
-  article_ids: z.array(z.string().trim().min(1)).min(2).max(5),
+  article_refs: z.array(z.string().trim().min(1)).min(2).max(5),
   question: z.string().trim().min(1).optional(),
 });
 
+type McpBrowseArticlesInput = z.infer<typeof mcpBrowseArticlesInputSchema>;
 type McpTopArticlesInput = z.infer<typeof mcpTopArticlesInputSchema>;
+type McpOpenArticleInput = z.infer<typeof mcpOpenArticleInputSchema>;
 type McpGetArticleInput = z.infer<typeof mcpGetArticleInputSchema>;
 type McpSearchArticlesInput = z.infer<typeof mcpSearchArticlesInputSchema>;
 type McpCompareArticlesInput = z.infer<typeof mcpCompareArticlesInputSchema>;
@@ -56,6 +88,32 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
     websiteUrl: resolveWebsiteUrl(context.requestOrigin),
     description: "Read-only MCP access to ReadAbstracted article discovery, lookup, search, and comparison.",
   });
+
+  server.registerTool(
+    "browse_articles",
+    {
+      title: "Browse ReadAbstracted articles",
+      description:
+        "Browse top ReadAbstracted papers or search the archive with optional topic, audience, date, and extracted-PDF filters.",
+      inputSchema: mcpBrowseArticlesInputSchema,
+      outputSchema: browseArticlesResponseSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
+    async (input: McpBrowseArticlesInput) => {
+      try {
+        const payload = await handleBrowseArticles(input, context);
+        return successToolResult(
+          `Returned ${payload.articles.length} ReadAbstracted articles for browsing.`,
+          payload,
+        );
+      } catch (error) {
+        return errorToolResult(error);
+      }
+    },
+  );
 
   server.registerTool(
     "list_top_articles",
@@ -77,6 +135,29 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
           `Returned ${payload.articles.length} top ReadAbstracted articles.`,
           payload,
         );
+      } catch (error) {
+        return errorToolResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "open_article",
+    {
+      title: "Open a ReadAbstracted article",
+      description:
+        "Open one article using a single article reference. The server resolves ReadAbstracted IDs, paper URLs, and arXiv identifiers.",
+      inputSchema: mcpOpenArticleInputSchema,
+      outputSchema: articleResponseSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
+    async (input: McpOpenArticleInput) => {
+      try {
+        const payload = await handleOpenArticle(input, context);
+        return successToolResult(`Opened ${payload.article.title}.`, payload);
       } catch (error) {
         return errorToolResult(error);
       }
@@ -147,7 +228,10 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
     },
     async (input: McpCompareArticlesInput) => {
       try {
-        const payload = await handleCompareArticles(input, context);
+        const payload = await handleCompareArticles({
+          article_refs: input.article_refs,
+          question: input.question,
+        }, context);
         return successToolResult(
           `Prepared a structured comparison for ${payload.articles.length} ReadAbstracted articles.`,
           payload,

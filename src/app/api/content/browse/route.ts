@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { searchArticlesInputSchema } from "@repo-types/content";
+import { browseArticlesInputSchema } from "@repo-types/content";
 import { getRequestOrigin, toContentRouteErrorResponse } from "@/lib/content/http";
-import { searchArticlesContent } from "@/lib/content/service";
+import { browseArticlesContent } from "@/lib/content/service";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const input = searchArticlesInputSchema.parse({
-      query: searchParams.get("query") ?? "",
+    const input = browseArticlesInputSchema.parse({
+      feed: searchParams.get("feed") ?? undefined,
+      query: searchParams.get("query") ?? undefined,
       topic: searchParams.get("topic") ?? undefined,
       audience: searchParams.get("audience") ?? undefined,
       sort: searchParams.get("sort") ?? undefined,
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
       limit: searchParams.get("limit") ?? undefined,
     });
 
-    const payload = await searchArticlesContent(input, {
+    const payload = await browseArticlesContent(input, {
       requestOrigin: getRequestOrigin(request),
     });
 

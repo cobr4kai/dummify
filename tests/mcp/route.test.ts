@@ -80,11 +80,20 @@ describe("mcp route", () => {
     const listTopTool = payload.result.tools.find(
       (tool: { name: string }) => tool.name === "list_top_articles",
     );
+    const browseTool = payload.result.tools.find(
+      (tool: { name: string }) => tool.name === "browse_articles",
+    );
+    const openTool = payload.result.tools.find(
+      (tool: { name: string }) => tool.name === "open_article",
+    );
     const getArticleTool = payload.result.tools.find(
       (tool: { name: string }) => tool.name === "get_article",
     );
 
+    expect(browseTool).toBeDefined();
+    expect(openTool).toBeDefined();
     expect(listTopTool.inputSchema.required ?? []).not.toContain("topic");
+    expect(openTool.inputSchema.required ?? []).toEqual(["article_ref"]);
     expect(getArticleTool.inputSchema.required ?? []).toEqual([]);
     expect(listTopTool.outputSchema?.type).toBe("object");
   });

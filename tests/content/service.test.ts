@@ -221,8 +221,10 @@ vi.mock("@/lib/env", () => ({
 }));
 
 import {
+  browseArticlesContent,
   getArticleContent,
   getTopArticlesContent,
+  openArticleContent,
   resolvePaperIdFromLookup,
   searchArticlesContent,
 } from "@/lib/content/service";
@@ -251,6 +253,8 @@ describe("content service", () => {
     expect(result.weekStart).toBe("2026-03-16");
     expect(result.articles.map((article) => article.id)).toEqual(["paper-2", "paper-1"]);
     expect(result.articles[0]?.canonicalUrl).toBe("https://readabstracted.com/papers/paper-2");
+    expect(result.feed).toBe("top");
+    expect(result.sort).toBe("editorial");
   });
 
   it("resolves by url and redacts quote text plus cache paths", async () => {
@@ -263,6 +267,8 @@ describe("content service", () => {
     });
 
     expect(result?.article.id).toBe("paper-1");
+    expect(result?.requestedRef).toBe("https://readabstracted.com/papers/paper-1");
+    expect(result?.resolvedBy).toBe("canonical_url");
     expect(result?.article.technicalBrief?.keyStats[0]?.citations[0]).toEqual({
       page: 4,
       section: "Latency table",
@@ -271,11 +277,14 @@ describe("content service", () => {
     expect(result?.article.pdfAvailability).toEqual({
       hasPdfUrl: true,
       hasExtractedText: true,
+      hasExtractedPdf: true,
       extractionStatus: "EXTRACTED",
       usedFallbackAbstract: false,
       pageCount: 12,
       fileSizeBytes: 12345,
     });
+    expect(result?.article.summary.quickTake).toContain("handoff layer");
+    expect(result?.article.summary.whyItMatters).toContain("Teams building agent systems");
     expect(result?.article.sourceReferences.some((reference) => "quote" in reference)).toBe(false);
     expect(result?.article.bestAvailableText).not.toContain("not for redistribution");
   });
@@ -317,5 +326,39 @@ describe("content service", () => {
     expect(result.results[0]?.matchedFields).toContain("technicalBrief");
     expect(result.results[0]?.snippet.toLowerCase()).toContain("handoff");
     expect(result.results[0]?.relevanceScore).toBeGreaterThan(result.results[1]?.relevanceScore ?? 0);
+    expect(result.results[0]?.summary.whyMatched).toContain("handoff");
+  });
+
+  it("supports browse/open workflow contracts with topic-free discovery", async () => {
+    getWeeklyBriefMock.mockResolvedValue({
+      weekStart: "2026-03-16",
+      papers: [{ id: "paper-1" }, { id: "paper-2" }],
+    });
+    paperFindManyMock.mockResolvedValue([papers.paperOne, papers.paperTwo]);
+    paperFindUniqueMock.mockResolvedValue(papers.paperOne);
+    paperFindFirstMock.mockResolvedValue({ id: "paper-1" });
+
+    const browseResult = await browseArticlesContent({
+      limit: 10,
+      query: undefined,
+      topic: undefined,
+      audience: undefined,
+      sort: undefined,
+      week: undefined,
+      start_date: undefined,
+      end_date: undefined,
+      has_extracted_pdf: undefined,
+      feed: undefined,
+    });
+
+    expect(browseResult.feed).toBe("top");
+    expect(browseResult.articles[0]?.summary.preview).toBeTruthy();
+
+    const openResult = await openArticleContent({
+      article_ref: "https://arxiv.org/abs/2603.08852v1",
+    });
+
+    expect(openResult?.requestedRef).toBe("https://arxiv.org/abs/2603.08852v1");
+    expect(openResult?.article.article.articleRef).toBe("paper-1");
   });
 });

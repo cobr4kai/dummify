@@ -36,54 +36,117 @@ const optionalUrlOrPaperPathSchema = z.preprocess(
     .optional(),
 );
 
+const optionalBooleanSchema = z.preprocess((value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+    if (normalized.length === 0) {
+      return undefined;
+    }
+  }
+
+  return value;
+}, z.boolean().optional());
+
 const limitSchema = z.coerce.number().int().min(1).max(25).default(10);
+const articleRefSchema = z.string().trim().min(1);
+const articleRefListSchema = z.array(articleRefSchema).min(2).max(5);
+
+export const audienceLensSchema = z.enum(["builders", "researchers", "investors", "pms"]);
+export const browseSortSchema = z.enum(["editorial", "relevance", "recency"]);
+export const browseFeedSchema = z.enum(["top", "search"]);
+
+export const openArticleInputSchema = z.object({
+  article_ref: articleRefSchema,
+});
 
 export const articleLookupInputSchema = z
   .object({
+    article_ref: optionalNonEmptyStringSchema,
     article_id: optionalNonEmptyStringSchema,
     url: optionalUrlOrPaperPathSchema,
     arxiv_id: optionalNonEmptyStringSchema,
   })
   .superRefine((value, context) => {
-    const provided = [value.article_id, value.url, value.arxiv_id].filter(Boolean);
+    const provided = [value.article_ref, value.article_id, value.url, value.arxiv_id].filter(Boolean);
     if (provided.length !== 1) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Provide exactly one of article_id, url, or arxiv_id.",
+        message: "Provide exactly one of article_ref, article_id, url, or arxiv_id.",
       });
     }
   });
+
+export const browseArticlesInputSchema = z.object({
+  feed: browseFeedSchema.optional(),
+  query: optionalNonEmptyStringSchema,
+  topic: optionalNonEmptyStringSchema,
+  audience: audienceLensSchema.optional(),
+  sort: browseSortSchema.optional(),
+  week: isoDateSchema.optional(),
+  start_date: isoDateSchema.optional(),
+  end_date: isoDateSchema.optional(),
+  has_extracted_pdf: optionalBooleanSchema,
+  limit: limitSchema,
+});
 
 export const topArticlesInputSchema = z.object({
   week: isoDateSchema.optional(),
   limit: limitSchema,
   topic: optionalNonEmptyStringSchema,
+  audience: audienceLensSchema.optional(),
+  sort: browseSortSchema.optional(),
+  has_extracted_pdf: optionalBooleanSchema,
 });
 
 export const searchArticlesInputSchema = z.object({
   query: z.string().trim().min(1),
   topic: optionalNonEmptyStringSchema,
+  audience: audienceLensSchema.optional(),
+  sort: browseSortSchema.optional(),
   week: isoDateSchema.optional(),
   start_date: isoDateSchema.optional(),
   end_date: isoDateSchema.optional(),
+  has_extracted_pdf: optionalBooleanSchema,
   limit: limitSchema,
 });
 
-export const compareArticlesInputSchema = z.object({
-  article_ids: z
-    .array(z.string().min(1))
-    .min(2)
-    .max(5)
-    .superRefine((value, context) => {
-      if (new Set(value).size !== value.length) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "article_ids must be unique.",
-        });
-      }
-    }),
-  question: optionalNonEmptyStringSchema,
-});
+export const compareArticlesInputSchema = z
+  .object({
+    article_refs: articleRefListSchema.optional(),
+    article_ids: articleRefListSchema.optional(),
+    question: optionalNonEmptyStringSchema,
+  })
+  .superRefine((value, context) => {
+    const provided = [value.article_refs, value.article_ids].filter(
+      (candidate): candidate is string[] => Array.isArray(candidate),
+    );
+
+    if (provided.length !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide exactly one of article_refs or article_ids.",
+      });
+      return;
+    }
+
+    const refs = provided[0] ?? [];
+    if (new Set(refs).size !== refs.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Article references must be unique.",
+      });
+    }
+  });
 
 export const sourceReferenceSchema = z.object({
   label: z.string(),
@@ -134,19 +197,34 @@ export const briefEvidenceSchema = z.object({
   citations: z.array(briefCitationSchema),
 });
 
+export const rankingDimensionSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  score: z.number(),
+  reason: z.string().nullable(),
+});
+
 export const articleRankingSchema = z.object({
+  mode: z.literal("editorial"),
+  label: z.string().nullable(),
+  score: z.number().nullable(),
+  dimensions: z.array(rankingDimensionSchema),
+  whyRanked: z.string().nullable(),
   totalScore: z.number(),
   rationale: z.string().nullable(),
 });
 
-export const pdfAvailabilitySchema = z.object({
+export const articleAvailabilitySchema = z.object({
   hasPdfUrl: z.boolean(),
   hasExtractedText: z.boolean(),
+  hasExtractedPdf: z.boolean(),
   extractionStatus: z.enum(["PENDING", "FETCHED", "EXTRACTED", "FAILED", "FALLBACK"]).nullable(),
   usedFallbackAbstract: z.boolean().nullable(),
   pageCount: z.number().int().nullable(),
   fileSizeBytes: z.number().int().nullable(),
 });
+
+export const pdfAvailabilitySchema = articleAvailabilitySchema;
 
 export const articleTechnicalBriefSchema = z.object({
   oneLineVerdict: z.string(),
@@ -159,6 +237,48 @@ export const articleTechnicalBriefSchema = z.object({
   evidence: z.array(briefEvidenceSchema),
   sourceBasis: z.enum(["full-pdf", "abstract-fallback"]),
   usedFallbackAbstract: z.boolean(),
+});
+
+export const discoveryFieldSchema = z.enum([
+  "title",
+  "subtitle",
+  "abstract",
+  "topics",
+  "technicalBrief",
+  "tags",
+]);
+
+export const articleDiscoverySchema = z.object({
+  matchedOn: z.array(discoveryFieldSchema),
+  matchSnippet: z.string().nullable(),
+  matchReason: z.string().nullable(),
+  sortReason: z.string().nullable(),
+});
+
+export const articleSummaryLayerSchema = z.object({
+  preview: z.string().nullable(),
+  quickTake: z.string().nullable(),
+  whyItMatters: z.string().nullable(),
+  whyRanked: z.string().nullable(),
+  whyMatched: z.string().nullable(),
+  abstract: z.string().nullable(),
+});
+
+export const articleCardSchema = z.object({
+  id: z.string(),
+  articleRef: z.string(),
+  arxivId: z.string(),
+  title: z.string(),
+  canonicalUrl: z.string().url(),
+  arxivUrl: z.string().url(),
+  abstractUrl: z.string().url(),
+  publishedAt: isoDateTimeSchema,
+  announcementDay: isoDateSchema,
+  weekStart: isoDateSchema,
+  authors: z.array(z.string()),
+  categories: z.array(z.string()),
+  topics: z.array(z.string()),
+  tags: z.array(z.string()),
 });
 
 export const articleSummarySchema = z.object({
@@ -179,6 +299,24 @@ export const articleSummarySchema = z.object({
   ranking: articleRankingSchema.nullable(),
   summarySnippet: z.string().nullable(),
   pdfAvailability: pdfAvailabilitySchema.nullable(),
+  article: articleCardSchema,
+  summary: articleSummaryLayerSchema,
+  availability: articleAvailabilitySchema.nullable(),
+  discovery: articleDiscoverySchema.nullable(),
+});
+
+export const articleLocatorSuggestionSchema = z.object({
+  articleRef: z.string(),
+  title: z.string(),
+  canonicalUrl: z.string().url(),
+  arxivId: z.string().nullable(),
+  reason: z.string().nullable(),
+});
+
+export const articleLookupMetadataSchema = z.object({
+  requestedRef: z.string().nullable(),
+  resolvedBy: z.enum(["article_ref", "article_id", "canonical_url", "paper_path", "arxiv_id"]).nullable(),
+  suggestions: z.array(articleLocatorSuggestionSchema).optional(),
 });
 
 export const articleDetailSchema = articleSummarySchema.extend({
@@ -188,32 +326,47 @@ export const articleDetailSchema = articleSummarySchema.extend({
   sourceReferences: z.array(sourceReferenceSchema),
 });
 
-export const topArticlesResponseSchema = z.object({
-  weekStart: isoDateSchema.nullable(),
+export const browseArticlesResponseSchema = z.object({
+  feed: browseFeedSchema,
+  query: z.string().nullable(),
   topic: z.string().nullable(),
+  audience: audienceLensSchema.nullable(),
+  sort: browseSortSchema,
+  weekStart: isoDateSchema.nullable(),
+  startDate: isoDateSchema.nullable(),
+  endDate: isoDateSchema.nullable(),
   limit: z.number().int().min(1).max(25),
+  hasExtractedPdf: z.boolean().nullable(),
+  topicSuggestions: z.array(z.string()),
   articles: z.array(articleSummarySchema),
 });
 
+export const topArticlesResponseSchema = browseArticlesResponseSchema;
+
 export const articleResponseSchema = z.object({
+  requestedRef: z.string().nullable(),
+  resolvedBy: z.enum(["article_ref", "article_id", "canonical_url", "paper_path", "arxiv_id"]).nullable(),
   article: articleDetailSchema,
 });
 
 export const articleSearchResultSchema = articleSummarySchema.extend({
   relevanceScore: z.number(),
-  matchedFields: z.array(
-    z.enum(["title", "subtitle", "abstract", "topics", "technicalBrief", "tags"]),
-  ),
+  matchedFields: z.array(discoveryFieldSchema),
   snippet: z.string(),
 });
 
 export const searchArticlesResponseSchema = z.object({
+  feed: z.literal("search"),
   query: z.string(),
   topic: z.string().nullable(),
+  audience: audienceLensSchema.nullable(),
+  sort: browseSortSchema,
   weekStart: isoDateSchema.nullable(),
   startDate: isoDateSchema.nullable(),
   endDate: isoDateSchema.nullable(),
   limit: z.number().int().min(1).max(25),
+  hasExtractedPdf: z.boolean().nullable(),
+  topicSuggestions: z.array(z.string()),
   results: z.array(articleSearchResultSchema),
 });
 
@@ -252,15 +405,21 @@ export const contentApiErrorSchema = z.object({
   error: z.object({
     code: z.enum(["invalid_request", "not_found", "internal_error"]),
     message: z.string(),
+    details: z.unknown().optional(),
   }),
 });
 
+export type OpenArticleInput = z.infer<typeof openArticleInputSchema>;
 export type ArticleLookupInput = z.infer<typeof articleLookupInputSchema>;
+export type BrowseArticlesInput = z.infer<typeof browseArticlesInputSchema>;
 export type TopArticlesInput = z.infer<typeof topArticlesInputSchema>;
 export type SearchArticlesInput = z.infer<typeof searchArticlesInputSchema>;
 export type CompareArticlesInput = z.infer<typeof compareArticlesInputSchema>;
+export type ArticleCard = z.infer<typeof articleCardSchema>;
 export type ArticleSummary = z.infer<typeof articleSummarySchema>;
+export type ArticleLocatorSuggestion = z.infer<typeof articleLocatorSuggestionSchema>;
 export type ArticleDetail = z.infer<typeof articleDetailSchema>;
+export type BrowseArticlesResponse = z.infer<typeof browseArticlesResponseSchema>;
 export type TopArticlesResponse = z.infer<typeof topArticlesResponseSchema>;
 export type ArticleResponse = z.infer<typeof articleResponseSchema>;
 export type SearchArticlesResponse = z.infer<typeof searchArticlesResponseSchema>;
