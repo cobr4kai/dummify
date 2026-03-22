@@ -15,6 +15,8 @@ import {
 } from "@/lib/scoring/model";
 import type { ExecutiveScoringWeights } from "@/lib/types";
 
+const ARXIV_METADATA_MIN_DELAY_FLOOR_MS = 3000;
+
 const executiveRankingWeightsSchema = z.object({
   frontierRelevance: z.number(),
   capabilityImpact: z.number(),
@@ -51,14 +53,17 @@ const appSettingsSchema = z.object({
   primaryCronSchedule: z.string().min(1),
   reconcileCronSchedule: z.string().min(1),
   reconcileEnabled: z.boolean(),
-  rssMinDelayMs: z.number().int().min(0).max(60000),
-  apiMinDelayMs: z.number().int().min(0).max(60000),
+  rssMinDelayMs: z.number().int().min(ARXIV_METADATA_MIN_DELAY_FLOOR_MS).max(60000),
+  apiMinDelayMs: z.number().int().min(ARXIV_METADATA_MIN_DELAY_FLOOR_MS).max(60000),
   retryBaseDelayMs: z.number().int().min(100).max(60000),
   feedCacheTtlMinutes: z.number().int().min(0).max(24 * 60),
   apiCacheTtlMinutes: z.number().int().min(0).max(24 * 60),
+  pdfFetchMode: z.enum(["personal-research-cache", "disabled"]),
+  pdfFallbackRetryCooldownMinutes: z.number().int().min(0).max(7 * 24 * 60),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
+export { appSettingsSchema, ARXIV_METADATA_MIN_DELAY_FLOOR_MS };
 
 const settingDescriptions: Record<keyof AppSettings, string> = {
   featuredPaperCount: "Legacy featured paper count retained for compatibility.",
@@ -75,15 +80,22 @@ const settingDescriptions: Record<keyof AppSettings, string> = {
     "Editable heuristic weights for the canonical weekly edition score, with extra emphasis on frontier relevance, real-world impact, evidence strength, and audience pull.",
   genAiUsePremiumSynthesis:
     "Whether to use the premium synthesis model when the environment allows it.",
-  pdfCacheDir: "Local directory used to cache official arXiv PDFs and extracted page text.",
+  pdfCacheDir:
+    "Local directory used to keep private arXiv PDF extraction artifacts. The app never serves these cached files back to end users.",
   primaryCronSchedule: "Primary cron schedule for the daily arXiv ingest run.",
   reconcileCronSchedule: "Follow-up reconciliation cron schedule for the same daily cycle.",
   reconcileEnabled: "Whether the lighter reconciliation cron run is enabled.",
-  rssMinDelayMs: "Minimum delay between sequential arXiv RSS requests.",
-  apiMinDelayMs: "Minimum delay between sequential export.arxiv.org API requests.",
+  rssMinDelayMs:
+    "Minimum delay between sequential arXiv RSS requests. arXiv's current guidance is one request every three seconds, so values below 3000 ms are rejected.",
+  apiMinDelayMs:
+    "Minimum delay between sequential export.arxiv.org API requests. arXiv's current guidance is one request every three seconds, so values below 3000 ms are rejected.",
   retryBaseDelayMs: "Base retry delay used for arXiv feed and API backoff.",
   feedCacheTtlMinutes: "TTL for cached RSS feed responses.",
   apiCacheTtlMinutes: "TTL for cached export.arxiv.org API responses.",
+  pdfFetchMode:
+    "How PaperBrief handles arXiv PDFs for extraction. 'personal-research-cache' keeps a private local cache for analysis only; 'disabled' skips new PDF fetches entirely.",
+  pdfFallbackRetryCooldownMinutes:
+    "Cooldown before PaperBrief retries a PDF that previously fell back, unless an admin explicitly forces a retry.",
 };
 
 function serializeSettingValue(value: AppSettings[keyof AppSettings]) {
@@ -202,11 +214,11 @@ export async function getAppSettings(): Promise<AppSettings> {
         : DEFAULT_APP_SETTINGS.reconcileEnabled,
     rssMinDelayMs:
       typeof raw.rssMinDelayMs === "number"
-        ? raw.rssMinDelayMs
+        ? Math.max(raw.rssMinDelayMs, ARXIV_METADATA_MIN_DELAY_FLOOR_MS)
         : DEFAULT_APP_SETTINGS.rssMinDelayMs,
     apiMinDelayMs:
       typeof raw.apiMinDelayMs === "number"
-        ? raw.apiMinDelayMs
+        ? Math.max(raw.apiMinDelayMs, ARXIV_METADATA_MIN_DELAY_FLOOR_MS)
         : DEFAULT_APP_SETTINGS.apiMinDelayMs,
     retryBaseDelayMs:
       typeof raw.retryBaseDelayMs === "number"
@@ -220,6 +232,14 @@ export async function getAppSettings(): Promise<AppSettings> {
       typeof raw.apiCacheTtlMinutes === "number"
         ? raw.apiCacheTtlMinutes
         : DEFAULT_APP_SETTINGS.apiCacheTtlMinutes,
+    pdfFetchMode:
+      raw.pdfFetchMode === "personal-research-cache" || raw.pdfFetchMode === "disabled"
+        ? raw.pdfFetchMode
+        : DEFAULT_APP_SETTINGS.pdfFetchMode,
+    pdfFallbackRetryCooldownMinutes:
+      typeof raw.pdfFallbackRetryCooldownMinutes === "number"
+        ? raw.pdfFallbackRetryCooldownMinutes
+        : DEFAULT_APP_SETTINGS.pdfFallbackRetryCooldownMinutes,
   });
 }
 
@@ -296,6 +316,9 @@ export async function resetAppSettings() {
     retryBaseDelayMs: DEFAULT_APP_SETTINGS.retryBaseDelayMs,
     feedCacheTtlMinutes: DEFAULT_APP_SETTINGS.feedCacheTtlMinutes,
     apiCacheTtlMinutes: DEFAULT_APP_SETTINGS.apiCacheTtlMinutes,
+    pdfFetchMode: DEFAULT_APP_SETTINGS.pdfFetchMode,
+    pdfFallbackRetryCooldownMinutes:
+      DEFAULT_APP_SETTINGS.pdfFallbackRetryCooldownMinutes,
   });
 }
 

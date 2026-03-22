@@ -620,6 +620,12 @@ export default async function AdminPage({
 
               <div className="sm:col-span-2 mt-2">
                 <p className="text-sm font-semibold text-foreground">Request pacing and cache</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  arXiv&apos;s current legacy API guidance is one request every three seconds for
+                  both RSS and `export.arxiv.org`. PaperBrief now enforces that floor here and
+                  also coordinates the web app plus cron jobs through a shared database-backed
+                  request gate.
+                </p>
               </div>
               <label className="space-y-2 text-sm font-medium">
                 RSS min delay (ms)
@@ -663,6 +669,34 @@ export default async function AdminPage({
                   className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
                   defaultValue={snapshot.settings.apiCacheTtlMinutes}
                   name="apiCacheTtlMinutes"
+                  type="number"
+                />
+              </label>
+              <div className="sm:col-span-2 mt-2">
+                <p className="text-sm font-semibold text-foreground">PDF fetch policy</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  PDFs stay in a private local extraction cache only and are never served back to
+                  users from this app. If you disable fetching, PaperBrief can still keep existing
+                  extracts but will stop downloading new PDFs from arXiv.
+                </p>
+              </div>
+              <label className="space-y-2 text-sm font-medium">
+                PDF fetch mode
+                <select
+                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                  defaultValue={snapshot.settings.pdfFetchMode}
+                  name="pdfFetchMode"
+                >
+                  <option value="personal-research-cache">Personal research cache</option>
+                  <option value="disabled">Disabled</option>
+                </select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                PDF fallback retry cooldown (minutes)
+                <input
+                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                  defaultValue={snapshot.settings.pdfFallbackRetryCooldownMinutes}
+                  name="pdfFallbackRetryCooldownMinutes"
                   type="number"
                 />
               </label>

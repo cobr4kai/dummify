@@ -115,6 +115,8 @@ describe("ensurePaperTechnicalBrief", () => {
     getAppSettingsMock.mockResolvedValue({
       pdfCacheDir: ".paperbrief-cache",
       genAiUsePremiumSynthesis: false,
+      pdfFetchMode: "personal-research-cache",
+      pdfFallbackRetryCooldownMinutes: 180,
     });
     getTechnicalBriefProviderMock.mockReturnValue({
       provider: "openai",

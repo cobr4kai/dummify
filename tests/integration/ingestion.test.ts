@@ -257,11 +257,13 @@ describe("runIngestionJob", () => {
       primaryCronSchedule: "15 17 * * 0-4",
       reconcileCronSchedule: "45 20 * * 0-4",
       reconcileEnabled: true,
-      rssMinDelayMs: 1000,
+      rssMinDelayMs: 3100,
       apiMinDelayMs: 3100,
       retryBaseDelayMs: 800,
       feedCacheTtlMinutes: 60,
       apiCacheTtlMinutes: 180,
+      pdfFetchMode: "personal-research-cache",
+      pdfFallbackRetryCooldownMinutes: 180,
     });
     getEnabledCategoryKeysMock.mockResolvedValue(["cs.AI"]);
     getEnrichmentProvidersMock.mockReturnValue([

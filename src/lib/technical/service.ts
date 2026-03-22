@@ -79,7 +79,10 @@ export async function ensurePaperTechnicalBrief(
   }
 
   const settings = await getAppSettings();
-  const pdfResult = await ensurePaperPdfExtraction(paper, settings.pdfCacheDir);
+  const pdfResult = await ensurePaperPdfExtraction(paper, settings.pdfCacheDir, {
+    fallbackRetryCooldownMinutes: settings.pdfFallbackRetryCooldownMinutes,
+    fetchMode: settings.pdfFetchMode,
+  });
   if (options.requirePdf && pdfResult.usedFallbackAbstract) {
     return "pdf-required";
   }

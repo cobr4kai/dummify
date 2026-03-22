@@ -25,6 +25,9 @@ export type RefetchPaperSourceResult =
 
 export async function refetchPaperSource(
   paperId: string,
+  options: {
+    forcePdfRetry?: boolean;
+  } = {},
 ): Promise<RefetchPaperSourceResult> {
   const existingPaper = await prisma.paper.findUnique({
     where: { id: paperId },
@@ -102,7 +105,11 @@ export async function refetchPaperSource(
     };
   }
 
-  const pdfResult = await ensurePaperPdfExtraction(updatedPaper, settings.pdfCacheDir);
+  const pdfResult = await ensurePaperPdfExtraction(updatedPaper, settings.pdfCacheDir, {
+    fallbackRetryCooldownMinutes: settings.pdfFallbackRetryCooldownMinutes,
+    fetchMode: settings.pdfFetchMode,
+    forceRetry: options.forcePdfRetry,
+  });
 
   if (
     pdfResult.extractionStatus === "EXTRACTED" &&

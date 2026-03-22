@@ -340,19 +340,39 @@ export default async function PaperDetailPage({
                 </CardDescription>
               </div>
               {isAdmin ? (
-                <form action={refetchPaperSourceAction}>
-                  <input name="paperId" type="hidden" value={paper.id} />
-                  <AdminSubmitButton
-                    idleLabel="Refetch source"
-                    pendingLabel="Refetching..."
-                    type="submit"
-                    variant="secondary"
-                  />
-                </form>
+                <div className="flex flex-wrap gap-2">
+                  <form action={refetchPaperSourceAction}>
+                    <input name="paperId" type="hidden" value={paper.id} />
+                    <AdminSubmitButton
+                      idleLabel="Refetch source"
+                      pendingLabel="Refetching..."
+                      type="submit"
+                      variant="secondary"
+                    />
+                  </form>
+                  {pdfCache?.extractionStatus !== "EXTRACTED" ? (
+                    <form action={refetchPaperSourceAction}>
+                      <input name="paperId" type="hidden" value={paper.id} />
+                      <input name="forcePdfRetry" type="hidden" value="1" />
+                      <AdminSubmitButton
+                        idleLabel="Force PDF retry"
+                        pendingLabel="Retrying PDF..."
+                        type="submit"
+                        variant="secondary"
+                      />
+                    </form>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {isAdmin ? (
+              <p className="text-xs leading-5 text-muted-foreground">
+                Metadata refetches always go back to arXiv through the shared 3-second request
+                gate. PDF retries respect the fallback cooldown unless you choose Force PDF retry.
+              </p>
+            ) : null}
             {pdfCache ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="stat-panel rounded-[22px] p-4">

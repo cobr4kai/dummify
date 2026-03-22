@@ -81,12 +81,13 @@ export async function regeneratePaperTechnicalBriefAction(formData: FormData) {
 
 export async function refetchPaperSourceAction(formData: FormData) {
   const paperId = readString(formData.get("paperId"));
+  const forcePdfRetry = formData.get("forcePdfRetry") === "1";
   if (!paperId) {
     redirect("/admin");
   }
 
   await requireAdmin(await getCanonicalPaperPathById(paperId));
-  const result = await refetchPaperSource(paperId);
+  const result = await refetchPaperSource(paperId, { forcePdfRetry });
 
   await revalidatePaperViews(paperId);
   await redirectToPaperDetail(

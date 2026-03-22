@@ -1,6 +1,10 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { PdfExtractionStatus, type Paper } from "@prisma/client";
+import { PdfExtractionStatus, type Paper, type PaperPdfCache } from "@prisma/client";
+import {
+  DEFAULT_PDF_FALLBACK_RETRY_COOLDOWN_MINUTES,
+  DEFAULT_PDF_FETCH_MODE,
+} from "@/config/defaults";
 import { prisma } from "@/lib/db";
 import type { PdfExtractionResult, PdfPageText } from "@/lib/types";
 import { normalizeWhitespace } from "@/lib/utils/strings";
@@ -19,7 +23,16 @@ const pdfjsGlobal = globalThis as typeof globalThis & {
 export async function ensurePaperPdfExtraction(
   paper: Pick<Paper, "id" | "arxivId" | "version" | "pdfUrl" | "abstract">,
   cacheRoot: string,
+  options: {
+    fallbackRetryCooldownMinutes?: number;
+    fetchMode?: "personal-research-cache" | "disabled";
+    forceRetry?: boolean;
+  } = {},
 ): Promise<PdfExtractionResult> {
+  const fallbackRetryCooldownMinutes =
+    options.fallbackRetryCooldownMinutes ??
+    DEFAULT_PDF_FALLBACK_RETRY_COOLDOWN_MINUTES;
+  const fetchMode = options.fetchMode ?? DEFAULT_PDF_FETCH_MODE;
   const sourceUrl = resolveArxivPdfUrl(paper.pdfUrl, paper.arxivId, paper.version);
   const cachePaths = buildPaperCachePaths(cacheRoot, paper.arxivId, paper.version);
   const existing = await prisma.paperPdfCache.findFirst({
@@ -54,6 +67,44 @@ export async function ensurePaperPdfExtraction(
         extractionError: existing.extractionError ?? undefined,
       };
     }
+  }
+
+  if (
+    existing &&
+    !options.forceRetry &&
+    shouldReuseFallbackResult(existing, fallbackRetryCooldownMinutes)
+  ) {
+    return toCachedPdfResult(existing, sourceUrl);
+  }
+
+  if (fetchMode === "disabled") {
+    const fallbackResult = {
+      sourceUrl,
+      filePath: null,
+      extractedJsonPath: null,
+      pageCount: 0,
+      fileSizeBytes: null,
+      pages: [],
+      usedFallbackAbstract: true,
+      extractionStatus: "FALLBACK" as const,
+      extractionError: "PDF fetching is disabled by policy.",
+    };
+
+    await upsertPdfCacheRecord(existing?.id, {
+      paperId: paper.id,
+      sourceUrl,
+      filePath: null,
+      extractedJsonPath: null,
+      fileSizeBytes: null,
+      pageCount: 0,
+      extractionStatus: PdfExtractionStatus.FALLBACK,
+      extractionError: fallbackResult.extractionError,
+      usedFallbackAbstract: true,
+      fetchedAt: new Date(),
+      extractedAt: new Date(),
+    });
+
+    return fallbackResult;
   }
 
   await fs.mkdir(path.dirname(cachePaths.pdfPath), { recursive: true });
@@ -234,6 +285,65 @@ function resolveArxivPdfUrl(pdfUrl: string | null, arxivId: string, version: num
   }
 
   return `https://arxiv.org/pdf/${arxivId}v${version}.pdf`;
+}
+
+function shouldReuseFallbackResult(
+  existing: Pick<
+    PaperPdfCache,
+    "extractionStatus" | "fetchedAt" | "extractedAt" | "updatedAt"
+  >,
+  cooldownMinutes: number,
+) {
+  if (
+    existing.extractionStatus !== PdfExtractionStatus.FALLBACK &&
+    existing.extractionStatus !== PdfExtractionStatus.FAILED
+  ) {
+    return false;
+  }
+
+  if (cooldownMinutes <= 0) {
+    return false;
+  }
+
+  const lastAttemptAt =
+    existing.extractedAt ?? existing.fetchedAt ?? existing.updatedAt ?? null;
+  if (!lastAttemptAt) {
+    return false;
+  }
+
+  return Date.now() - lastAttemptAt.getTime() < cooldownMinutes * 60 * 1000;
+}
+
+function toCachedPdfResult(
+  existing: Pick<
+    PaperPdfCache,
+    | "sourceUrl"
+    | "filePath"
+    | "extractedJsonPath"
+    | "pageCount"
+    | "fileSizeBytes"
+    | "usedFallbackAbstract"
+    | "extractionStatus"
+    | "extractionError"
+  >,
+  fallbackSourceUrl: string,
+): PdfExtractionResult {
+  return {
+    sourceUrl: existing.sourceUrl || fallbackSourceUrl,
+    filePath: existing.filePath,
+    extractedJsonPath: existing.extractedJsonPath,
+    pageCount: existing.pageCount ?? 0,
+    fileSizeBytes: existing.fileSizeBytes ?? null,
+    pages: [],
+    usedFallbackAbstract: existing.usedFallbackAbstract,
+    extractionStatus:
+      existing.extractionStatus === PdfExtractionStatus.EXTRACTED
+        ? "EXTRACTED"
+        : existing.extractionStatus === PdfExtractionStatus.FALLBACK
+          ? "FALLBACK"
+          : "FAILED",
+    extractionError: existing.extractionError ?? undefined,
+  };
 }
 
 function buildArxivPdfCandidateUrls(

@@ -1,8 +1,12 @@
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArxivClient } from "@/lib/arxiv/client";
+
+const { waitForTurnMock } = vi.hoisted(() => ({
+  waitForTurnMock: vi.fn(async () => {}),
+}));
 
 const atomEntryXml = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
@@ -36,6 +40,11 @@ afterEach(async () => {
   );
 });
 
+beforeEach(() => {
+  waitForTurnMock.mockReset();
+  waitForTurnMock.mockResolvedValue(undefined);
+});
+
 describe("ArxivClient", () => {
   it("retries retryable API responses and reuses cached responses within TTL", async () => {
     let nowMs = 0;
@@ -59,6 +68,9 @@ describe("ArxivClient", () => {
       rssMinDelayMs: 0,
       retryBaseDelayMs: 100,
       apiCacheTtlMinutes: 60,
+      requestGate: {
+        waitForTurn: waitForTurnMock,
+      },
     });
 
     const firstResult = await client.fetchByArxivId("2603.01234");
@@ -82,6 +94,9 @@ describe("ArxivClient", () => {
       sleepFn: sleepMock,
       apiMinDelayMs: 0,
       rssMinDelayMs: 0,
+      requestGate: {
+        waitForTurn: waitForTurnMock,
+      },
     });
 
     await expect(client.fetchByArxivId("2603.99999")).rejects.toThrow(
@@ -101,6 +116,9 @@ describe("ArxivClient", () => {
       fetchFn: fetchMock,
       apiMinDelayMs: 0,
       rssMinDelayMs: 0,
+      requestGate: {
+        waitForTurn: waitForTurnMock,
+      },
     });
 
     await client.fetchHistorical(["cs.AI", "cs.LG"], "2026-03-01", "2026-03-02");
@@ -129,11 +147,47 @@ describe("ArxivClient", () => {
       apiMinDelayMs: 0,
       rssMinDelayMs: 0,
       apiCacheTtlMinutes: 60,
+      requestGate: {
+        waitForTurn: waitForTurnMock,
+      },
     });
 
     await client.fetchByArxivId("2603.01234");
     await client.fetchByArxivId("2603.01234", { bypassCache: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(waitForTurnMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits on the shared request gate before issuing metadata fetches", async () => {
+    let releaseGate: (() => void) | null = null;
+    const requestGate = {
+      waitForTurn: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseGate = resolve;
+          }),
+      ),
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(atomEntryXml, { status: 200 }));
+
+    const client = new ArxivClient({
+      fetchFn: fetchMock,
+      apiMinDelayMs: 0,
+      rssMinDelayMs: 0,
+      requestGate,
+    });
+
+    const pendingFetch = client.fetchByArxivId("2603.01234");
+    await Promise.resolve();
+
+    expect(requestGate.waitForTurn).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    releaseGate?.();
+    await pendingFetch;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

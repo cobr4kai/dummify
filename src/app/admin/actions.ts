@@ -127,11 +127,17 @@ export async function updateSettingsAction(formData: FormData) {
       formData.get("reconcileCronSchedule") ?? "45 20 * * 0-4",
     ),
     reconcileEnabled: formData.get("reconcileEnabled") === "on",
-    rssMinDelayMs: Number(formData.get("rssMinDelayMs") ?? 1000),
+    rssMinDelayMs: Number(formData.get("rssMinDelayMs") ?? 3100),
     apiMinDelayMs: Number(formData.get("apiMinDelayMs") ?? 3100),
     retryBaseDelayMs: Number(formData.get("retryBaseDelayMs") ?? 800),
     feedCacheTtlMinutes: Number(formData.get("feedCacheTtlMinutes") ?? 60),
     apiCacheTtlMinutes: Number(formData.get("apiCacheTtlMinutes") ?? 180),
+    pdfFetchMode: String(formData.get("pdfFetchMode") ?? "personal-research-cache") as
+      | "personal-research-cache"
+      | "disabled",
+    pdfFallbackRetryCooldownMinutes: Number(
+      formData.get("pdfFallbackRetryCooldownMinutes") ?? 180,
+    ),
   });
 
   revalidateAll();

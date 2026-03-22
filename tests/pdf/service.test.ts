@@ -125,4 +125,49 @@ describe("ensurePaperPdfExtraction", () => {
     }>;
     expect(pages[0]?.text).toBe("Recovered PDF page text");
   });
+
+  it("reuses a recent fallback result instead of re-fetching the same missing PDF", async () => {
+    const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "paperbrief-pdf-"));
+    cacheRoots.push(cacheRoot);
+    const fetchMock = vi.fn<typeof fetch>();
+
+    findPdfCacheMock.mockResolvedValue({
+      id: "pdf-cache-1",
+      sourceUrl: "https://arxiv.org/pdf/2603.15341v1",
+      filePath: null,
+      extractedJsonPath: null,
+      pageCount: 0,
+      fileSizeBytes: null,
+      usedFallbackAbstract: true,
+      extractionStatus: "FALLBACK",
+      extractionError: "arXiv PDF request failed with 404.",
+      fetchedAt: new Date(),
+      extractedAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await ensurePaperPdfExtraction(
+      {
+        id: "paper-1",
+        arxivId: "2603.15341",
+        version: 1,
+        pdfUrl: "https://arxiv.org/pdf/2603.15341v1",
+        abstract: "Test abstract",
+      },
+      cacheRoot,
+      {
+        fallbackRetryCooldownMinutes: 180,
+      },
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(updatePdfCacheMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      sourceUrl: "https://arxiv.org/pdf/2603.15341v1",
+      extractionStatus: "FALLBACK",
+      usedFallbackAbstract: true,
+      extractionError: "arXiv PDF request failed with 404.",
+    });
+  });
 });

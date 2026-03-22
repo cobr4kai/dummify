@@ -59,10 +59,12 @@ describe("refetchPaperSource", () => {
     getAppSettingsMock.mockResolvedValue({
       pdfCacheDir: ".paperbrief-cache",
       apiMinDelayMs: 3100,
-      rssMinDelayMs: 1000,
+      rssMinDelayMs: 3100,
       retryBaseDelayMs: 800,
       apiCacheTtlMinutes: 180,
       feedCacheTtlMinutes: 60,
+      pdfFetchMode: "personal-research-cache",
+      pdfFallbackRetryCooldownMinutes: 180,
     });
     paperRecord = {
       id: "paper-1",
@@ -149,6 +151,15 @@ describe("refetchPaperSource", () => {
       bypassCache: true,
     });
     expect(ensurePaperPdfExtractionMock).toHaveBeenCalledTimes(1);
+    expect(ensurePaperPdfExtractionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      ".paperbrief-cache",
+      expect.objectContaining({
+        fallbackRetryCooldownMinutes: 180,
+        fetchMode: "personal-research-cache",
+        forceRetry: undefined,
+      }),
+    );
     expect(updatePaperMock).toHaveBeenCalledTimes(2);
     expect(updatePaperMock.mock.calls[1]?.[0]).toMatchObject({
       data: {
@@ -179,6 +190,33 @@ describe("refetchPaperSource", () => {
       status: "metadata-refreshed-no-pdf-retry-needed",
       versionChanged: false,
     });
+  });
+
+  it("passes the admin force retry flag through to PDF extraction", async () => {
+    findPdfCacheMock.mockResolvedValue({
+      id: "pdf-1",
+      extractionStatus: PdfExtractionStatus.FALLBACK,
+    });
+    ensurePaperPdfExtractionMock.mockResolvedValue({
+      sourceUrl: "https://arxiv.org/pdf/2603.15341",
+      filePath: ".paperbrief-cache/2603.15341/2603.15341v1.pdf",
+      extractedJsonPath: ".paperbrief-cache/2603.15341/2603.15341v1.pages.json",
+      pageCount: 25,
+      fileSizeBytes: 123,
+      pages: [{ pageNumber: 1, text: "Page text" }],
+      usedFallbackAbstract: false,
+      extractionStatus: "EXTRACTED",
+    });
+
+    await refetchPaperSource("paper-1", { forcePdfRetry: true });
+
+    expect(ensurePaperPdfExtractionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      ".paperbrief-cache",
+      expect.objectContaining({
+        forceRetry: true,
+      }),
+    );
   });
 
   it("returns arxiv-record-missing without mutating the paper when arXiv has no record", async () => {

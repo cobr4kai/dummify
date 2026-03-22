@@ -1,6 +1,11 @@
 import path from "node:path";
 import type { PaperSourceRecord } from "@/lib/types";
 import type { DailyFeedEntry } from "@/lib/arxiv/parsers";
+import {
+  getDefaultArxivRequestGate,
+  type ArxivLane,
+  type ArxivRequestGate,
+} from "@/lib/arxiv/request-gate";
 import { buildHistoricalQuery } from "@/lib/arxiv/query-builder";
 import {
   extractAbstractFromDailyDescription,
@@ -16,8 +21,6 @@ import { toAnnouncementDay } from "@/lib/utils/dates";
 const API_BASE_URL = "https://export.arxiv.org/api/query";
 const RSS_BASE_URL = "https://rss.arxiv.org/rss";
 
-type ArxivLane = "api" | "rss";
-
 export type ArxivClientOptions = {
   apiBaseUrl?: string;
   rssBaseUrl?: string;
@@ -31,6 +34,7 @@ export type ArxivClientOptions = {
   nowFn?: () => number;
   sleepFn?: (ms: number) => Promise<void>;
   userAgent?: string;
+  requestGate?: ArxivRequestGate;
 };
 
 type FetchXmlOptions = {
@@ -62,6 +66,7 @@ export class ArxivClient {
       nowFn: options.nowFn ?? Date.now,
       sleepFn: options.sleepFn ?? sleep,
       userAgent: options.userAgent ?? "PaperBrief/0.1",
+      requestGate: options.requestGate ?? getDefaultArxivRequestGate(),
     };
   }
 
@@ -316,6 +321,7 @@ export class ArxivClient {
 
   private async waitForLane(lane: ArxivLane) {
     const minDelay = lane === "api" ? this.options.apiMinDelayMs : this.options.rssMinDelayMs;
+    await this.options.requestGate.waitForTurn(lane, minDelay);
     const nowMs = this.options.nowFn();
     const nextAllowedAt = lane === "api" ? this.nextApiAllowedAt : this.nextRssAllowedAt;
     const delay = Math.max(0, nextAllowedAt - nowMs);

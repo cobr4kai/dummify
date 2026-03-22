@@ -110,11 +110,14 @@ Cross-listed papers are deduplicated by canonical `arxivId`. The app keeps one p
 The arXiv client is intentionally conservative:
 
 - RSS discovery and API hydration use separate pacing lanes
+- both lanes now default to a `3100ms` minimum sequential delay
+- admin-configured RSS/API pacing cannot be set below `3000ms`
+- all metadata fetch paths share a database-backed request gate so the web service and cron jobs coordinate against the same arXiv pacing window
 - API requests default to a `3100ms` minimum sequential delay
-- RSS requests default to a `1000ms` minimum sequential delay
 - retries apply exponential backoff for `403`, `429`, and `5xx`
 - non-retryable statuses fail immediately
 - repeated responses are cached on disk by request URL hash
+- PDF retries reuse recent fallback results until a cooldown expires, unless an admin explicitly forces a retry on the paper detail page
 
 HTTP cache location:
 
@@ -127,6 +130,13 @@ Default cache TTLs:
 
 - RSS feeds: `60` minutes
 - API responses: `180` minutes
+
+PDF policy:
+
+- default mode is `personal-research-cache`
+- cached PDFs and extracted page text stay private to this app for analysis only
+- the product never serves cached arXiv PDFs back to users
+- you can disable new PDF fetching entirely from the admin settings if you need a stricter mode
 
 ## Scheduling
 
@@ -169,6 +179,8 @@ Runtime settings live in `AppSetting` and are editable from the admin UI:
 - `retryBaseDelayMs`
 - `feedCacheTtlMinutes`
 - `apiCacheTtlMinutes`
+- `pdfFetchMode`
+- `pdfFallbackRetryCooldownMinutes`
 - `genAiShortlistSize`
 - `genAiFeaturedCount`
 - `highBusinessRelevanceThreshold`
@@ -286,6 +298,7 @@ Operational notes:
 - `DATABASE_URL` defaults to `file:/var/data/paperbrief.db` in the blueprint.
 - `PAPERBRIEF_CACHE_DIR` defaults to `/var/data/paperbrief-cache` in the blueprint and seeds the initial app setting.
 - the startup command bootstraps SQLite migrations on the mounted disk before `next start`
+- arXiv metadata pacing is coordinated through the shared application database, so the same 3-second gate applies across the web process and both Render cron services
 - you can opt into a one-time historical bootstrap backfill by setting:
   - `PAPERBRIEF_BOOTSTRAP_BACKFILL_FROM=2026-03-11`
   - `PAPERBRIEF_BOOTSTRAP_BACKFILL_TO=2026-03-11`
