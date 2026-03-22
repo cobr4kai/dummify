@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import type { EnrichmentContext } from "@/lib/providers";
 import type { PaperSourceRecord } from "@/lib/types";
 
 export class OpenAlexProvider {
@@ -8,7 +9,7 @@ export class OpenAlexProvider {
     return Boolean(env.OPENALEX_API_KEY);
   }
 
-  async enrich(paper: PaperSourceRecord) {
+  async enrich(paper: PaperSourceRecord, _context: EnrichmentContext) {
     if (!this.isAvailable()) {
       return null;
     }

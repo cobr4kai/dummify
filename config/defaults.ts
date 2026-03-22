@@ -71,7 +71,7 @@ export const DEFAULT_OPENAI_SYNTHESIS_MODEL = "gpt-5.4";
 export const DEFAULT_ENABLE_PREMIUM_SYNTHESIS = true;
 export const DEFAULT_PDF_CACHE_DIR =
   process.env.PAPERBRIEF_CACHE_DIR?.trim() || ".paperbrief-cache";
-export const DEFAULT_SCORING_VERSION = "2026-03-13.v3";
+export const DEFAULT_SCORING_VERSION = "2026-03-22.v4";
 
 export const DEFAULT_APP_SETTINGS = {
   featuredPaperCount: DEFAULT_FEATURED_PAPER_COUNT,

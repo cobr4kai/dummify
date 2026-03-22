@@ -44,6 +44,16 @@ export function buildPaperSearchText(paper: Pick<
   PaperSourceRecord,
   "title" | "abstract" | "authors" | "categories" | "comment" | "journalRef" | "doi"
 >) {
+  return buildAugmentedPaperSearchText(paper);
+}
+
+export function buildAugmentedPaperSearchText(
+  paper: Pick<
+    PaperSourceRecord,
+    "title" | "abstract" | "authors" | "categories" | "comment" | "journalRef" | "doi"
+  >,
+  extraSegments: string[] = [],
+) {
   return normalizeSearchText(
     [
       paper.title,
@@ -53,6 +63,7 @@ export function buildPaperSearchText(paper: Pick<
       paper.comment ?? "",
       paper.journalRef ?? "",
       paper.doi ?? "",
+      ...extraSegments,
     ]
       .join(" ")
       .trim(),

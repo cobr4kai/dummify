@@ -11,8 +11,21 @@ import { DEFAULT_SCORING_VERSION } from "@/config/defaults";
 import { fetchHistoricalRecords } from "@/lib/arxiv/backfill";
 import { ArxivClient } from "@/lib/arxiv/client";
 import { prisma } from "@/lib/db";
-import { paperToSourceRecord, buildPaperSearchText } from "@/lib/papers/record";
-import { getEnrichmentProvider, getTechnicalBriefProvider } from "@/lib/providers";
+import { getOpenAlexTopics, getStructuredMetadataPayload } from "@/lib/metadata/service";
+import {
+  STRUCTURED_METADATA_PROVIDER,
+  type StructuredMetadataEnrichment,
+} from "@/lib/metadata/schema";
+import {
+  buildAugmentedPaperSearchText,
+  buildPaperPersistenceData,
+  paperToSourceRecord,
+} from "@/lib/papers/record";
+import {
+  getEnrichmentProviders,
+  getTechnicalBriefProvider,
+  type EnrichmentContext,
+} from "@/lib/providers";
 import { getPublishedPaperIdsForDay } from "@/lib/publishing/service";
 import { computeBriefScore } from "@/lib/scoring/service";
 import { getAppSettings, getEnabledCategoryKeys } from "@/lib/settings/service";
@@ -37,6 +50,39 @@ type IngestionOptions = {
   recomputeBriefs?: boolean;
   jobMode?: DailyJobMode;
 };
+
+type HydrateEnrichmentOptions = {
+  force?: boolean;
+  providers?: string[];
+};
+
+type HydrateEnrichmentResult = {
+  changed: boolean;
+  updatedProviders: string[];
+  warnings: string[];
+  structuredMetadata: StructuredMetadataEnrichment | null;
+};
+
+const ENRICHMENT_CONCURRENCY = 4;
+const ENRICHMENT_WARNING_LOG_LIMIT = 20;
+
+const paperEnrichmentInclude = Prisma.validator<Prisma.PaperInclude>()({
+  technicalBriefs: {
+    where: { isCurrent: true },
+    orderBy: { updatedAt: "desc" },
+    take: 1,
+  },
+  enrichments: {
+    where: { isCurrent: true },
+  },
+  publishedItems: {
+    take: 1,
+  },
+});
+
+type PaperWithEnrichmentContext = Prisma.PaperGetPayload<{
+  include: typeof paperEnrichmentInclude;
+}>;
 
 export async function runIngestionJob(options: IngestionOptions) {
   const appSettings = await getAppSettings();
@@ -77,6 +123,7 @@ export async function runIngestionJob(options: IngestionOptions) {
         ? `Starting ${jobMode.toLowerCase()} daily ingestion for the operator brief.`
         : "Starting historical ingestion for the operator brief.",
     );
+
     const papers =
       options.mode === "DAILY"
         ? await arxivClient.fetchDaily(categories, announcementDay)
@@ -97,35 +144,23 @@ export async function runIngestionJob(options: IngestionOptions) {
         "No new announcements were expected for this Friday/Saturday arXiv quiet day.",
       );
     }
-
-    const upsertedIds: string[] = [];
-    let scoreCount = 0;
-
-    for (const paper of papers) {
-      const outcome = await prisma.$transaction(async (tx) => {
-        const record = await upsertPaper(tx, paper);
-        upsertedIds.push(record.id);
-
-        const shouldScore =
-          options.recomputeScores || !(await hasCurrentScore(tx, record.id));
-        if (!shouldScore) {
-          return { writtenScores: 0 };
-        }
-
-        await replaceCurrentScore(tx, record.id, paper, appSettings.genAiRankingWeights);
-        return { writtenScores: 1 };
-      });
-
-      scoreCount += outcome.writtenScores;
+    if (options.mode === "HISTORICAL" && papers.length === 0) {
+      logLines.push("No arXiv records were found in the requested historical window.");
     }
 
+    const upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }> = [];
+    for (const paper of papers) {
+      const record = await prisma.$transaction(async (tx) => upsertPaper(tx, paper));
+      upsertedRecords.push({
+        id: record.id,
+        sourceRecord: paper,
+      });
+    }
+
+    const upsertedIds = upsertedRecords.map((record) => record.id);
     let briefCount = 0;
     const briefProvider = getTechnicalBriefProvider();
-    const enrichmentProvider = getEnrichmentProvider();
-
-    const shouldSelectBriefTargets =
-      briefProvider || enrichmentProvider || options.recomputeBriefs;
-    const paperIdsForBriefs = shouldSelectBriefTargets
+    const paperIdsForBriefs = briefProvider
       ? await resolvePaperIdsForBriefs({
           mode: options.mode,
           announcementDay,
@@ -151,15 +186,59 @@ export async function runIngestionJob(options: IngestionOptions) {
       logLines.push("Skipped executive briefs because OPENAI_API_KEY is not configured.");
     }
 
-    if (enrichmentProvider) {
-      for (const paperId of paperIdsForBriefs) {
-        await ensurePaperEnrichment(paperId, { force: true });
+    const enrichmentResults = await mapWithConcurrency(
+      upsertedRecords,
+      ENRICHMENT_CONCURRENCY,
+      async (record) => ({
+        paperId: record.id,
+        sourceRecord: record.sourceRecord,
+        result: await hydratePaperEnrichments(record.id, { force: false }),
+      }),
+    );
+
+    const structuredMetadataCount = enrichmentResults.filter(({ result }) =>
+      result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER),
+    ).length;
+    if (structuredMetadataCount > 0) {
+      logLines.push(
+        `Hydrated structured metadata for ${structuredMetadataCount} papers during ingestion.`,
+      );
+    }
+    appendEnrichmentWarnings(
+      logLines,
+      enrichmentResults.flatMap(({ paperId, result }) =>
+        result.warnings.map((warning) => `Paper ${paperId}: ${warning}`),
+      ),
+    );
+
+    let scoreCount = 0;
+    for (const record of upsertedRecords) {
+      const hydration = enrichmentResults.find((item) => item.paperId === record.id)?.result;
+      const shouldScore =
+        Boolean(options.recomputeScores) ||
+        hydration?.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER) ||
+        !(await hasCurrentScore(record.id));
+
+      if (!shouldScore) {
+        continue;
       }
+
+      await prisma.$transaction(async (tx) => {
+        await replaceCurrentScore(
+          tx,
+          record.id,
+          record.sourceRecord,
+          appSettings.genAiRankingWeights,
+          hydration?.structuredMetadata ?? null,
+        );
+      });
+      scoreCount += 1;
     }
 
     const status =
+      options.mode === "DAILY" &&
       papers.length === 0 &&
-      !(options.mode === "DAILY" && isExpectedQuietAnnouncementDay(announcementDay))
+      !isExpectedQuietAnnouncementDay(announcementDay)
         ? IngestionStatus.PARTIAL
         : IngestionStatus.COMPLETED;
 
@@ -215,129 +294,230 @@ async function resolvePaperIdsForBriefs(input: {
 
 export async function ensurePaperEnrichment(
   paperId: string,
-  options: { force?: boolean } = {},
+  options: HydrateEnrichmentOptions = {},
 ) {
-  const provider = getEnrichmentProvider();
-  if (!provider) {
-    return false;
-  }
+  const result = await hydratePaperEnrichments(paperId, options);
+  return result.changed;
+}
 
-  if (!options.force) {
-    const existing = await prisma.paperEnrichment.findFirst({
-      where: {
-        paperId,
-        provider: provider.provider,
-        isCurrent: true,
-      },
+export async function backfillStructuredMetadata(options: {
+  paperIds?: string[];
+  fromAnnouncementDay?: string;
+  toAnnouncementDay?: string;
+  force?: boolean;
+} = {}) {
+  const appSettings = await getAppSettings();
+  const papers = await prisma.paper.findMany({
+    where: {
+      isDemoData: false,
+      ...(options.paperIds?.length ? { id: { in: options.paperIds } } : {}),
+      ...((options.fromAnnouncementDay || options.toAnnouncementDay)
+        ? {
+            announcementDay: {
+              ...(options.fromAnnouncementDay
+                ? { gte: options.fromAnnouncementDay }
+                : {}),
+              ...(options.toAnnouncementDay ? { lte: options.toAnnouncementDay } : {}),
+            },
+          }
+        : {}),
+    },
+  });
+
+  let updatedCount = 0;
+  let scoreCount = 0;
+
+  await mapWithConcurrency(papers, ENRICHMENT_CONCURRENCY, async (paper) => {
+    const result = await hydratePaperEnrichments(paper.id, {
+      force: options.force ?? true,
+      providers: [STRUCTURED_METADATA_PROVIDER],
     });
 
-    if (existing) {
-      return false;
+    if (!result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER)) {
+      return;
     }
-  }
 
+    updatedCount += 1;
+    await prisma.$transaction(async (tx) => {
+      await replaceCurrentScore(
+        tx,
+        paper.id,
+        paperToSourceRecord(paper),
+        appSettings.genAiRankingWeights,
+        result.structuredMetadata,
+      );
+    });
+    scoreCount += 1;
+  });
+
+  return {
+    paperCount: papers.length,
+    updatedCount,
+    scoreCount,
+  };
+}
+
+async function hydratePaperEnrichments(
+  paperId: string,
+  options: HydrateEnrichmentOptions = {},
+): Promise<HydrateEnrichmentResult> {
   const paper = await prisma.paper.findUnique({
     where: { id: paperId },
+    include: paperEnrichmentInclude,
   });
 
   if (!paper) {
-    return false;
+    return {
+      changed: false,
+      updatedProviders: [],
+      warnings: [],
+      structuredMetadata: null,
+    };
   }
 
-  const enrichment = await provider.enrich(paperToSourceRecord(paper));
-  if (!enrichment) {
-    return false;
+  const paperRecord = paperToSourceRecord(paper);
+  let currentEnrichments = paper.enrichments.map((enrichment) => ({
+    provider: enrichment.provider,
+    payload: toRecordPayload(enrichment.payload),
+  }));
+  const updatedProviders = new Set<string>();
+  const warnings: string[] = [];
+
+  for (const provider of getEnrichmentProviders().filter((candidate) =>
+    options.providers?.length ? options.providers.includes(candidate.provider) : true,
+  )) {
+    const existing = currentEnrichments.find(
+      (enrichment) => enrichment.provider === provider.provider,
+    );
+    const shouldForceProvider =
+      Boolean(options.force) ||
+      (provider.provider === STRUCTURED_METADATA_PROVIDER &&
+        updatedProviders.has("openalex"));
+
+    if (existing && !shouldForceProvider) {
+      continue;
+    }
+
+    try {
+      const result = await provider.enrich(
+        paperRecord,
+        buildEnrichmentContext(paper, currentEnrichments),
+      );
+      if (!result) {
+        continue;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.paperEnrichment.updateMany({
+          where: {
+            paperId,
+            provider: result.provider,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+          },
+        });
+
+        await tx.paperEnrichment.create({
+          data: {
+            paperId,
+            provider: result.provider,
+            providerRecordId: result.providerRecordId,
+            payload: toJsonInput(result.payload),
+          },
+        });
+      });
+
+      currentEnrichments = [
+        ...currentEnrichments.filter((enrichment) => enrichment.provider !== result.provider),
+        {
+          provider: result.provider,
+          payload: result.payload,
+        },
+      ];
+      updatedProviders.add(result.provider);
+
+      if (result.provider === STRUCTURED_METADATA_PROVIDER) {
+        const structuredMetadata = getStructuredMetadataPayload(currentEnrichments);
+        if (structuredMetadata) {
+          await prisma.paper.update({
+            where: { id: paperId },
+            data: {
+              searchText: buildAugmentedPaperSearchText(paperRecord, [
+                structuredMetadata.searchText,
+              ]),
+            },
+          });
+        }
+      }
+
+      if (result.warnings?.length) {
+        warnings.push(...result.warnings);
+      }
+    } catch (error) {
+      warnings.push(
+        error instanceof Error
+          ? `${provider.provider}: ${error.message}`
+          : `${provider.provider}: unknown enrichment error.`,
+      );
+    }
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.paperEnrichment.updateMany({
-      where: {
-        paperId,
-        provider: enrichment.provider,
-        isCurrent: true,
-      },
-      data: {
-        isCurrent: false,
-      },
-    });
+  return {
+    changed: updatedProviders.size > 0,
+    updatedProviders: Array.from(updatedProviders),
+    warnings,
+    structuredMetadata: getStructuredMetadataPayload(currentEnrichments),
+  };
+}
 
-    await tx.paperEnrichment.create({
-      data: {
-        paperId,
-        provider: enrichment.provider,
-        providerRecordId: enrichment.providerRecordId,
-        payload: toJsonInput(enrichment.payload),
-      },
-    });
-  });
+function buildEnrichmentContext(
+  paper: PaperWithEnrichmentContext,
+  currentEnrichments: Array<{ provider: string; payload: Record<string, unknown> }>,
+): EnrichmentContext {
+  return {
+    paperId: paper.id,
+    announcementDay: paper.announcementDay,
+    isEditorial: paper.publishedItems.length > 0 && hasPdfBackedBrief(paper),
+    hasPdfBackedBrief: hasPdfBackedBrief(paper),
+    currentOpenAlexTopics: getOpenAlexTopics(currentEnrichments),
+    currentEnrichments,
+  };
+}
 
-  return true;
+function hasPdfBackedBrief(
+  paper: Pick<PaperWithEnrichmentContext, "technicalBriefs">,
+) {
+  return paper.technicalBriefs.some((brief) => !brief.usedFallbackAbstract);
+}
+
+function toRecordPayload(payload: unknown) {
+  if (typeof payload === "object" && payload) {
+    return payload as Record<string, unknown>;
+  }
+
+  return {};
 }
 
 async function upsertPaper(tx: Prisma.TransactionClient, paper: PaperSourceRecord) {
-  const searchText = buildPaperSearchText(paper);
+  const persistenceData = buildPaperPersistenceData(paper, {
+    isDemoData: false,
+    lastSeenAt: new Date(),
+  });
 
   return tx.paper.upsert({
     where: { arxivId: paper.arxivId },
-    update: {
-      version: paper.version,
-      versionedId: paper.versionedId,
-      title: paper.title,
-      abstract: paper.abstract,
-      authorsJson: toJsonInput(paper.authors),
-      authorsText: paper.authors.join(", "),
-      categoriesJson: toJsonInput(paper.categories),
-      sourceFeedCategoriesJson: toJsonInput(paper.sourceFeedCategories),
-      categoryText: paper.categories.join(" "),
-      primaryCategory: paper.primaryCategory,
-      publishedAt: paper.publishedAt,
-      updatedAt: paper.updatedAt,
-      announcementDay: paper.announcementDay,
-      announceType: paper.announceType,
-      comment: paper.comment ?? null,
-      journalRef: paper.journalRef ?? null,
-      doi: paper.doi ?? null,
-      abstractUrl: paper.links.abs,
-      pdfUrl: paper.links.pdf,
-      links: toJsonInput(paper.links),
-      sourceMetadata: toJsonInput(paper.sourceMetadata),
-      sourcePayload: toJsonInput(paper.sourcePayload),
-      searchText,
-      lastSeenAt: new Date(),
-      isDemoData: false,
-    },
+    update: persistenceData,
     create: {
       arxivId: paper.arxivId,
-      version: paper.version,
-      versionedId: paper.versionedId,
-      title: paper.title,
-      abstract: paper.abstract,
-      authorsJson: toJsonInput(paper.authors),
-      authorsText: paper.authors.join(", "),
-      categoriesJson: toJsonInput(paper.categories),
-      sourceFeedCategoriesJson: toJsonInput(paper.sourceFeedCategories),
-      categoryText: paper.categories.join(" "),
-      primaryCategory: paper.primaryCategory,
-      publishedAt: paper.publishedAt,
-      updatedAt: paper.updatedAt,
-      announcementDay: paper.announcementDay,
-      announceType: paper.announceType,
-      comment: paper.comment ?? null,
-      journalRef: paper.journalRef ?? null,
-      doi: paper.doi ?? null,
-      abstractUrl: paper.links.abs,
-      pdfUrl: paper.links.pdf,
-      links: toJsonInput(paper.links),
-      sourceMetadata: toJsonInput(paper.sourceMetadata),
-      sourcePayload: toJsonInput(paper.sourcePayload),
-      searchText,
-      isDemoData: false,
+      ...persistenceData,
     },
   });
 }
 
-async function hasCurrentScore(tx: Prisma.TransactionClient, paperId: string) {
-  const count = await tx.paperScore.count({
+async function hasCurrentScore(paperId: string) {
+  const count = await prisma.paperScore.count({
     where: {
       paperId,
       mode: BriefMode.GENAI,
@@ -353,8 +533,9 @@ async function replaceCurrentScore(
   paperId: string,
   paper: PaperSourceRecord,
   rankingWeights: Parameters<typeof computeBriefScore>[1],
+  structuredMetadata: StructuredMetadataEnrichment | null,
 ) {
-  const score = computeBriefScore(paper, rankingWeights);
+  const score = computeBriefScore(paper, rankingWeights, structuredMetadata);
 
   await tx.paperScore.updateMany({
     where: {
@@ -386,7 +567,43 @@ async function replaceCurrentScore(
   });
 }
 
+function appendEnrichmentWarnings(logLines: string[], warnings: string[]) {
+  if (warnings.length === 0) {
+    return;
+  }
+
+  for (const warning of warnings.slice(0, ENRICHMENT_WARNING_LOG_LIMIT)) {
+    logLines.push(warning);
+  }
+
+  if (warnings.length > ENRICHMENT_WARNING_LOG_LIMIT) {
+    logLines.push(
+      `Suppressed ${warnings.length - ENRICHMENT_WARNING_LOG_LIMIT} additional enrichment warnings.`,
+    );
+  }
+}
+
+async function mapWithConcurrency<T, TResult>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<TResult>,
+) {
+  const results = new Array<TResult>(items.length);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex]!, currentIndex);
+      }
+    }),
+  );
+
+  return results;
+}
+
 export function toPaperSourceRecord(paper: Paper) {
   return paperToSourceRecord(paper);
 }
-

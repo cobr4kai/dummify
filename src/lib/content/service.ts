@@ -1,6 +1,7 @@
 import { BriefMode, Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
+  articleAnalysisSchema,
   articleDetailSchema,
   articleLookupInputSchema,
   articleResponseSchema,
@@ -30,6 +31,12 @@ import {
 } from "@repo-types/content";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
+import {
+  buildDeterministicStructuredMetadata,
+  getOpenAlexTopics,
+  getStructuredMetadataPayload,
+} from "@/lib/metadata/service";
+import { paperToSourceRecord } from "@/lib/papers/record";
 import { getWeeklyBrief } from "@/lib/search/service";
 import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { getWeekEnd, getWeekStart } from "@/lib/utils/dates";
@@ -62,6 +69,9 @@ const contentPaperInclude = Prisma.validator<Prisma.PaperInclude>()({
   },
   enrichments: {
     where: { isCurrent: true },
+  },
+  publishedItems: {
+    take: 1,
   },
 });
 
@@ -407,6 +417,9 @@ export function scoreArticleMatch(article: ArticleDetail, query: string): Search
     article.categories.join(" "),
     article.tags.join(" "),
     article.topics.join(" "),
+    article.analysis.topicTags.join(" "),
+    article.analysis.methodType,
+    article.analysis.likelyAudience.join(" "),
     article.arxivId,
   ].join(" ");
   const exactMetadataMatch = Boolean(
@@ -419,6 +432,7 @@ export function scoreArticleMatch(article: ArticleDetail, query: string): Search
     countTermHits(article.categories.join(" "), expandedTerms) +
     countTermHits(article.tags.join(" "), expandedTerms) +
     countTermHits(article.topics.join(" "), expandedTerms);
+  const analysisTermHits = countTermHits(buildAnalysisSearchText(article), expandedTerms);
   const bodyTermHits =
     countTermHits(article.abstract, expandedTerms) +
     countTermHits(article.bestAvailableText, expandedTerms);
@@ -429,6 +443,7 @@ export function scoreArticleMatch(article: ArticleDetail, query: string): Search
   relevanceScore += scoreTextField(article.bestAvailableText, expandedTerms, "technicalBrief", matches, 1.5);
   relevanceScore += scoreTextField(article.topics.join(" "), expandedTerms, "topics", matches, 6);
   relevanceScore += scoreTextField(article.tags.join(" "), expandedTerms, "tags", matches, 5);
+  relevanceScore += scoreTextField(buildAnalysisSearchText(article), expandedTerms, "analysis", matches, 4);
 
   if (exactTitlePhraseMatch) {
     relevanceScore += 24;
@@ -436,8 +451,12 @@ export function scoreArticleMatch(article: ArticleDetail, query: string): Search
   if (exactMetadataMatch) {
     relevanceScore += 16;
   }
+  if (exactPhrase && normalizeSearchText(buildAnalysisSearchText(article)).includes(exactPhrase)) {
+    relevanceScore += 10;
+  }
   relevanceScore += titleTermHits * 3;
   relevanceScore += metadataTermHits * 2.5;
+  relevanceScore += analysisTermHits * 2;
   relevanceScore += subtitleTermHits * 1.5;
   relevanceScore += bodyTermHits;
 
@@ -580,11 +599,6 @@ async function performArticleSearch(
   const papers = await prisma.paper.findMany({
     where: {
       isDemoData: false,
-      technicalBriefs: {
-        some: {
-          isCurrent: true,
-        },
-      },
       ...(dateRange
         ? {
             announcementDay: {
@@ -664,7 +678,11 @@ function normalizeArticleDetail(
 ): ArticleDetail {
   const base = buildArticleBase(paper, options);
   const technicalBrief = buildTechnicalBrief(paper);
-  const bestAvailableText = buildBestAvailableText(paper.abstract, technicalBrief);
+  const bestAvailableText = buildBestAvailableText(
+    paper.abstract,
+    base.analysis,
+    technicalBrief,
+  );
 
   return articleDetailSchema.parse({
     ...base,
@@ -775,18 +793,23 @@ function buildArticleBase(
   const score = paper.scores[0] ?? null;
   const technicalBrief = buildTechnicalBrief(paper);
   const availability = buildPdfAvailability(paper);
-  const openAlexTopics = paper.enrichments.flatMap((enrichment) =>
-    parseJsonValue(enrichment.payload, openAlexPayloadSchema, {}).topics ?? []
-  );
+  const analysis = buildArticleAnalysis(paper);
   const categories = parseJsonValue(paper.categoriesJson, stringArraySchema, []);
   const sourceFeedCategories = parseJsonValue(paper.sourceFeedCategoriesJson, stringArraySchema, []);
   const focusTags = technicalBrief?.focusTags ?? [];
-  const topics = uniqueStrings([...openAlexTopics, ...focusTags, ...categories]);
-  const tags = uniqueStrings([...categories, ...sourceFeedCategories, ...focusTags]);
+  const topics = uniqueStrings([...analysis.topicTags, ...focusTags, ...categories]);
+  const tags = uniqueStrings([
+    ...categories,
+    ...sourceFeedCategories,
+    ...focusTags,
+    ...analysis.topicTags,
+    analysis.methodType,
+    ...analysis.likelyAudience,
+  ]);
   const quickTake = technicalBrief?.oneLineVerdict
     ? stripTechnicalBriefHeading(technicalBrief.oneLineVerdict)
-    : extractLeadSentence(paper.abstract);
-  const whyItMatters = technicalBrief?.whyItMatters ?? null;
+    : analysis.thesis;
+  const whyItMatters = technicalBrief?.whyItMatters ?? analysis.whyItMatters;
   const whyRanked = score?.rationale ?? null;
   const preview = truncateText(whyItMatters ?? quickTake ?? paper.abstract, 220);
 
@@ -805,6 +828,7 @@ function buildArticleBase(
     categories,
     topics,
     tags,
+    analysis,
     ranking: buildRanking(score, options.audience),
     summarySnippet: preview || null,
     pdfAvailability: availability,
@@ -835,6 +859,50 @@ function buildArticleBase(
     availability,
     discovery: null,
   };
+}
+
+function buildArticleAnalysis(paper: PaperWithContent) {
+  const enrichments = paper.enrichments.map((enrichment) => ({
+    provider: enrichment.provider,
+    payload:
+      typeof enrichment.payload === "object" && enrichment.payload
+        ? (enrichment.payload as Record<string, unknown>)
+        : {},
+  }));
+  const structuredMetadata = getStructuredMetadataPayload(enrichments);
+  if (structuredMetadata) {
+    return articleAnalysisSchema.parse({
+      thesis: structuredMetadata.thesis,
+      whyItMatters: structuredMetadata.whyItMatters,
+      topicTags: structuredMetadata.topicTags,
+      methodType: structuredMetadata.methodType,
+      evidenceStrength: structuredMetadata.evidenceStrength,
+      likelyAudience: structuredMetadata.likelyAudience,
+      caveats: structuredMetadata.caveats,
+      noveltyScore: structuredMetadata.noveltyScore,
+      businessRelevanceScore: structuredMetadata.businessRelevanceScore,
+      sourceBasis: structuredMetadata.sourceBasis,
+    });
+  }
+
+  const deterministic = buildDeterministicStructuredMetadata(paperToSourceRecord(paper), {
+    isEditorial: paper.publishedItems.length > 0 && hasPdfBackedBrief(paper),
+    hasPdfBackedBrief: hasPdfBackedBrief(paper),
+    openAlexTopics: getOpenAlexTopics(enrichments),
+  });
+
+  return articleAnalysisSchema.parse({
+    thesis: deterministic.thesis,
+    whyItMatters: deterministic.whyItMatters,
+    topicTags: deterministic.topicTags,
+    methodType: deterministic.methodType,
+    evidenceStrength: deterministic.evidenceStrength,
+    likelyAudience: deterministic.likelyAudience,
+    caveats: deterministic.caveats,
+    noveltyScore: deterministic.noveltyScore,
+    businessRelevanceScore: deterministic.businessRelevanceScore,
+    sourceBasis: deterministic.sourceBasis,
+  });
 }
 
 function buildRanking(
@@ -916,12 +984,25 @@ function buildPdfAvailability(paper: PaperWithContent) {
   };
 }
 
+function hasPdfBackedBrief(
+  paper: Pick<PaperWithContent, "technicalBriefs">,
+) {
+  return paper.technicalBriefs.some((brief) => !brief.usedFallbackAbstract);
+}
+
 function buildBestAvailableText(
   abstract: string,
+  analysis: ReturnType<typeof buildArticleAnalysis>,
   technicalBrief: ReturnType<typeof buildTechnicalBrief>,
 ) {
   const parts = [
     abstract,
+    analysis.thesis,
+    analysis.whyItMatters,
+    analysis.methodType,
+    analysis.topicTags.join(" "),
+    analysis.likelyAudience.join(" "),
+    analysis.caveats.join(" "),
     technicalBrief?.oneLineVerdict,
     technicalBrief?.whyItMatters,
     technicalBrief?.whatToIgnore,
@@ -930,6 +1011,22 @@ function buildBestAvailableText(
   ];
 
   return normalizeWhitespace(parts.filter(Boolean).join(" "));
+}
+
+function buildAnalysisSearchText(article: Pick<ArticleDetail, "analysis">) {
+  return normalizeWhitespace(
+    [
+      article.analysis.thesis,
+      article.analysis.whyItMatters,
+      article.analysis.topicTags.join(" "),
+      article.analysis.methodType,
+      article.analysis.likelyAudience.join(" "),
+      article.analysis.caveats.join(" "),
+      article.analysis.sourceBasis.replace(/_/g, " "),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 function buildSourceReferences(
@@ -1365,6 +1462,8 @@ function buildSearchSnippet(article: ArticleDetail, searchTerms: string[]) {
   const snippetSources = [
     article.summary.quickTake,
     article.summary.whyItMatters,
+    article.analysis.whyItMatters,
+    ...article.analysis.caveats,
     article.technicalBrief?.whatToIgnore,
     ...(article.technicalBrief?.bullets.map((bullet) => bullet.text) ?? []),
     article.abstract,

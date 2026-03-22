@@ -3,6 +3,7 @@ import { MockTechnicalBriefProvider } from "@/lib/providers/mock-technical-provi
 import { OpenAISummaryProvider } from "@/lib/providers/openai-provider";
 import { OpenAITechnicalBriefProvider } from "@/lib/providers/openai-technical-provider";
 import { OpenAlexProvider } from "@/lib/providers/openalex-provider";
+import { StructuredMetadataProvider } from "@/lib/providers/structured-metadata-provider";
 import type {
   PaperSourceRecord,
   PdfPageText,
@@ -36,12 +37,30 @@ export interface TechnicalBriefProvider {
 export interface EnrichmentProvider {
   readonly provider: string;
   isAvailable(): boolean;
-  enrich(paper: PaperSourceRecord): Promise<{
-    provider: string;
-    providerRecordId: string | null;
-    payload: Record<string, unknown>;
-  } | null>;
+  enrich(
+    paper: PaperSourceRecord,
+    context: EnrichmentContext,
+  ): Promise<EnrichmentProviderResult | null>;
 }
+
+export type EnrichmentContext = {
+  paperId: string;
+  announcementDay: string;
+  isEditorial: boolean;
+  hasPdfBackedBrief: boolean;
+  currentOpenAlexTopics: string[];
+  currentEnrichments: Array<{
+    provider: string;
+    payload: Record<string, unknown>;
+  }>;
+};
+
+export type EnrichmentProviderResult = {
+  provider: string;
+  providerRecordId: string | null;
+  payload: Record<string, unknown>;
+  warnings?: string[];
+};
 
 export function getSummaryProvider(): SummaryProvider | null {
   const openAIProvider = new OpenAISummaryProvider();
@@ -65,7 +84,12 @@ export function getMockTechnicalBriefProvider() {
   return new MockTechnicalBriefProvider();
 }
 
+export function getEnrichmentProviders(): EnrichmentProvider[] {
+  return [new OpenAlexProvider(), new StructuredMetadataProvider()].filter((provider) =>
+    provider.isAvailable(),
+  );
+}
+
 export function getEnrichmentProvider(): EnrichmentProvider | null {
-  const provider = new OpenAlexProvider();
-  return provider.isAvailable() ? provider : null;
+  return getEnrichmentProviders()[0] ?? null;
 }

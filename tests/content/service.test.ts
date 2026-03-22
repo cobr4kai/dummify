@@ -124,6 +124,7 @@ const {
         updatedAt: now,
       },
     ],
+    publishedItems: [{ id: "pub-1" }],
   };
 
   const paperTwo = {
@@ -189,6 +190,7 @@ const {
         },
       },
     ],
+    publishedItems: [],
   };
 
   const paperThree = {
@@ -254,6 +256,7 @@ const {
         },
       },
     ],
+    publishedItems: [],
   };
 
   return {

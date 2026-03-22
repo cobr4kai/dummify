@@ -244,6 +244,34 @@ export const articleTechnicalBriefSchema = z.object({
   usedFallbackAbstract: z.boolean(),
 });
 
+export const analysisSourceBasisSchema = z.enum([
+  "abstract_only",
+  "pdf_backed",
+  "editorial",
+]);
+
+export const analysisEvidenceStrengthSchema = z.enum(["low", "medium", "high"]);
+
+export const analysisAudienceSchema = z.enum([
+  "builders",
+  "researchers",
+  "investors",
+  "pms",
+]);
+
+export const articleAnalysisSchema = z.object({
+  thesis: z.string(),
+  whyItMatters: z.string(),
+  topicTags: z.array(z.string()),
+  methodType: z.string(),
+  evidenceStrength: analysisEvidenceStrengthSchema,
+  likelyAudience: z.array(analysisAudienceSchema),
+  caveats: z.array(z.string()),
+  noveltyScore: z.number().min(0).max(100),
+  businessRelevanceScore: z.number().min(0).max(100),
+  sourceBasis: analysisSourceBasisSchema,
+});
+
 export const discoveryFieldSchema = z.enum([
   "title",
   "subtitle",
@@ -251,6 +279,7 @@ export const discoveryFieldSchema = z.enum([
   "topics",
   "technicalBrief",
   "tags",
+  "analysis",
 ]);
 
 export const articleDiscoverySchema = z.object({
@@ -301,6 +330,7 @@ export const articleSummarySchema = z.object({
   categories: z.array(z.string()),
   topics: z.array(z.string()),
   tags: z.array(z.string()),
+  analysis: articleAnalysisSchema,
   ranking: articleRankingSchema.nullable(),
   summarySnippet: z.string().nullable(),
   pdfAvailability: pdfAvailabilitySchema.nullable(),
@@ -417,7 +447,7 @@ export const articleComparisonSchema = z.object({
     sourceBasisByArticle: z.array(
       z.object({
         articleId: z.string(),
-        sourceBasis: z.enum(["full-pdf", "abstract-fallback"]).nullable(),
+        sourceBasis: analysisSourceBasisSchema,
         usedFallbackAbstract: z.boolean().nullable(),
       }),
     ),

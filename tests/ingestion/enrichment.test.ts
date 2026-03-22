@@ -1,33 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  findCurrentEnrichmentMock,
   findPaperMock,
-  getEnrichmentProviderMock,
+  getEnrichmentProvidersMock,
   transactionMock,
   updateManyMock,
   createMock,
+  paperUpdateMock,
 } = vi.hoisted(() => ({
-  findCurrentEnrichmentMock: vi.fn(),
   findPaperMock: vi.fn(),
-  getEnrichmentProviderMock: vi.fn(),
+  getEnrichmentProvidersMock: vi.fn(),
   transactionMock: vi.fn(),
   updateManyMock: vi.fn(),
   createMock: vi.fn(),
+  paperUpdateMock: vi.fn(),
 }));
 
 vi.mock("@/lib/providers", () => ({
-  getEnrichmentProvider: getEnrichmentProviderMock,
+  getEnrichmentProviders: getEnrichmentProvidersMock,
   getTechnicalBriefProvider: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    paperEnrichment: {
-      findFirst: findCurrentEnrichmentMock,
-    },
     paper: {
       findUnique: findPaperMock,
+      update: paperUpdateMock,
     },
     $transaction: transactionMock,
   },
@@ -35,14 +33,44 @@ vi.mock("@/lib/db", () => ({
 
 import { ensurePaperEnrichment } from "@/lib/ingestion/service";
 
+const basePaper = {
+  id: "paper-1",
+  arxivId: "2603.08877",
+  version: 1,
+  versionedId: "2603.08877v1",
+  title: "Demo paper",
+  abstract: "Demo abstract",
+  authorsJson: ["Ada Lovelace"],
+  authorsText: "Ada Lovelace",
+  categoriesJson: ["cs.AI"],
+  sourceFeedCategoriesJson: ["cs.AI"],
+  categoryText: "cs.AI",
+  primaryCategory: "cs.AI",
+  publishedAt: new Date("2026-03-11T00:00:00.000Z"),
+  updatedAt: new Date("2026-03-11T00:00:00.000Z"),
+  announcementDay: "2026-03-11",
+  announceType: "demo",
+  comment: null,
+  journalRef: null,
+  doi: null,
+  abstractUrl: "https://arxiv.org/abs/2603.08877",
+  pdfUrl: null,
+  links: { abs: "https://arxiv.org/abs/2603.08877" },
+  sourceMetadata: { sourceType: "demo" },
+  sourcePayload: { note: "fixture" },
+  technicalBriefs: [],
+  enrichments: [],
+  publishedItems: [],
+};
+
 describe("ensurePaperEnrichment", () => {
   beforeEach(() => {
-    findCurrentEnrichmentMock.mockReset();
     findPaperMock.mockReset();
-    getEnrichmentProviderMock.mockReset();
+    getEnrichmentProvidersMock.mockReset();
     transactionMock.mockReset();
     updateManyMock.mockReset();
     createMock.mockReset();
+    paperUpdateMock.mockReset();
 
     transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
@@ -56,61 +84,64 @@ describe("ensurePaperEnrichment", () => {
 
   it("reuses the current enrichment by default", async () => {
     const enrichMock = vi.fn();
-    getEnrichmentProviderMock.mockReturnValue({
-      provider: "openalex",
-      enrich: enrichMock,
-    });
-    findCurrentEnrichmentMock.mockResolvedValue({
-      id: "enrichment-1",
+    getEnrichmentProvidersMock.mockReturnValue([
+      {
+        provider: "openalex",
+        enrich: enrichMock,
+      },
+    ]);
+    findPaperMock.mockResolvedValue({
+      ...basePaper,
+      enrichments: [
+        {
+          provider: "openalex",
+          payload: { topics: ["agents"] },
+          isCurrent: true,
+        },
+      ],
     });
 
     const result = await ensurePaperEnrichment("paper-1");
 
     expect(result).toBe(false);
     expect(enrichMock).not.toHaveBeenCalled();
-    expect(findPaperMock).not.toHaveBeenCalled();
+    expect(updateManyMock).not.toHaveBeenCalled();
   });
 
-  it("refreshes enrichment when forced", async () => {
+  it("refreshes enrichment when forced and updates search text for structured metadata", async () => {
     const enrichMock = vi.fn().mockResolvedValue({
-      provider: "openalex",
-      providerRecordId: "work-1",
+      provider: "structured_metadata_v1",
+      providerRecordId: null,
       payload: {
-        citedByCount: 10,
+        version: "structured_metadata_v1",
+        sourceBasis: "abstract_only",
+        thesis: "A demo thesis about agent infrastructure.",
+        whyItMatters: "This matters for builders evaluating agent runtime systems.",
+        topicTags: ["agents", "infra"],
+        methodType: "agent system",
+        evidenceStrength: "medium",
+        likelyAudience: ["builders"],
+        caveats: ["The abstract does not establish production reliability on its own."],
+        noveltyScore: 61,
+        businessRelevanceScore: 74,
+        searchText: "demo thesis agent infrastructure builders",
+        generationMode: "hybrid",
       },
     });
-    getEnrichmentProviderMock.mockReturnValue({
-      provider: "openalex",
-      enrich: enrichMock,
-    });
-    findCurrentEnrichmentMock.mockResolvedValue({
-      id: "enrichment-1",
-    });
+    getEnrichmentProvidersMock.mockReturnValue([
+      {
+        provider: "structured_metadata_v1",
+        enrich: enrichMock,
+      },
+    ]);
     findPaperMock.mockResolvedValue({
-      id: "paper-1",
-      arxivId: "2603.08877",
-      version: 1,
-      versionedId: "2603.08877v1",
-      title: "Demo paper",
-      abstract: "Demo abstract",
-      authorsJson: ["Ada Lovelace"],
-      categoriesJson: ["cs.AI"],
-      sourceFeedCategoriesJson: ["cs.AI"],
-      primaryCategory: "cs.AI",
-      publishedAt: new Date("2026-03-11T00:00:00.000Z"),
-      updatedAt: new Date("2026-03-11T00:00:00.000Z"),
-      announcementDay: "2026-03-11",
-      announceType: "demo",
-      comment: null,
-      journalRef: null,
-      doi: null,
-      abstractUrl: "https://arxiv.org/abs/2603.08877",
-      pdfUrl: null,
-      sourceMetadata: { sourceType: "demo" },
-      sourcePayload: { note: "fixture" },
+      ...basePaper,
+      searchText: "demo abstract",
+      enrichments: [],
     });
-    updateManyMock.mockResolvedValue({ count: 1 });
+    updateManyMock.mockResolvedValue({ count: 0 });
     createMock.mockResolvedValue({ id: "enrichment-2" });
+    paperUpdateMock.mockResolvedValue({ id: "paper-1" });
 
     const result = await ensurePaperEnrichment("paper-1", { force: true });
 
@@ -118,5 +149,11 @@ describe("ensurePaperEnrichment", () => {
     expect(enrichMock).toHaveBeenCalledTimes(1);
     expect(updateManyMock).toHaveBeenCalledTimes(1);
     expect(createMock).toHaveBeenCalledTimes(1);
+    expect(paperUpdateMock).toHaveBeenCalledWith({
+      where: { id: "paper-1" },
+      data: {
+        searchText: expect.stringContaining("demo thesis agent infrastructure builders"),
+      },
+    });
   });
 });

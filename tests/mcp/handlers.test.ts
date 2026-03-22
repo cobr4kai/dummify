@@ -57,6 +57,18 @@ const articleOne = {
   categories: ["cs.AI"],
   topics: ["agent systems", "protocol design", "infra"],
   tags: ["cs.AI", "agents", "infra"],
+  analysis: {
+    thesis: "A production-oriented paper about multi-agent routing.",
+    whyItMatters: "Routing and provenance are becoming product surfaces.",
+    topicTags: ["agents", "infra", "protocol design"],
+    methodType: "agent system",
+    evidenceStrength: "medium" as const,
+    likelyAudience: ["builders", "pms"] as const,
+    caveats: ["The abstract-only layer may miss deployment trade-offs."],
+    noveltyScore: 73,
+    businessRelevanceScore: 88,
+    sourceBasis: "editorial" as const,
+  },
   ranking: {
     mode: "editorial" as const,
     label: "Editorially prioritized this week.",
@@ -154,6 +166,14 @@ const articleTwo = {
   },
   topics: ["inference controls", "protocol design", "infra"],
   tags: ["cs.LG", "inference", "infra"],
+  analysis: {
+    ...articleOne.analysis,
+    thesis: "A paper about retrieval tuning and inference budget controls.",
+    topicTags: ["inference", "infra", "retrieval tuning"],
+    methodType: "inference or serving method",
+    likelyAudience: ["builders", "investors"] as const,
+    sourceBasis: "abstract_only" as const,
+  },
   technicalBrief: {
     ...articleOne.technicalBrief,
     sourceBasis: "abstract-fallback" as const,
@@ -254,7 +274,7 @@ describe("mcp tool handlers", () => {
     expect(payload.main_tradeoff).toContain("Agent Handoff Protocols");
     expect(payload.comparison.commonTopics).toContain("protocol design");
     expect(payload.comparison.scoreRanking[0]?.articleId).toBe("paper-1");
-    expect(payload.comparison.sourceBasisByArticle[1]?.sourceBasis).toBe("abstract-fallback");
+    expect(payload.comparison.sourceBasisByArticle[1]?.sourceBasis).toBe("abstract_only");
   });
 
   it("normalizes MCP top-article inputs through the shared schema", async () => {

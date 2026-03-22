@@ -191,7 +191,7 @@ export async function handleCompareArticles(
         })),
       sourceBasisByArticle: articles.map((article) => ({
         articleId: article.id,
-        sourceBasis: article.technicalBrief?.sourceBasis ?? null,
+        sourceBasis: article.analysis.sourceBasis,
         usedFallbackAbstract: article.technicalBrief?.usedFallbackAbstract ?? null,
       })),
     },

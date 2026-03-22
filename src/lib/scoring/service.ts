@@ -1,4 +1,5 @@
 import { DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS } from "@/config/defaults";
+import type { StructuredMetadataEnrichment } from "@/lib/metadata/schema";
 import {
   EXECUTIVE_CATEGORY_BOOSTS,
   EXECUTIVE_COMPONENT_KEYWORDS,
@@ -27,8 +28,35 @@ export function computeBriefScore(
   paper: Pick<PaperSourceRecord, "title" | "abstract" | "categories"> &
     Partial<Pick<PaperSourceRecord, "sourceFeedCategories" | "sourceMetadata">>,
   weights: ExecutiveScoringWeights = DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+  analysis?: Pick<
+    StructuredMetadataEnrichment,
+    | "thesis"
+    | "whyItMatters"
+    | "topicTags"
+    | "methodType"
+    | "evidenceStrength"
+    | "likelyAudience"
+    | "caveats"
+    | "noveltyScore"
+    | "businessRelevanceScore"
+    | "sourceBasis"
+  > | null,
 ): ExecutiveScoreComputationResult {
-  const normalizedText = normalizeSearchText(`${paper.title} ${paper.abstract}`);
+  const normalizedText = normalizeSearchText(
+    [
+      paper.title,
+      paper.abstract,
+      analysis?.thesis,
+      analysis?.whyItMatters,
+      analysis?.topicTags.join(" "),
+      analysis?.methodType,
+      analysis?.likelyAudience.join(" "),
+      analysis?.caveats.join(" "),
+      analysis?.sourceBasis.replace(/_/g, " "),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
   const breakdown = {} as ExecutiveScoreBreakdown;
 
   for (const key of Object.keys(weights) as ExecutiveScoreComponentKey[]) {
@@ -39,6 +67,7 @@ export function computeBriefScore(
       weights[key],
       paper.abstract,
       paper.sourceMetadata,
+      analysis ?? undefined,
     );
   }
 
@@ -71,8 +100,19 @@ function computeExecutiveComponentScore(
   weight: number,
   abstract: string,
   sourceMetadata?: Record<string, unknown>,
+  analysis?: Pick<
+    StructuredMetadataEnrichment,
+    | "topicTags"
+    | "methodType"
+    | "evidenceStrength"
+    | "likelyAudience"
+    | "caveats"
+    | "noveltyScore"
+    | "businessRelevanceScore"
+    | "sourceBasis"
+  >,
 ): ScoreBreakdownItem<ExecutiveScoreComponentKey> {
-  let rawScore = baseComponentScore(key, abstract);
+  let rawScore = baseComponentScore(key, abstract, analysis);
   const reasons: Array<{ reason: string; weight: number }> = [];
 
   for (const matcher of EXECUTIVE_COMPONENT_KEYWORDS[key]) {
@@ -104,6 +144,12 @@ function computeExecutiveComponentScore(
     }
   }
 
+  if (analysis) {
+    applyStructuredMetadataSignal(key, analysis, reasons, (delta) => {
+      rawScore += delta;
+    });
+  }
+
   rawScore = clamp(rawScore);
   const topReason = reasons.sort((left, right) => right.weight - left.weight)[0];
 
@@ -119,7 +165,14 @@ function computeExecutiveComponentScore(
   };
 }
 
-function baseComponentScore(key: ExecutiveScoreComponentKey, abstract: string) {
+function baseComponentScore(
+  key: ExecutiveScoreComponentKey,
+  abstract: string,
+  analysis?: Pick<
+    StructuredMetadataEnrichment,
+    "evidenceStrength" | "noveltyScore" | "businessRelevanceScore" | "likelyAudience"
+  >,
+) {
   const keywordCount = splitKeywords(abstract).length;
   const sentenceCount = abstract.split(/[.!?]+/).filter(Boolean).length || 1;
   const averageSentenceLength = keywordCount / sentenceCount;
@@ -138,18 +191,37 @@ function baseComponentScore(key: ExecutiveScoreComponentKey, abstract: string) {
       score -= 10;
     }
 
+    if (analysis) {
+      score += analysis.likelyAudience.filter((audience) => audience !== "researchers").length * 5;
+    }
+
     return score;
   }
 
   if (key === "evidenceStrength") {
-    return 26;
+    const baseScore = 26;
+    if (!analysis) {
+      return baseScore;
+    }
+
+    if (analysis.evidenceStrength === "high") {
+      return baseScore + 16;
+    }
+    if (analysis.evidenceStrength === "medium") {
+      return baseScore + 8;
+    }
+    return baseScore - 2;
   }
 
   if (key === "frontierRelevance") {
-    return 28;
+    return analysis ? 28 + Math.round((analysis.noveltyScore - 50) / 8) : 28;
   }
 
-  return key === "realWorldImpact" ? 24 : 22;
+  if (key === "realWorldImpact") {
+    return analysis ? 24 + Math.round((analysis.businessRelevanceScore - 50) / 7) : 24;
+  }
+
+  return 22;
 }
 
 function applyCrossListBonus(
@@ -182,4 +254,78 @@ function readInstitutionSignal(sourceMetadata?: Record<string, unknown>) {
   }
 
   return Math.min(8, institutionSignals.length * 4);
+}
+
+function applyStructuredMetadataSignal(
+  key: ExecutiveScoreComponentKey,
+  analysis: Pick<
+    StructuredMetadataEnrichment,
+    | "topicTags"
+    | "methodType"
+    | "evidenceStrength"
+    | "likelyAudience"
+    | "caveats"
+    | "noveltyScore"
+    | "businessRelevanceScore"
+    | "sourceBasis"
+  >,
+  reasons: Array<{ reason: string; weight: number }>,
+  applyDelta: (delta: number) => void,
+) {
+  let delta = 0;
+  let reason: string | null = null;
+
+  if (key === "frontierRelevance") {
+    if (analysis.topicTags.some((tag) => ["agents", "models", "inference", "infra"].includes(tag))) {
+      delta += 6;
+      reason =
+        "Structured metadata tags the paper as directly relevant to current frontier deployment themes.";
+    }
+  }
+
+  if (key === "capabilityImpact") {
+    if (/(training|inference|agent|world model|retrieval)/i.test(analysis.methodType)) {
+      delta += 5;
+      reason =
+        "Structured metadata suggests the paper proposes a concrete system or method rather than only a descriptive synthesis.";
+    }
+  }
+
+  if (key === "realWorldImpact") {
+    if (analysis.sourceBasis === "editorial") {
+      delta += 6;
+      reason =
+        "The paper already cleared the curated editorial layer, which is a useful proxy for real-world importance.";
+    } else if (analysis.businessRelevanceScore >= 70) {
+      delta += 5;
+      reason =
+        "Structured metadata judges the paper as unusually relevant to business or product decision-making.";
+    }
+  }
+
+  if (key === "evidenceStrength") {
+    if (analysis.evidenceStrength === "low" && analysis.caveats.length > 0) {
+      delta -= 4;
+      reason =
+        "Structured metadata keeps the evidence read conservative because the abstract signals limited quantitative grounding.";
+    }
+  }
+
+  if (key === "audiencePull") {
+    if (analysis.likelyAudience.some((audience) => audience !== "researchers")) {
+      delta += 6;
+      reason =
+        "Structured metadata points to immediate relevance for non-research readers such as builders, PMs, or investors.";
+    }
+  }
+
+  if (delta !== 0) {
+    applyDelta(delta);
+    if (reason) {
+      reasons.push({
+        reason,
+        weight: Math.abs(delta),
+      });
+    }
+  }
 }

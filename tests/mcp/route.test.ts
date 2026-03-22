@@ -1,4 +1,60 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/content/service", () => ({
+  browseArticlesContent: async () => ({
+    feed: "top",
+    query: null,
+    topic: null,
+    audience: null,
+    sort: "editorial",
+    weekStart: null,
+    startDate: null,
+    endDate: null,
+    limit: 10,
+    hasExtractedPdf: null,
+    topicSuggestions: [],
+    articles: [],
+  }),
+  getArticleContent: async () => null,
+  getArticlesForComparison: async () => [],
+  getTopArticlesContent: async () => ({
+    feed: "top",
+    query: null,
+    topic: null,
+    audience: null,
+    sort: "editorial",
+    weekStart: null,
+    startDate: null,
+    endDate: null,
+    limit: 10,
+    hasExtractedPdf: null,
+    topicSuggestions: [],
+    articles: [],
+  }),
+  openArticleContent: async () => null,
+  resolveArticleReference: async () => ({
+    paperId: null,
+    requestedRef: null,
+    normalizedRef: null,
+    resolvedBy: null,
+  }),
+  searchArticlesContent: async () => ({
+    feed: "search",
+    query: "",
+    topic: null,
+    audience: null,
+    sort: "relevance",
+    verbosity: "standard",
+    weekStart: null,
+    startDate: null,
+    endDate: null,
+    limit: 10,
+    hasExtractedPdf: null,
+    topicSuggestions: [],
+    results: [],
+  }),
+  suggestArticleRefs: async () => [],
+}));
 import { DELETE, GET, POST } from "@/app/api/mcp/route";
 
 const PROTOCOL_VERSION = "2025-11-25";

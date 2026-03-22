@@ -8,7 +8,7 @@ export type BootstrapBackfillConfig = {
 };
 
 export function readBootstrapBackfillConfig(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): BootstrapBackfillConfig | null {
   const from = normalizeString(env.PAPERBRIEF_BOOTSTRAP_BACKFILL_FROM);
   const to = normalizeString(env.PAPERBRIEF_BOOTSTRAP_BACKFILL_TO);
