@@ -191,12 +191,77 @@ const {
     ],
   };
 
+  const paperThree = {
+    ...paperOne,
+    id: "paper-3",
+    arxivId: "2603.09001",
+    versionedId: "2603.09001v1",
+    title: "Robotics World Models for Warehouse Picking",
+    abstract:
+      "This robotics paper studies warehouse manipulation policies, world models, and control loops for robotic picking.",
+    authorsJson: ["Dana D."],
+    authorsText: "Dana D.",
+    categoriesJson: ["cs.RO", "cs.AI"],
+    sourceFeedCategoriesJson: ["cs.RO"],
+    categoryText: "cs.RO cs.AI",
+    primaryCategory: "cs.RO",
+    abstractUrl: "https://arxiv.org/abs/2603.09001",
+    pdfUrl: "https://arxiv.org/pdf/2603.09001.pdf",
+    searchText: "robotics warehouse picking manipulation world models robot control cs.ro",
+    scores: [
+      {
+        totalScore: 74,
+        rationale: "More specialized but directly relevant to robotics builders.",
+      },
+    ],
+    technicalBriefs: [
+      {
+        ...paperOne.technicalBriefs[0],
+        oneLineVerdict:
+          "A robotics-focused paper on warehouse picking policies and robot control loops.",
+        focusTagsJson: ["robotics", "agents"],
+        whyItMatters:
+          "Builders shipping robotics systems care more about control fidelity and manipulation reliability than adjacent general vision gains.",
+        bulletsJson: [
+          {
+            label: "Implication",
+            text: "Warehouse robotics teams may care more about task-specific world models than generic perception benchmarks.",
+            impactArea: "implication",
+            citations: [{ page: 3, section: "Robot control", quote: null }],
+          },
+        ],
+        evidenceJson: [
+          {
+            claim: "The system improves warehouse picking consistency with a robotics-specific world model.",
+            impactArea: "capability",
+            confidence: "high",
+            citations: [{ page: 4, section: "Warehouse results", quote: null }],
+          },
+        ],
+      },
+    ],
+    pdfCaches: [
+      {
+        ...paperOne.pdfCaches[0],
+        sourceUrl: "https://arxiv.org/pdf/2603.09001.pdf",
+      },
+    ],
+    enrichments: [
+      {
+        ...paperOne.enrichments[0],
+        payload: {
+          topics: ["robotics", "warehouse picking"],
+        },
+      },
+    ],
+  };
+
   return {
     getWeeklyBriefMock: vi.fn(),
     paperFindFirstMock: vi.fn(),
     paperFindManyMock: vi.fn(),
     paperFindUniqueMock: vi.fn(),
-    papers: { paperOne, paperTwo },
+    papers: { paperOne, paperTwo, paperThree },
   };
 });
 
@@ -289,6 +354,27 @@ describe("content service", () => {
     expect(result?.article.bestAvailableText).not.toContain("not for redistribution");
   });
 
+  it("returns identical drill-down payloads for open_article and get_article inputs", async () => {
+    paperFindUniqueMock.mockResolvedValue(papers.paperOne);
+    paperFindFirstMock.mockResolvedValue({ id: "paper-1" });
+
+    const openResult = await openArticleContent({
+      article_ref: "2603.08852v1",
+      verbosity: "standard",
+    });
+    const getResult = await getArticleContent({
+      article_ref: undefined,
+      article_id: undefined,
+      url: undefined,
+      arxiv_id: "2603.08852v1",
+      verbosity: "standard",
+    });
+
+    expect(openResult?.article).toEqual(getResult?.article);
+    expect(openResult?.verbosity).toBe("standard");
+    expect(getResult?.verbosity).toBe("standard");
+  });
+
   it("resolves paper ids from canonical paper paths and arxiv ids", async () => {
     paperFindFirstMock.mockResolvedValue({ id: "paper-1" });
 
@@ -329,6 +415,51 @@ describe("content service", () => {
     expect(result.results[0]?.summary.whyMatched).toContain("handoff");
   });
 
+  it("prioritizes strict robotics matches ahead of adjacent papers", async () => {
+    paperFindManyMock.mockResolvedValue([papers.paperTwo, papers.paperThree, papers.paperOne]);
+
+    const result = await searchArticlesContent({
+      query: "robotics",
+      topic: undefined,
+      week: undefined,
+      start_date: undefined,
+      end_date: undefined,
+      sort: "relevance",
+      verbosity: "standard",
+      limit: 5,
+    });
+
+    expect(result.sort).toBe("relevance");
+    expect(result.results[0]?.id).toBe("paper-3");
+    expect(result.results[0]?.matchedFields).toContain("topics");
+  });
+
+  it("applies verbosity controls to detail payloads", async () => {
+    paperFindUniqueMock.mockResolvedValue(papers.paperOne);
+
+    const quickResult = await getArticleContent({
+      article_ref: undefined,
+      article_id: "paper-1",
+      url: undefined,
+      arxiv_id: undefined,
+      verbosity: "quick",
+    });
+    const deepResult = await getArticleContent({
+      article_ref: undefined,
+      article_id: "paper-1",
+      url: undefined,
+      arxiv_id: undefined,
+      verbosity: "deep",
+    });
+
+    expect(quickResult?.verbosity).toBe("quick");
+    expect(deepResult?.verbosity).toBe("deep");
+    expect(quickResult?.article.bestAvailableText.length ?? 0).toBeLessThan(
+      deepResult?.article.bestAvailableText.length ?? 0,
+    );
+    expect(quickResult?.article.technicalBrief?.evidence.length ?? 0).toBeLessThanOrEqual(1);
+  });
+
   it("supports browse/open workflow contracts with topic-free discovery", async () => {
     getWeeklyBriefMock.mockResolvedValue({
       weekStart: "2026-03-16",
@@ -356,6 +487,7 @@ describe("content service", () => {
 
     const openResult = await openArticleContent({
       article_ref: "https://arxiv.org/abs/2603.08852v1",
+      verbosity: "standard",
     });
 
     expect(openResult?.requestedRef).toBe("https://arxiv.org/abs/2603.08852v1");

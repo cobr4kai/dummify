@@ -21,12 +21,12 @@ import {
   type ArticleResponse,
   type ArticleSummary,
   type BrowseArticlesInput,
-  type BrowseArticlesResponse,
   type CompareArticlesInput,
   type OpenArticleInput,
   type SearchArticlesInput,
   type SearchArticlesResponse,
   type TopArticlesInput,
+  type Verbosity,
 } from "@repo-types/content";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -77,10 +77,16 @@ type SearchMatchResult = {
   matchedFields: DiscoveryField[];
   snippet: string;
   matchReason: string | null;
+  exactTitlePhraseMatch: boolean;
+  exactMetadataMatch: boolean;
+  titleTermHits: number;
+  metadataTermHits: number;
+  bodyTermHits: number;
 };
 type LookupResolution = {
   paperId: string | null;
   requestedRef: string | null;
+  normalizedRef: string | null;
   resolvedBy: ArticleResponse["resolvedBy"];
 };
 
@@ -98,7 +104,22 @@ const scoreBreakdownItemSchema = z.object({
   reason: z.string().nullable().optional(),
 });
 const scoreBreakdownSchema = z.record(z.string(), scoreBreakdownItemSchema);
-const numericRecordSchema = z.record(z.string(), z.number());
+const DEFAULT_VERBOSITY: Verbosity = "standard";
+const SUPPORTED_VERBOSITY = ["quick", "standard", "deep"] as const;
+const SUPPORTED_SORTS = ["relevance", "editorial", "recency"] as const;
+const DOMAIN_ALIASES: Record<string, string[]> = {
+  robotics: ["robotics", "robotic", "robot", "cs.ro"],
+  robot: ["robotics", "robotic", "robot", "cs.ro"],
+  agents: ["agent", "agents", "multi-agent"],
+  agent: ["agent", "agents", "multi-agent"],
+  vision: ["vision", "computer vision", "cs.cv"],
+  inference: ["inference", "latency", "serving"],
+  training: ["training", "fine-tuning", "finetuning"],
+  rag: ["rag", "retrieval", "retrieval-augmented"],
+  retrieval: ["retrieval", "rag"],
+  biology: ["biology", "bio", "q-bio"],
+  infra: ["infra", "systems", "platform"],
+};
 
 export async function browseArticlesContent(
   input: BrowseArticlesInput,
@@ -149,6 +170,7 @@ export async function openArticleContent(
       article_id: undefined,
       url: undefined,
       arxiv_id: undefined,
+      verbosity: parsed.verbosity,
     },
     options,
   );
@@ -173,10 +195,18 @@ export async function getArticleContent(
     return null;
   }
 
+  const verbosity = resolveVerbosity(parsed.verbosity);
+  const article = applyVerbosityToArticleDetail(
+    normalizeArticleDetail(paper, options),
+    verbosity,
+  );
+
   return articleResponseSchema.parse({
     requestedRef: resolution.requestedRef,
+    normalizedRef: resolution.normalizedRef,
     resolvedBy: resolution.resolvedBy,
-    article: normalizeArticleDetail(paper, options),
+    verbosity,
+    article,
   });
 }
 
@@ -185,6 +215,7 @@ export async function searchArticlesContent(
   options: { requestOrigin?: string } = {},
 ) {
   const results = await performArticleSearch(input, options);
+  const verbosity = resolveVerbosity(input.verbosity);
 
   return searchArticlesResponseSchema.parse({
     feed: "search",
@@ -192,13 +223,14 @@ export async function searchArticlesContent(
     topic: input.topic ?? null,
     audience: input.audience ?? null,
     sort: resolveSearchSort(input.sort),
+    verbosity,
     weekStart: input.week ? getWeekStart(input.week) : null,
     startDate: results.dateRange?.startDate ?? null,
     endDate: results.dateRange?.endDate ?? null,
     limit: input.limit,
     hasExtractedPdf: input.has_extracted_pdf ?? null,
     topicSuggestions: collectTopicSuggestions(results.filteredArticles),
-    results: results.results,
+    results: results.results.map((result) => applyVerbosityToSearchResult(result, verbosity)),
   });
 }
 
@@ -209,6 +241,7 @@ export async function getArticlesForComparison(
   const articleRefs = Array.isArray(input)
     ? input
     : (input.article_refs ?? input.article_ids ?? []);
+  const verbosity = Array.isArray(input) ? DEFAULT_VERBOSITY : resolveVerbosity(input.verbosity);
   const resolvedIds = await Promise.all(articleRefs.map((articleRef) => resolveArticleReference(articleRef)));
   const paperIds = resolvedIds
     .map((resolution, index) =>
@@ -223,7 +256,7 @@ export async function getArticlesForComparison(
   });
 
   return orderByIds(
-    papers.map((paper) => normalizeArticleDetail(paper, options)),
+    papers.map((paper) => applyVerbosityToArticleDetail(normalizeArticleDetail(paper, options), verbosity)),
     paperIds,
   );
 }
@@ -235,10 +268,12 @@ export async function resolvePaperIdFromLookup(lookup: ArticleLookupInput) {
 
 export async function resolveArticleReference(articleRef: string) {
   const requestedRef = normalizeWhitespace(articleRef);
+  const normalizedRef = normalizeArticleReference(articleRef);
   if (!requestedRef) {
     return {
       paperId: null,
       requestedRef: null,
+      normalizedRef: null,
       resolvedBy: null,
     } satisfies LookupResolution;
   }
@@ -251,6 +286,7 @@ export async function resolveArticleReference(articleRef: string) {
     return {
       paperId: directMatch.id,
       requestedRef,
+      normalizedRef,
       resolvedBy: "article_ref",
     } satisfies LookupResolution;
   }
@@ -260,6 +296,7 @@ export async function resolveArticleReference(articleRef: string) {
     return {
       paperId: paperPathId,
       requestedRef,
+      normalizedRef,
       resolvedBy: requestedRef.startsWith("/papers/") ? "paper_path" : "canonical_url",
     } satisfies LookupResolution;
   }
@@ -278,6 +315,7 @@ export async function resolveArticleReference(articleRef: string) {
   return {
     paperId: paper?.id ?? null,
     requestedRef,
+    normalizedRef,
     resolvedBy: paper ? "arxiv_id" : null,
   } satisfies LookupResolution;
 }
@@ -356,30 +394,63 @@ export function matchesTopic(
 }
 
 export function scoreArticleMatch(article: ArticleDetail, query: string): SearchMatchResult {
-  const searchTerms = uniqueStrings([normalizeSearchText(query), ...splitKeywords(query)]);
+  const exactPhrase = normalizeSearchText(query);
+  const searchTerms = uniqueStrings(splitKeywords(query));
+  const expandedTerms = expandSearchTerms(searchTerms);
   const matches = new Set<DiscoveryField>();
   let relevanceScore = 0;
 
-  relevanceScore += scoreTextField(article.title, searchTerms, "title", matches, 6);
-  relevanceScore += scoreTextField(article.summary.quickTake ?? "", searchTerms, "subtitle", matches, 4);
-  relevanceScore += scoreTextField(article.abstract, searchTerms, "abstract", matches, 3);
-  relevanceScore += scoreTextField(article.bestAvailableText, searchTerms, "technicalBrief", matches, 2);
-  relevanceScore += scoreTextField(article.topics.join(" "), searchTerms, "topics", matches, 3);
-  relevanceScore += scoreTextField(article.tags.join(" "), searchTerms, "tags", matches, 2);
+  const exactTitlePhraseMatch = Boolean(
+    exactPhrase && normalizeSearchText(article.title).includes(exactPhrase),
+  );
+  const metadataHaystack = [
+    article.categories.join(" "),
+    article.tags.join(" "),
+    article.topics.join(" "),
+    article.arxivId,
+  ].join(" ");
+  const exactMetadataMatch = Boolean(
+    exactPhrase && normalizeSearchText(metadataHaystack).includes(exactPhrase),
+  );
 
-  const exactPhrase = normalizeSearchText(query);
-  if (exactPhrase && normalizeSearchText(article.title).includes(exactPhrase)) {
-    relevanceScore += 3;
+  const titleTermHits = countTermHits(article.title, expandedTerms);
+  const subtitleTermHits = countTermHits(article.summary.quickTake ?? "", expandedTerms);
+  const metadataTermHits =
+    countTermHits(article.categories.join(" "), expandedTerms) +
+    countTermHits(article.tags.join(" "), expandedTerms) +
+    countTermHits(article.topics.join(" "), expandedTerms);
+  const bodyTermHits =
+    countTermHits(article.abstract, expandedTerms) +
+    countTermHits(article.bestAvailableText, expandedTerms);
+
+  relevanceScore += scoreTextField(article.title, expandedTerms, "title", matches, 8);
+  relevanceScore += scoreTextField(article.summary.quickTake ?? "", expandedTerms, "subtitle", matches, 4);
+  relevanceScore += scoreTextField(article.abstract, expandedTerms, "abstract", matches, 2);
+  relevanceScore += scoreTextField(article.bestAvailableText, expandedTerms, "technicalBrief", matches, 1.5);
+  relevanceScore += scoreTextField(article.topics.join(" "), expandedTerms, "topics", matches, 6);
+  relevanceScore += scoreTextField(article.tags.join(" "), expandedTerms, "tags", matches, 5);
+
+  if (exactTitlePhraseMatch) {
+    relevanceScore += 24;
   }
-  if (exactPhrase && normalizeSearchText(article.bestAvailableText).includes(exactPhrase)) {
-    relevanceScore += 2;
+  if (exactMetadataMatch) {
+    relevanceScore += 16;
   }
+  relevanceScore += titleTermHits * 3;
+  relevanceScore += metadataTermHits * 2.5;
+  relevanceScore += subtitleTermHits * 1.5;
+  relevanceScore += bodyTermHits;
 
   return {
     relevanceScore,
     matchedFields: Array.from(matches),
-    snippet: buildSearchSnippet(article, searchTerms),
+    snippet: buildSearchSnippet(article, expandedTerms),
     matchReason: buildMatchReason(Array.from(matches), query),
+    exactTitlePhraseMatch,
+    exactMetadataMatch,
+    titleTermHits,
+    metadataTermHits,
+    bodyTermHits,
   };
 }
 
@@ -500,7 +571,9 @@ async function performArticleSearch(
   options: { requestOrigin?: string } = {},
 ) {
   const normalizedQuery = normalizeSearchText(input.query);
-  const searchTerms = uniqueStrings([normalizedQuery, ...splitKeywords(input.query)]).slice(0, 8);
+  const searchTerms = expandSearchTerms(
+    uniqueStrings([normalizedQuery, ...splitKeywords(input.query)]).slice(0, 8),
+  );
   const dateRange = resolveDateRange(input);
   const normalizedSort = resolveSearchSort(input.sort);
 
@@ -599,6 +672,98 @@ function normalizeArticleDetail(
     bestAvailableText,
     technicalBrief,
     sourceReferences: buildSourceReferences(paper, base.canonicalUrl, technicalBrief),
+  });
+}
+
+function resolveVerbosity(verbosity?: Verbosity) {
+  return verbosity ?? DEFAULT_VERBOSITY;
+}
+
+function applyVerbosityToArticleDetail(article: ArticleDetail, verbosity: Verbosity): ArticleDetail {
+  if (verbosity === "deep") {
+    return article;
+  }
+
+  const sourceReferenceLimit = verbosity === "quick" ? 3 : 6;
+  const dimensionLimit = verbosity === "quick" ? 2 : 4;
+  const bulletLimit = verbosity === "quick" ? 1 : 3;
+  const evidenceLimit = verbosity === "quick" ? 1 : 3;
+  const keyStatLimit = verbosity === "quick" ? 1 : 3;
+  const citationLimit = verbosity === "quick" ? 1 : 2;
+
+  const technicalBrief = article.technicalBrief
+    ? {
+        ...article.technicalBrief,
+        confidenceNotes: article.technicalBrief.confidenceNotes.slice(
+          0,
+          verbosity === "quick" ? 1 : 2,
+        ),
+        keyStats: article.technicalBrief.keyStats.slice(0, keyStatLimit).map((item) => ({
+          ...item,
+          citations: item.citations.slice(0, citationLimit),
+        })),
+        bullets: article.technicalBrief.bullets.slice(0, bulletLimit).map((item) => ({
+          ...item,
+          citations: item.citations.slice(0, citationLimit),
+        })),
+        evidence: article.technicalBrief.evidence.slice(0, evidenceLimit).map((item) => ({
+          ...item,
+          citations: item.citations.slice(0, citationLimit),
+        })),
+      }
+    : null;
+
+  return articleDetailSchema.parse({
+    ...article,
+    ranking: article.ranking
+      ? {
+          ...article.ranking,
+          dimensions: article.ranking.dimensions.slice(0, dimensionLimit),
+        }
+      : null,
+    summarySnippet: article.summarySnippet
+      ? truncateText(article.summarySnippet, verbosity === "quick" ? 140 : 220)
+      : null,
+    summary: {
+      ...article.summary,
+      preview: article.summary.preview
+        ? truncateText(article.summary.preview, verbosity === "quick" ? 140 : 220)
+        : null,
+      abstract: article.summary.abstract
+        ? truncateText(article.summary.abstract, verbosity === "quick" ? 220 : 600)
+        : null,
+    },
+    bestAvailableText: truncateText(article.bestAvailableText, verbosity === "quick" ? 280 : 1400),
+    technicalBrief,
+    sourceReferences: article.sourceReferences.slice(0, sourceReferenceLimit),
+  });
+}
+
+function applyVerbosityToSearchResult(
+  result: SearchArticlesResponse["results"][number],
+  verbosity: Verbosity,
+) {
+  const snippetLength = verbosity === "quick" ? 160 : verbosity === "standard" ? 240 : 280;
+  return articleSearchResultSchema.parse({
+    ...result,
+    summarySnippet: result.summarySnippet ? truncateText(result.summarySnippet, snippetLength) : null,
+    snippet: truncateText(result.snippet, snippetLength),
+    ranking: result.ranking
+      ? {
+          ...result.ranking,
+          dimensions: result.ranking.dimensions.slice(0, verbosity === "quick" ? 2 : 4),
+        }
+      : null,
+    summary: {
+      ...result.summary,
+      preview: result.summary.preview ? truncateText(result.summary.preview, snippetLength) : null,
+      abstract: result.summary.abstract
+        ? truncateText(result.summary.abstract, verbosity === "quick" ? 220 : 480)
+        : null,
+      whyMatched: result.summary.whyMatched
+        ? truncateText(result.summary.whyMatched, snippetLength)
+        : null,
+    },
   });
 }
 
@@ -856,6 +1021,7 @@ async function resolveLookup(lookup: ArticleLookupInput): Promise<LookupResoluti
     return {
       paperId: lookup.article_id.trim(),
       requestedRef: lookup.article_id.trim(),
+      normalizedRef: normalizeArticleReference(lookup.article_id),
       resolvedBy: "article_id",
     };
   }
@@ -865,6 +1031,7 @@ async function resolveLookup(lookup: ArticleLookupInput): Promise<LookupResoluti
     return {
       paperId,
       requestedRef: lookup.url,
+      normalizedRef: normalizeArticleReference(lookup.url),
       resolvedBy: lookup.url.startsWith("/papers/") ? "paper_path" : "canonical_url",
     };
   }
@@ -884,6 +1051,7 @@ async function resolveLookup(lookup: ArticleLookupInput): Promise<LookupResoluti
     return {
       paperId: paper?.id ?? null,
       requestedRef: lookup.arxiv_id,
+      normalizedRef: normalizeArticleReference(lookup.arxiv_id),
       resolvedBy: paper ? "arxiv_id" : null,
     };
   }
@@ -891,6 +1059,7 @@ async function resolveLookup(lookup: ArticleLookupInput): Promise<LookupResoluti
   return {
     paperId: null,
     requestedRef: null,
+    normalizedRef: null,
     resolvedBy: null,
   };
 }
@@ -906,6 +1075,8 @@ function buildSearchClauses(searchTerms: string[]) {
     { abstract: { contains: term } },
     { categoryText: { contains: term } },
     { primaryCategory: { contains: term } },
+    { arxivId: { contains: term } },
+    { versionedId: { contains: term } },
     {
       technicalBriefs: {
         some: {
@@ -1100,7 +1271,7 @@ function buildMatchReason(matchedFields: DiscoveryField[], query: string) {
   }
 
   const formattedFields = matchedFields.join(", ");
-  return `Matched "${query}" in ${formattedFields}.`;
+  return `Best match for "${query}" based on ${formattedFields}.`;
 }
 
 function resolveSuggestionReason(options: {
@@ -1150,6 +1321,46 @@ function scoreTextField(
   return score;
 }
 
+function countTermHits(value: string, searchTerms: string[]) {
+  const normalizedValue = normalizeSearchText(value);
+  return searchTerms.reduce((total, term) => total + (normalizedValue.includes(term) ? 1 : 0), 0);
+}
+
+function expandSearchTerms(searchTerms: string[]) {
+  const expanded = new Set<string>();
+  for (const term of searchTerms) {
+    if (!term) {
+      continue;
+    }
+
+    expanded.add(term);
+    const aliases = DOMAIN_ALIASES[term] ?? [];
+    for (const alias of aliases) {
+      expanded.add(normalizeSearchText(alias));
+    }
+  }
+
+  return Array.from(expanded);
+}
+
+function normalizeArticleReference(value: string) {
+  const trimmed = normalizeWhitespace(value);
+  if (!trimmed) {
+    return null;
+  }
+
+  const paperId = extractPaperIdFromUrl(trimmed);
+  if (paperId) {
+    return paperId;
+  }
+
+  if (looksLikeArxivReference(trimmed)) {
+    return canonicalizeArxivId(trimmed).versionedId;
+  }
+
+  return trimmed;
+}
+
 function buildSearchSnippet(article: ArticleDetail, searchTerms: string[]) {
   const snippetSources = [
     article.summary.quickTake,
@@ -1178,6 +1389,12 @@ function extractPaperIdFromUrl(value: string) {
   } catch {
     return null;
   }
+}
+
+function looksLikeArxivReference(value: string) {
+  return /^https?:\/\/arxiv\.org\/abs\//i.test(value) ||
+    /^oai:arXiv\.org:/i.test(value) ||
+    /^\d{4}\.\d{4,5}(v\d+)?$/i.test(value);
 }
 
 function resolveSiteBaseUrl(requestOrigin?: string) {

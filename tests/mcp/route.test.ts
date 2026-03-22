@@ -94,6 +94,7 @@ describe("mcp route", () => {
     expect(openTool).toBeDefined();
     expect(listTopTool.inputSchema.required ?? []).not.toContain("topic");
     expect(openTool.inputSchema.required ?? []).toEqual(["article_ref"]);
+    expect(openTool.inputSchema.properties.verbosity.enum).toEqual(["quick", "standard", "deep"]);
     expect(getArticleTool.inputSchema.required ?? []).toEqual([]);
     expect(listTopTool.outputSchema?.type).toBe("object");
   });

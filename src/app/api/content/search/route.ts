@@ -15,6 +15,7 @@ export async function GET(request: Request) {
       start_date: searchParams.get("start_date") ?? undefined,
       end_date: searchParams.get("end_date") ?? undefined,
       has_extracted_pdf: searchParams.get("has_extracted_pdf") ?? undefined,
+      verbosity: searchParams.get("verbosity") ?? undefined,
       limit: searchParams.get("limit") ?? undefined,
     });
 

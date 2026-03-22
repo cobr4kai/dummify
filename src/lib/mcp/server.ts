@@ -23,6 +23,7 @@ import {
 
 const audienceSchema = z.enum(["builders", "researchers", "investors", "pms"]);
 const sortSchema = z.enum(["editorial", "relevance", "recency"]);
+const verbositySchema = z.enum(["quick", "standard", "deep"]);
 
 const mcpBrowseArticlesInputSchema = z.object({
   feed: z.enum(["top", "search"]).optional(),
@@ -48,6 +49,7 @@ const mcpTopArticlesInputSchema = z.object({
 
 const mcpOpenArticleInputSchema = z.object({
   article_ref: z.string().trim().min(1),
+  verbosity: verbositySchema.optional(),
 });
 
 const mcpGetArticleInputSchema = z.object({
@@ -55,6 +57,7 @@ const mcpGetArticleInputSchema = z.object({
   article_id: z.string().trim().min(1).optional(),
   url: z.string().trim().min(1).optional(),
   arxiv_id: z.string().trim().min(1).optional(),
+  verbosity: verbositySchema.optional(),
 });
 
 const mcpSearchArticlesInputSchema = z.object({
@@ -66,12 +69,14 @@ const mcpSearchArticlesInputSchema = z.object({
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   has_extracted_pdf: z.boolean().optional(),
+  verbosity: verbositySchema.optional(),
   limit: z.number().int().min(1).max(25).optional(),
 });
 
 const mcpCompareArticlesInputSchema = z.object({
   article_refs: z.array(z.string().trim().min(1)).min(2).max(5),
   question: z.string().trim().min(1).optional(),
+  verbosity: verbositySchema.optional(),
 });
 
 type McpBrowseArticlesInput = z.infer<typeof mcpBrowseArticlesInputSchema>;
@@ -146,7 +151,7 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
     {
       title: "Open a ReadAbstracted article",
       description:
-        "Open one article using a single article reference. The server resolves ReadAbstracted IDs, paper URLs, and arXiv identifiers.",
+        "Recommended drill-down tool. Open one article using a single article reference and optional verbosity control.",
       inputSchema: mcpOpenArticleInputSchema,
       outputSchema: articleResponseSchema,
       annotations: {
@@ -169,7 +174,7 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
     {
       title: "Open a ReadAbstracted article",
       description:
-        "Returns one normalized ReadAbstracted article with safe-summary content, metadata, tags, citation metadata, and canonical links.",
+        "Compatibility alias for open_article. Accepts legacy identifier inputs and returns the same normalized article payload.",
       inputSchema: mcpGetArticleInputSchema,
       outputSchema: articleResponseSchema,
       annotations: {

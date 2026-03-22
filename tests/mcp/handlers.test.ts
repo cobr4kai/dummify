@@ -212,9 +212,11 @@ describe("mcp tool handlers", () => {
       topicSuggestions: ["agents"],
       articles: [],
     });
-    openArticleContentMock.mockResolvedValue({
+    getArticleContentMock.mockResolvedValue({
       requestedRef: "paper-1",
+      normalizedRef: "paper-1",
       resolvedBy: "article_ref",
+      verbosity: "standard",
       article: articleOne,
     });
 
@@ -223,10 +225,12 @@ describe("mcp tool handlers", () => {
     });
     const openPayload = await handleOpenArticle({
       article_ref: "paper-1",
+      verbosity: "standard",
     });
 
     expect(browsePayload.feed).toBe("top");
     expect(openPayload.article.id).toBe("paper-1");
+    expect(openPayload.verbosity).toBe("standard");
   });
 
   it("builds structured comparison payloads without prose answers", async () => {
@@ -238,10 +242,16 @@ describe("mcp tool handlers", () => {
     const payload = await handleCompareArticles({
       article_refs: ["paper-1", "paper-2"],
       question: "Which one is stronger on infra platform implications?",
+      verbosity: "standard",
     });
 
+    expect(payload.verbosity).toBe("standard");
     expect(payload.articles).toHaveLength(2);
     expect(payload.focusTerms).toContain("infra");
+    expect(payload.recommended_winner?.articleId).toBe("paper-1");
+    expect(payload.best_for[0]?.reasons.length).toBeGreaterThan(0);
+    expect(payload.why).toBeTruthy();
+    expect(payload.main_tradeoff).toContain("Agent Handoff Protocols");
     expect(payload.comparison.commonTopics).toContain("protocol design");
     expect(payload.comparison.scoreRanking[0]?.articleId).toBe("paper-1");
     expect(payload.comparison.sourceBasisByArticle[1]?.sourceBasis).toBe("abstract-fallback");
@@ -284,6 +294,7 @@ describe("mcp tool handlers", () => {
       topic: null,
       audience: null,
       sort: "relevance",
+      verbosity: "standard",
       weekStart: null,
       startDate: null,
       endDate: null,
@@ -323,9 +334,17 @@ describe("mcp tool handlers", () => {
 
   it("wraps successful payloads for MCP results", () => {
     const payload = successToolResult("Returned 0 articles.", {
+      feed: "top",
+      query: null,
       weekStart: "2026-03-16",
+      startDate: null,
+      endDate: null,
       topic: null,
+      audience: null,
+      sort: "editorial",
       limit: 10,
+      hasExtractedPdf: null,
+      topicSuggestions: [],
       articles: [],
     });
 

@@ -78,6 +78,7 @@ describe("content API routes", () => {
 
   it("returns not found envelopes for missing articles", async () => {
     getArticleContentMock.mockResolvedValue(null);
+    suggestArticleRefsMock.mockResolvedValue([]);
 
     const response = await getArticleRoute(
       new Request("https://example.com/api/content/article?article_id=missing"),
@@ -88,6 +89,12 @@ describe("content API routes", () => {
       error: {
         code: "not_found",
         message: "Article not found.",
+        details: {
+          requestedRef: "missing",
+          normalizedRef: "missing",
+          suggestions: [],
+          supportedVerbosity: ["quick", "standard", "deep"],
+        },
       },
     });
   });
@@ -165,6 +172,7 @@ describe("content API routes", () => {
         message: "Article not found.",
         details: {
           requestedRef: "2603.08852v1",
+          normalizedRef: "2603.08852v1",
           suggestions: [
             {
               articleRef: "paper-1",
@@ -174,6 +182,7 @@ describe("content API routes", () => {
               reason: "Matched an arXiv identifier.",
             },
           ],
+          supportedVerbosity: ["quick", "standard", "deep"],
         },
       },
     });

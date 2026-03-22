@@ -64,9 +64,11 @@ const articleRefListSchema = z.array(articleRefSchema).min(2).max(5);
 export const audienceLensSchema = z.enum(["builders", "researchers", "investors", "pms"]);
 export const browseSortSchema = z.enum(["editorial", "relevance", "recency"]);
 export const browseFeedSchema = z.enum(["top", "search"]);
+export const verbositySchema = z.enum(["quick", "standard", "deep"]);
 
 export const openArticleInputSchema = z.object({
   article_ref: articleRefSchema,
+  verbosity: verbositySchema.optional(),
 });
 
 export const articleLookupInputSchema = z
@@ -75,6 +77,7 @@ export const articleLookupInputSchema = z
     article_id: optionalNonEmptyStringSchema,
     url: optionalUrlOrPaperPathSchema,
     arxiv_id: optionalNonEmptyStringSchema,
+    verbosity: verbositySchema.optional(),
   })
   .superRefine((value, context) => {
     const provided = [value.article_ref, value.article_id, value.url, value.arxiv_id].filter(Boolean);
@@ -117,6 +120,7 @@ export const searchArticlesInputSchema = z.object({
   start_date: isoDateSchema.optional(),
   end_date: isoDateSchema.optional(),
   has_extracted_pdf: optionalBooleanSchema,
+  verbosity: verbositySchema.optional(),
   limit: limitSchema,
 });
 
@@ -125,6 +129,7 @@ export const compareArticlesInputSchema = z
     article_refs: articleRefListSchema.optional(),
     article_ids: articleRefListSchema.optional(),
     question: optionalNonEmptyStringSchema,
+    verbosity: verbositySchema.optional(),
   })
   .superRefine((value, context) => {
     const provided = [value.article_refs, value.article_ids].filter(
@@ -315,6 +320,7 @@ export const articleLocatorSuggestionSchema = z.object({
 
 export const articleLookupMetadataSchema = z.object({
   requestedRef: z.string().nullable(),
+  normalizedRef: z.string().nullable().optional(),
   resolvedBy: z.enum(["article_ref", "article_id", "canonical_url", "paper_path", "arxiv_id"]).nullable(),
   suggestions: z.array(articleLocatorSuggestionSchema).optional(),
 });
@@ -345,7 +351,9 @@ export const topArticlesResponseSchema = browseArticlesResponseSchema;
 
 export const articleResponseSchema = z.object({
   requestedRef: z.string().nullable(),
+  normalizedRef: z.string().nullable(),
   resolvedBy: z.enum(["article_ref", "article_id", "canonical_url", "paper_path", "arxiv_id"]).nullable(),
+  verbosity: verbositySchema,
   article: articleDetailSchema,
 });
 
@@ -361,6 +369,7 @@ export const searchArticlesResponseSchema = z.object({
   topic: z.string().nullable(),
   audience: audienceLensSchema.nullable(),
   sort: browseSortSchema,
+  verbosity: verbositySchema,
   weekStart: isoDateSchema.nullable(),
   startDate: isoDateSchema.nullable(),
   endDate: isoDateSchema.nullable(),
@@ -372,7 +381,21 @@ export const searchArticlesResponseSchema = z.object({
 
 export const articleComparisonSchema = z.object({
   question: z.string().nullable(),
+  verbosity: verbositySchema,
   focusTerms: z.array(z.string()),
+  recommended_winner: z.object({
+    articleId: z.string(),
+    title: z.string(),
+  }).nullable(),
+  best_for: z.array(
+    z.object({
+      articleId: z.string(),
+      title: z.string(),
+      reasons: z.array(z.string()),
+    }),
+  ),
+  why: z.string().nullable(),
+  main_tradeoff: z.string().nullable(),
   articles: z.array(articleDetailSchema).min(2).max(5),
   comparison: z.object({
     commonTopics: z.array(z.string()),
@@ -415,6 +438,7 @@ export type BrowseArticlesInput = z.infer<typeof browseArticlesInputSchema>;
 export type TopArticlesInput = z.infer<typeof topArticlesInputSchema>;
 export type SearchArticlesInput = z.infer<typeof searchArticlesInputSchema>;
 export type CompareArticlesInput = z.infer<typeof compareArticlesInputSchema>;
+export type Verbosity = z.infer<typeof verbositySchema>;
 export type ArticleCard = z.infer<typeof articleCardSchema>;
 export type ArticleSummary = z.infer<typeof articleSummarySchema>;
 export type ArticleLocatorSuggestion = z.infer<typeof articleLocatorSuggestionSchema>;

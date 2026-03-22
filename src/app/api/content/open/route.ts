@@ -8,6 +8,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const input = openArticleInputSchema.parse({
       article_ref: searchParams.get("article_ref") ?? undefined,
+      verbosity: searchParams.get("verbosity") ?? undefined,
     });
 
     const payload = await openArticleContent(input, {
@@ -19,7 +20,9 @@ export async function GET(request: Request) {
       });
       return createContentErrorResponse(404, "not_found", "Article not found.", {
         requestedRef: input.article_ref,
+        normalizedRef: input.article_ref,
         suggestions,
+        supportedVerbosity: ["quick", "standard", "deep"],
       });
     }
 

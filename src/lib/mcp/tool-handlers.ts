@@ -19,7 +19,6 @@ import {
   getArticleContent,
   getArticlesForComparison,
   getTopArticlesContent,
-  openArticleContent,
   resolveArticleReference,
   searchArticlesContent,
   suggestArticleRefs,
@@ -77,19 +76,16 @@ export async function handleOpenArticle(
   context: McpRequestContext = {},
 ) {
   const parsed = openArticleInputSchema.parse(input);
-  const payload = await openArticleContent(parsed, context);
-  if (!payload) {
-    const suggestions = await suggestArticleRefs(parsed.article_ref, context);
-    throw new McpServiceError("not_found", "Article not found.", {
-      status: 404,
-      details: {
-        requestedRef: parsed.article_ref,
-        suggestions,
-      },
-    });
-  }
-
-  return payload;
+  return handleGetArticle(
+    {
+      article_ref: parsed.article_ref,
+      article_id: undefined,
+      url: undefined,
+      arxiv_id: undefined,
+      verbosity: parsed.verbosity,
+    },
+    context,
+  );
 }
 
 export async function handleGetArticle(
@@ -105,7 +101,9 @@ export async function handleGetArticle(
       status: 404,
       details: {
         requestedRef,
+        normalizedRef: requestedRef,
         suggestions,
+        supportedVerbosity: ["quick", "standard", "deep"],
       },
     });
   }
@@ -133,7 +131,13 @@ export async function handleCompareArticles(
     throw new McpServiceError(
       "not_found",
       `One or more articles could not be found: ${missingRefs.join(", ")}.`,
-      { status: 404, details: { missingRefs } },
+      {
+        status: 404,
+        details: {
+          missingRefs,
+          supportedVerbosity: ["quick", "standard", "deep"],
+        },
+      },
     );
   }
 
@@ -142,13 +146,25 @@ export async function handleCompareArticles(
     throw new McpServiceError(
       "not_found",
       "One or more articles could not be loaded for comparison.",
-      { status: 404, details: { requestedRefs } },
+      {
+        status: 404,
+        details: {
+          requestedRefs,
+          supportedVerbosity: ["quick", "standard", "deep"],
+        },
+      },
     );
   }
 
+  const comparisonSummary = buildComparisonSummary(parsed.question, articles);
   return articleComparisonSchema.parse({
     question: parsed.question ?? null,
+    verbosity: parsed.verbosity ?? "standard",
     focusTerms: buildFocusTerms(parsed.question, articles),
+    recommended_winner: comparisonSummary.recommended_winner,
+    best_for: comparisonSummary.best_for,
+    why: comparisonSummary.why,
+    main_tradeoff: comparisonSummary.main_tradeoff,
     articles,
     comparison: {
       commonTopics: intersectNormalized(articles.map((article) => article.topics)),
@@ -276,6 +292,38 @@ function buildFocusTerms(question: string | undefined, articles: ArticleDetail[]
   return uniqueStrings(articles.flatMap((article) => article.topics)).slice(0, 8);
 }
 
+function buildComparisonSummary(question: string | undefined, articles: ArticleDetail[]) {
+  const questionTerms = splitKeywords(question ?? "");
+  const scored = articles.map((article) => {
+    const topicFit = scoreQuestionFit(article, questionTerms);
+    const score = (article.ranking?.totalScore ?? 0) + topicFit;
+    return { article, score, topicFit };
+  }).sort((left, right) => right.score - left.score);
+
+  const winner = scored[0]?.article ?? null;
+  const runnerUp = scored[1]?.article ?? null;
+
+  return {
+    recommended_winner: winner
+      ? {
+          articleId: winner.id,
+          title: winner.title,
+        }
+      : null,
+    best_for: scored.map(({ article, topicFit }) => ({
+      articleId: article.id,
+      title: article.title,
+      reasons: buildBestForReasons(article, questionTerms, topicFit),
+    })),
+    why: winner
+      ? buildWinnerWhy(winner, questionTerms)
+      : null,
+    main_tradeoff: winner && runnerUp
+      ? buildMainTradeoff(winner, runnerUp)
+      : null,
+  };
+}
+
 function intersectNormalized(valueGroups: string[][]) {
   if (valueGroups.length === 0) {
     return [];
@@ -313,4 +361,67 @@ function uniqueStrings(values: string[]) {
 
 function normalize(value: string) {
   return value.trim().toLowerCase();
+}
+
+function scoreQuestionFit(article: ArticleDetail, questionTerms: string[]) {
+  if (questionTerms.length === 0) {
+    return 0;
+  }
+
+  const haystack = normalize([
+    article.title,
+    article.topics.join(" "),
+    article.tags.join(" "),
+    article.summary.quickTake ?? "",
+    article.summary.whyItMatters ?? "",
+  ].join(" "));
+
+  return questionTerms.reduce((total, term) => total + (haystack.includes(term) ? 6 : 0), 0);
+}
+
+function buildBestForReasons(
+  article: ArticleDetail,
+  questionTerms: string[],
+  topicFit: number,
+) {
+  const reasons: string[] = [];
+
+  if (topicFit > 0) {
+    reasons.push("Strong overlap with the comparison question.");
+  }
+  if ((article.ranking?.totalScore ?? 0) >= 85) {
+    reasons.push("Higher editorial importance.");
+  }
+  if (article.technicalBrief?.sourceBasis === "full-pdf") {
+    reasons.push("Backed by a full-PDF technical brief.");
+  }
+  if (article.summary.whyItMatters) {
+    reasons.push(truncateSentence(article.summary.whyItMatters));
+  }
+
+  return reasons.slice(0, 3);
+}
+
+function buildWinnerWhy(article: ArticleDetail, questionTerms: string[]) {
+  const reasons = buildBestForReasons(article, questionTerms, scoreQuestionFit(article, questionTerms));
+  return reasons.join(" ");
+}
+
+function buildMainTradeoff(winner: ArticleDetail, runnerUp: ArticleDetail) {
+  const winnerSource = winner.technicalBrief?.sourceBasis === "full-pdf"
+    ? "deeper evidence"
+    : "lighter evidence";
+  const runnerUpSource = runnerUp.technicalBrief?.sourceBasis === "full-pdf"
+    ? "deeper evidence"
+    : "lighter evidence";
+
+  return `${winner.title} looks stronger on overall fit and ${winnerSource}, while ${runnerUp.title} remains a plausible alternative with ${runnerUpSource}.`;
+}
+
+function truncateSentence(value: string, maxLength = 120) {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
 }
