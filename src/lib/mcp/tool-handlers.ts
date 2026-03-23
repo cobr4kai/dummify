@@ -392,7 +392,6 @@ function toCanonicalArticle(
 
 function buildProvenance(article: ArticleSummary | ArticleDetail): CanonicalArticle["provenance"] {
   const technicalBrief = "technicalBrief" in article ? article.technicalBrief : null;
-  const hasTechnicalBrief = Boolean(technicalBrief);
   const sourceUrls = uniqueStrings(
     "sourceReferences" in article
       ? article.sourceReferences.map((reference) => reference.sourceUrl)
@@ -402,7 +401,15 @@ function buildProvenance(article: ArticleSummary | ArticleDetail): CanonicalArti
   if (article.analysis.sourceBasis === "editorial") {
     return {
       groundingTier: "editorial",
-      briefState: hasTechnicalBrief ? "editorial_brief" : "none",
+      briefState: "editorial_brief",
+      sourceUrls,
+    };
+  }
+
+  if (article.analysis.sourceBasis === "pdf_backed") {
+    return {
+      groundingTier: "pdf",
+      briefState: "pdf_brief",
       sourceUrls,
     };
   }

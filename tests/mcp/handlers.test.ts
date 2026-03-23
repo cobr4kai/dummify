@@ -214,6 +214,7 @@ describe("mcp tool handlers", () => {
     expect(payload.edition.editionType).toBe("readabstracted_weekly");
     expect(payload.edition.isLive).toBe(true);
     expect(payload.articles[0]?.article.analysis.quickTake).toBe(articleSummary.subtitle);
+    expect(payload.articles[0]?.article.provenance.briefState).toBe("editorial_brief");
   });
 
   it("preserves discovery-only metadata on discover responses", async () => {
@@ -338,6 +339,46 @@ describe("mcp tool handlers", () => {
     expect(payload.article.provenance.groundingTier).toBe("abstract");
     expect(payload.article.provenance.briefState).toBe("none");
     expect(payload.article.brief).toBeNull();
+  });
+
+  it("advertises a pdf-backed brief on discovery cards even without inline brief details", async () => {
+    discoverArticlesContentMock.mockResolvedValue({
+      mode: "browse",
+      query: null,
+      topic: null,
+      audience: null,
+      sort: "editorial",
+      weekStart: null,
+      startDate: null,
+      endDate: null,
+      limit: 10,
+      results: [
+        {
+          article: {
+            ...articleSummary,
+            analysis: {
+              ...articleSummary.analysis,
+              sourceBasis: "pdf_backed" as const,
+            },
+          },
+          discovery: {
+            rank: 1,
+            sort: "editorial",
+            matchedOn: [],
+            matchReason: null,
+            matchSnippet: null,
+          },
+        },
+      ],
+    });
+
+    const payload = await handleDiscoverArticles({
+      limit: 10,
+      verbosity: "standard",
+    });
+
+    expect(payload.results[0]?.article.provenance.groundingTier).toBe("pdf");
+    expect(payload.results[0]?.article.provenance.briefState).toBe("pdf_brief");
   });
 
   it("returns structured error payloads", () => {
