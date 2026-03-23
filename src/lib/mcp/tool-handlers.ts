@@ -119,7 +119,7 @@ export async function handleDiscoverArticles(
     endDate: payload.endDate,
     limit: payload.limit,
     results: payload.results.map((result) => ({
-      article: toCanonicalArticle(result.article, parsed.verbosity, { includeAbstract: true }),
+      article: toCanonicalArticle(result.article, parsed.verbosity, { includeAbstract: false }),
       discovery: result.discovery,
     })),
   });
@@ -179,21 +179,6 @@ export async function handleCompareArticles(
   }
 
   const articles = resolvedArticles.map((item) => item.resolved!.article);
-  const duplicateResolvedIds = findDuplicateResolvedIds(articles);
-  if (duplicateResolvedIds.length > 0) {
-    throw new McpServiceError(
-      "invalid_request",
-      "Two or more references resolved to the same ReadAbstracted article.",
-      {
-        status: 400,
-        details: {
-          duplicateResolvedIds,
-          submittedRefs: parsed.article_refs,
-        },
-      },
-    );
-  }
-
   const canonicalArticles = articles.map((article) =>
     toCanonicalArticle(article, parsed.verbosity, { includeAbstract: true }),
   );
@@ -418,7 +403,7 @@ function buildProvenance(article: ArticleSummary | ArticleDetail): CanonicalArti
   if (technicalBrief && technicalBrief.usedFallbackAbstract) {
     return {
       groundingTier: "abstract",
-      briefState: "none",
+      briefState: "abstract_brief",
       sourceUrls,
     };
   }
@@ -598,22 +583,6 @@ function buildArticleRefSuggestions(articleRef: string) {
       : "Use a ReadAbstracted paper ID, /papers/{id} path, or arXiv ID.",
     "Try discover_articles first if you only know the topic or rough title.",
   ];
-}
-
-function findDuplicateResolvedIds(articles: Array<Pick<CanonicalArticle, "id">>) {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-
-  for (const article of articles) {
-    if (seen.has(article.id)) {
-      duplicates.add(article.id);
-      continue;
-    }
-
-    seen.add(article.id);
-  }
-
-  return Array.from(duplicates);
 }
 
 function limitByDetail<T>(

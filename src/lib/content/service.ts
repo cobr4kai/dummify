@@ -1112,7 +1112,7 @@ function scoreDiscoverArticleMatch(article: ArticleDetail, query: string): Disco
 
   const briefHits = countMatchingTerms(briefText, expandedTerms);
   if (briefHits > 0) {
-    matchedOn.add("content");
+    matchedOn.add("brief");
     relevanceScore += briefHits * 7;
   }
 
@@ -1129,7 +1129,7 @@ function scoreDiscoverArticleMatch(article: ArticleDetail, query: string): Disco
         : metadataHits > 0
           ? "Matched on topic tags, categories, or audience cues."
           : abstractHits > 0 || briefHits > 0
-            ? "Matched through abstract or supporting content."
+            ? "Matched through abstract or brief content."
             : null;
 
   return {
