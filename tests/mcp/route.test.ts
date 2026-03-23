@@ -15,9 +15,17 @@ vi.mock("@/lib/content/service", () => ({
   }),
   getArticleContent: async () => null,
   getTopArticlesContent: async () => ({
+    feed: "top",
+    query: null,
     weekStart: null,
+    startDate: null,
+    endDate: null,
     topic: null,
+    audience: null,
+    sort: "editorial",
     limit: 10,
+    hasExtractedPdf: null,
+    topicSuggestions: [],
     articles: [],
   }),
 }));
@@ -107,6 +115,16 @@ describe("mcp route", () => {
       "open_article",
       "compare_articles",
     ]);
+
+    const summarizeTool = payload.result.tools.find(
+      (tool: { name: string }) => tool.name === "summarize_top_articles",
+    );
+    expect(summarizeTool.inputSchema.required ?? []).not.toContain("topic");
+
+    const discoverTool = payload.result.tools.find(
+      (tool: { name: string }) => tool.name === "discover_articles",
+    );
+    expect(discoverTool.inputSchema.required ?? []).toEqual([]);
   });
 
   it("returns parse errors for malformed json", async () => {

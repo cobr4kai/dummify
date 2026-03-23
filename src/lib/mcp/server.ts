@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { z } from "zod";
 import {
   compareArticlesResponseSchema,
   compareArticlesV2InputSchema,
@@ -25,6 +26,38 @@ import {
   successToolResult,
 } from "@/lib/mcp/tool-handlers";
 
+const summarizeTopArticlesToolInputSchema = z.object({
+  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  limit: z.number().int().min(1).max(25).optional(),
+  topic: z.string().min(1).optional(),
+  verbosity: z.enum(["quick", "standard", "deep"]).optional(),
+});
+
+const discoverArticlesToolInputSchema = z.object({
+  query: z.string().min(1).optional(),
+  topic: z.string().min(1).optional(),
+  audience: z.enum(["builders", "researchers", "investors", "pms"]).optional(),
+  sort: z.enum(["relevance", "editorial", "recency"]).optional(),
+  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  has_premium_brief: z.boolean().optional(),
+  has_extracted_pdf: z.boolean().optional(),
+  limit: z.number().int().min(1).max(25).optional(),
+  verbosity: z.enum(["quick", "standard", "deep"]).optional(),
+});
+
+const openArticleToolInputSchema = z.object({
+  article_ref: z.string().min(1),
+  verbosity: z.enum(["quick", "standard", "deep"]).optional(),
+});
+
+const compareArticlesToolInputSchema = z.object({
+  article_refs: z.array(z.string().min(1)).min(2).max(5),
+  question: z.string().min(1).optional(),
+  verbosity: z.enum(["quick", "standard", "deep"]).optional(),
+});
+
 export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
   const server = new McpServer({
     name: "readabstracted-mcp",
@@ -39,16 +72,19 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "Summarize the ReadAbstracted weekly edition",
       description:
         "Returns the curated ReadAbstracted weekly edition that mirrors the website homepage, including editorial framing and the curated article order.",
-      inputSchema: summarizeTopArticlesInputSchema,
+      inputSchema: summarizeTopArticlesToolInputSchema,
       outputSchema: summarizeTopArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: SummarizeTopArticlesInput) => {
+    async (input) => {
       try {
-        const payload = await handleSummarizeTopArticles(input, context);
+        const payload = await handleSummarizeTopArticles(
+          summarizeTopArticlesInputSchema.parse(input),
+          context,
+        );
         return successToolResult(
           `Returned ${payload.articles.length} articles from the ReadAbstracted weekly edition.`,
           payload,
@@ -65,16 +101,19 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "Discover ReadAbstracted articles",
       description:
         "Searches or browses the wider ReadAbstracted archive, returning opinionated context, provenance, and discovery-specific match information.",
-      inputSchema: discoverArticlesInputSchema,
+      inputSchema: discoverArticlesToolInputSchema,
       outputSchema: discoverArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: DiscoverArticlesInput) => {
+    async (input) => {
       try {
-        const payload = await handleDiscoverArticles(input, context);
+        const payload = await handleDiscoverArticles(
+          discoverArticlesInputSchema.parse(input),
+          context,
+        );
         return successToolResult(
           `Returned ${payload.results.length} discovered ReadAbstracted articles.`,
           payload,
@@ -91,16 +130,16 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "Open a ReadAbstracted article",
       description:
         "Opens one ReadAbstracted article by canonical article reference and returns the canonical article object with opinionated context and provenance.",
-      inputSchema: openArticleInputSchema,
+      inputSchema: openArticleToolInputSchema,
       outputSchema: openArticleResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: OpenArticleInput) => {
+    async (input) => {
       try {
-        const payload = await handleOpenArticle(input, context);
+        const payload = await handleOpenArticle(openArticleInputSchema.parse(input), context);
         return successToolResult(`Opened ${payload.article.title}.`, payload);
       } catch (error) {
         return errorToolResult(error);
@@ -114,16 +153,19 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
       title: "Compare ReadAbstracted articles",
       description:
         "Builds a structured comparison across two to five ReadAbstracted articles, including a deterministic recommendation and tradeoff summary.",
-      inputSchema: compareArticlesV2InputSchema,
+      inputSchema: compareArticlesToolInputSchema,
       outputSchema: compareArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: CompareArticlesV2Input) => {
+    async (input) => {
       try {
-        const payload = await handleCompareArticles(input, context);
+        const payload = await handleCompareArticles(
+          compareArticlesV2InputSchema.parse(input),
+          context,
+        );
         return successToolResult(
           `Prepared a structured comparison for ${payload.articles.length} ReadAbstracted articles.`,
           payload,

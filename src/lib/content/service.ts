@@ -526,7 +526,7 @@ export function matchesTopic(
   article: Pick<ArticleSummary, "topics" | "tags" | "categories">,
   topic?: string,
 ) {
-  if (!topic) {
+  if (!topic || isGenericTopicFilter(topic)) {
     return true;
   }
 
@@ -534,6 +534,11 @@ export function matchesTopic(
   return [...article.topics, ...article.tags, ...article.categories].some(
     (value) => normalizeSearchText(value).includes(normalizedTopic),
   );
+}
+
+function isGenericTopicFilter(topic: string) {
+  const normalizedTopic = normalizeSearchText(topic);
+  return normalizedTopic === "general" || normalizedTopic === "all" || normalizedTopic === "everything";
 }
 
 export function scoreArticleMatch(article: ArticleDetail, query: string): SearchMatchResult {

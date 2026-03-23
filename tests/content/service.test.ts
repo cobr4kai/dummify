@@ -325,6 +325,22 @@ describe("content service", () => {
     expect(result.sort).toBe("editorial");
   });
 
+  it("treats general topic filters as the full weekly edition", async () => {
+    getWeeklyBriefMock.mockResolvedValue({
+      weekStart: "2026-03-16",
+      papers: [{ id: "paper-2" }, { id: "paper-1" }],
+    });
+    paperFindManyMock.mockResolvedValue([papers.paperOne, papers.paperTwo]);
+
+    const result = await getTopArticlesContent({
+      week: "2026-03-18",
+      limit: 10,
+      topic: "general",
+    });
+
+    expect(result.articles.map((article) => article.id)).toEqual(["paper-2", "paper-1"]);
+  });
+
   it("resolves by url and redacts quote text plus cache paths", async () => {
     paperFindUniqueMock.mockResolvedValue(papers.paperOne);
 
