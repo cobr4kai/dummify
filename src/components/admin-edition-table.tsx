@@ -2,18 +2,29 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import {
   reorderPublishedPaperAction,
   togglePublishedPaperAction,
 } from "@/app/admin/actions";
+import { AdminSortStateInputs } from "@/components/admin-sort-state-inputs";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  executiveScoreBreakdownRecordSchema,
+  normalizeExecutiveScoreBreakdown,
+} from "@/lib/scoring/model";
+import {
+  getHomepageBriefState,
+  hasPdfBackedBrief,
+} from "@/lib/technical/brief-status";
 import type { ExecutiveScoreComponentKey } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { formatWeekLabel } from "@/lib/utils/dates";
-import type { ExecutiveScoreBreakdown } from "@/lib/types";
+import { parseJsonValue } from "@/lib/utils/json";
 
 const scoreColumns = [
   { key: "frontierRelevance", label: "Frontier" },
@@ -28,7 +39,7 @@ const scoreColumns = [
 
 type AdminEditionSortKey = "liveStatus" | "paper" | "total" | ExecutiveScoreComponentKey;
 type AdminEditionSortDirection = "asc" | "desc";
-type BriefState = "pdf-ready" | "abstract-fallback" | "missing";
+type ScoreBreakdownRecord = z.infer<typeof executiveScoreBreakdownRecordSchema>;
 
 type AdminEditionTableProps = {
   weeks: string[];
@@ -42,23 +53,27 @@ type AdminEditionTableProps = {
     id: string;
     announcementDay: string;
     title: string;
+    authorsText: string;
     abstractUrl: string;
     primaryCategory: string | null;
-    score: {
+    scores: Array<{
       totalScore: number;
-    } | null;
-    scoreBreakdown: ExecutiveScoreBreakdown;
-    briefState: BriefState;
-    detailPath: string;
+      rationale: string;
+      breakdown: Prisma.JsonValue;
+    }>;
+    technicalBriefs: Array<{
+      oneLineVerdict: string;
+      usedFallbackAbstract: boolean;
+    }>;
   }>;
 };
 
 type AdminEditionPaper = AdminEditionTableProps["papers"][number];
 type AdminEditionRow = {
   paper: AdminEditionPaper;
-  score: AdminEditionPaper["score"];
-  breakdown: ExecutiveScoreBreakdown;
-  briefState: BriefState;
+  score: AdminEditionPaper["scores"][number] | undefined;
+  breakdown: ScoreBreakdownRecord;
+  briefState: ReturnType<typeof getHomepageBriefState>;
   hasPdfBrief: boolean;
   isPublished: boolean;
   isOnHomepage: boolean;
@@ -90,7 +105,7 @@ export function AdminEditionTable({
   const homePagePaperIds = publishedPaperIds;
   const homePageSet = new Set(homePagePaperIds);
   const homePageBriefReadyCount = papers.filter(
-    (paper) => homePageSet.has(paper.id) && paper.briefState === "pdf-ready",
+    (paper) => homePageSet.has(paper.id) && hasPdfBackedBrief(paper.technicalBriefs),
   ).length;
   const homePageMissingBriefCount = Math.max(
     homePagePaperIds.length - homePageBriefReadyCount,
@@ -182,7 +197,7 @@ export function AdminEditionTable({
         </div>
 
         <form className="flex flex-wrap items-end gap-3">
-          <SortStateInputs
+          <AdminSortStateInputs
             sortDirection={currentSortDirection}
             sortKey={currentSortKey}
           />
@@ -343,11 +358,7 @@ export function AdminEditionTable({
                             ) : null}
                             {row.isFocused ? <Badge variant="highlight">Just updated</Badge> : null}
                             <Button asChild size="sm" variant="ghost">
-                              <Link
-                                href={row.paper.detailPath}
-                              >
-                                Open detail
-                              </Link>
+                              <Link href={`/papers/${row.paper.id}`}>Open detail</Link>
                             </Button>
                           </div>
                           <div>
@@ -374,7 +385,7 @@ export function AdminEditionTable({
                       <td className="rounded-r-[20px] px-3 py-4">
                         <div className="space-y-2">
                           <form action={togglePublishedPaperAction}>
-                            <SortStateInputs
+                            <AdminSortStateInputs
                               sortDirection={currentSortDirection}
                               sortKey={currentSortKey}
                             />
@@ -403,7 +414,7 @@ export function AdminEditionTable({
                           {selectedWeek && row.publishedOrder !== null ? (
                             <div className="flex gap-2">
                               <form action={reorderPublishedPaperAction} className="flex-1">
-                                <SortStateInputs
+                                <AdminSortStateInputs
                                   sortDirection={currentSortDirection}
                                   sortKey={currentSortKey}
                                 />
@@ -421,7 +432,7 @@ export function AdminEditionTable({
                                 </Button>
                               </form>
                               <form action={reorderPublishedPaperAction} className="flex-1">
-                                <SortStateInputs
+                                <AdminSortStateInputs
                                   sortDirection={currentSortDirection}
                                   sortKey={currentSortKey}
                                 />
@@ -451,21 +462,6 @@ export function AdminEditionTable({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function SortStateInputs({
-  sortKey,
-  sortDirection,
-}: {
-  sortKey: AdminEditionSortKey;
-  sortDirection: AdminEditionSortDirection;
-}) {
-  return (
-    <>
-      <input name="sort" type="hidden" value={sortKey} />
-      <input name="dir" type="hidden" value={sortDirection} />
-    </>
   );
 }
 
@@ -540,9 +536,11 @@ function buildRow(input: {
   publishedSet: Set<string>;
   publishedOrderMap: Map<string, number>;
 }): AdminEditionRow {
-  const score = input.paper.score;
-  const breakdown = input.paper.scoreBreakdown;
-  const briefState = input.paper.briefState;
+  const score = input.paper.scores[0];
+  const breakdown = normalizeExecutiveScoreBreakdown(
+    parseJsonValue(score?.breakdown ?? {}, executiveScoreBreakdownRecordSchema, {}),
+  );
+  const briefState = getHomepageBriefState(input.paper.technicalBriefs);
   const hasPdfBrief = briefState === "pdf-ready";
   const isPublished = input.publishedSet.has(input.paper.id);
   const isOnHomepage = input.homePageSet.has(input.paper.id);

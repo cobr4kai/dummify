@@ -1,0 +1,306 @@
+import { EXECUTIVE_SCORE_COMPONENT_METADATA } from "@/lib/scoring/model";
+import type { ExecutiveScoreComponentKey } from "@/lib/types";
+import { AdminSortStateInputs } from "@/components/admin-sort-state-inputs";
+import { AdminSubmitButton } from "@/components/admin-submit-button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+const RANKING_WEIGHT_FIELDS: Array<{
+  key: ExecutiveScoreComponentKey;
+  description: string;
+}> = [
+  {
+    key: "frontierRelevance",
+    description:
+      "Directly targets modern frontier-model, multimodal, agentic, or deployment-relevant AI systems.",
+  },
+  {
+    key: "capabilityImpact",
+    description:
+      "Claims a meaningful change in what AI systems can do or how well they perform.",
+  },
+  {
+    key: "realWorldImpact",
+    description:
+      "Could materially affect cost, deployment, workflow automation, productization, or business decision-making.",
+  },
+  {
+    key: "evidenceStrength",
+    description:
+      "Includes credible comparative evidence, benchmark structure, or support strong enough to take the claim seriously.",
+  },
+  {
+    key: "audiencePull",
+    description:
+      "Addresses a topic that smart non-research readers are likely to care about immediately, not just technical specialists.",
+  },
+];
+
+type AppSettingsShape = {
+  genAiFeaturedCount: number;
+  genAiShortlistSize: number;
+  highBusinessRelevanceThreshold: number;
+  pdfCacheDir: string;
+  primaryCronSchedule: string;
+  reconcileCronSchedule: string;
+  genAiUsePremiumSynthesis: boolean;
+  reconcileEnabled: boolean;
+  rssMinDelayMs: number;
+  apiMinDelayMs: number;
+  retryBaseDelayMs: number;
+  feedCacheTtlMinutes: number;
+  apiCacheTtlMinutes: number;
+  genAiRankingWeights: Record<ExecutiveScoreComponentKey, number>;
+};
+
+type CategoryConfig = {
+  key: string;
+  label: string;
+  enabled: boolean;
+};
+
+export function AdminSettingsPanels({
+  settings,
+  categories,
+  updateSettingsAction,
+  resetSettingsAction,
+  updateCategoriesAction,
+  sortKey,
+  sortDirection,
+}: {
+  settings: AppSettingsShape;
+  categories: CategoryConfig[];
+  updateSettingsAction: (formData: FormData) => Promise<void>;
+  resetSettingsAction: (formData: FormData) => Promise<void>;
+  updateCategoriesAction: (formData: FormData) => Promise<void>;
+  sortKey?: string | null;
+  sortDirection?: string | null;
+}) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+      <Card>
+        <CardHeader>
+          <CardTitle>Editorial model and runtime</CardTitle>
+          <CardDescription>
+            Control scoring, premium synthesis policy, cache behavior, and cron-related runtime
+            settings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={updateSettingsAction} className="grid gap-4 sm:grid-cols-2">
+            <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
+
+            <div className="sm:col-span-2 mt-2 space-y-2">
+              <p className="text-sm font-semibold text-foreground">Editorial scoring</p>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Tune the ranking model that shapes what rises to the top for business readers.
+              </p>
+            </div>
+            <label className="space-y-2 text-sm font-medium">
+              High-signal threshold
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.highBusinessRelevanceThreshold}
+                name="highBusinessRelevanceThreshold"
+                step="0.1"
+                type="number"
+              />
+            </label>
+            <label className="flex items-center gap-3 text-sm text-foreground sm:col-span-2">
+              <input
+                defaultChecked={settings.genAiUsePremiumSynthesis}
+                name="genAiUsePremiumSynthesis"
+                type="checkbox"
+              />
+              Use premium synthesis model when the environment allows it
+            </label>
+
+            {RANKING_WEIGHT_FIELDS.map(({ key, description }) => (
+              <label key={key} className="space-y-2 text-sm font-medium">
+                {EXECUTIVE_SCORE_COMPONENT_METADATA[key].label}
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  {description}
+                </span>
+                <input
+                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                  defaultValue={settings.genAiRankingWeights[key]}
+                  name={key}
+                  step="0.01"
+                  type="number"
+                />
+              </label>
+            ))}
+
+            <div className="sm:col-span-2 mt-2 space-y-2">
+              <p className="text-sm font-semibold text-foreground">Cache and pacing</p>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Keep requests paced, cached, and aligned with the current Render disk setup.
+              </p>
+            </div>
+            <label className="space-y-2 text-sm font-medium">
+              PDF cache directory
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.pdfCacheDir}
+                name="pdfCacheDir"
+                type="text"
+              />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              RSS min delay (ms)
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.rssMinDelayMs}
+                name="rssMinDelayMs"
+                type="number"
+              />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              API min delay (ms)
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.apiMinDelayMs}
+                name="apiMinDelayMs"
+                type="number"
+              />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              Retry base delay (ms)
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.retryBaseDelayMs}
+                name="retryBaseDelayMs"
+                type="number"
+              />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              Feed cache TTL (minutes)
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.feedCacheTtlMinutes}
+                name="feedCacheTtlMinutes"
+                type="number"
+              />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              API cache TTL (minutes)
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.apiCacheTtlMinutes}
+                name="apiCacheTtlMinutes"
+                type="number"
+              />
+            </label>
+
+            <div className="sm:col-span-2 mt-2 space-y-2">
+              <p className="text-sm font-semibold text-foreground">Schedules</p>
+            </div>
+            <label className="space-y-2 text-sm font-medium">
+              Primary cron schedule
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.primaryCronSchedule}
+                name="primaryCronSchedule"
+                type="text"
+              />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              Reconcile cron schedule
+              <input
+                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                defaultValue={settings.reconcileCronSchedule}
+                name="reconcileCronSchedule"
+                type="text"
+              />
+            </label>
+            <label className="flex items-center gap-3 text-sm text-foreground sm:col-span-2">
+              <input
+                defaultChecked={settings.reconcileEnabled}
+                name="reconcileEnabled"
+                type="checkbox"
+              />
+              Run a lighter reconciliation ingest later in the same arXiv cycle
+            </label>
+
+            <details className="sm:col-span-2 rounded-[22px] border border-border/80 bg-white/60 px-4 py-3">
+              <summary className="cursor-pointer text-sm font-semibold text-foreground">
+                Reserved controls
+              </summary>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="space-y-2 text-sm font-medium">
+                  Featured count (reserved)
+                  <input
+                    className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                    defaultValue={settings.genAiFeaturedCount}
+                    name="genAiFeaturedCount"
+                    type="number"
+                  />
+                </label>
+                <label className="space-y-2 text-sm font-medium">
+                  Shortlist size (reserved)
+                  <input
+                    className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                    defaultValue={settings.genAiShortlistSize}
+                    name="genAiShortlistSize"
+                    type="number"
+                  />
+                </label>
+              </div>
+            </details>
+
+            <div className="sm:col-span-2 flex flex-wrap gap-3">
+              <AdminSubmitButton
+                idleLabel="Save settings"
+                pendingLabel="Saving settings..."
+                type="submit"
+              />
+            </div>
+          </form>
+          <form action={resetSettingsAction} className="mt-3">
+            <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
+            <AdminSubmitButton
+              idleLabel="Reset defaults"
+              pendingLabel="Resetting defaults..."
+              type="submit"
+              variant="secondary"
+            />
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Source categories</CardTitle>
+          <CardDescription>
+            Enable or disable ingestion categories without editing code.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={updateCategoriesAction} className="space-y-3">
+            <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
+            {categories.map((category) => (
+              <label
+                key={category.key}
+                className="flex items-center justify-between gap-4 rounded-[22px] border border-border/80 bg-white/60 px-4 py-3"
+              >
+                <div>
+                  <p className="font-semibold text-foreground">{category.key}</p>
+                  <p className="text-sm text-muted-foreground">{category.label}</p>
+                </div>
+                <input
+                  defaultChecked={category.enabled}
+                  name={`enabled__${category.key}`}
+                  type="checkbox"
+                />
+              </label>
+            ))}
+            <AdminSubmitButton
+              idleLabel="Save categories"
+              pendingLabel="Saving categories..."
+              type="submit"
+            />
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

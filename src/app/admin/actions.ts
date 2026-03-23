@@ -28,7 +28,7 @@ export async function logoutAction() {
 }
 
 export async function runDailyRefreshAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/ingest");
   const announcementDay = readString(formData.get("announcementDay"));
   const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
@@ -37,7 +37,7 @@ export async function runDailyRefreshAction(formData: FormData) {
   const requestedAnnouncementDay = announcementDay ?? currentArxivAnnouncementDay;
 
   if (requestedAnnouncementDay !== currentArxivAnnouncementDay) {
-    redirectToAdmin({
+    redirectToAdminPage("/admin/ingest", {
       selectedWeek: getWeekStart(requestedAnnouncementDay),
       notice: "daily-refresh-day-mismatch",
       sortKey,
@@ -54,7 +54,7 @@ export async function runDailyRefreshAction(formData: FormData) {
   });
 
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/ingest", {
     selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
     notice: "daily-refresh",
     fetched: result.fetchedCount,
@@ -66,7 +66,7 @@ export async function runDailyRefreshAction(formData: FormData) {
 }
 
 export async function runHistoricalRefreshAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/ingest");
   const from = readString(formData.get("from"));
   const to = readString(formData.get("to"));
   const selectedWeek = readString(formData.get("selectedWeek"));
@@ -74,7 +74,12 @@ export async function runHistoricalRefreshAction(formData: FormData) {
   const recomputeBriefs = formData.get("recomputeBriefs") === "on";
 
   if (!from || !to) {
-    redirect("/admin?error=missing-range");
+    redirectToAdminPage("/admin/ingest", {
+      selectedWeek,
+      notice: "missing-range",
+      sortKey,
+      sortDirection,
+    });
   }
 
   const result = await runIngestionJob({
@@ -87,7 +92,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
   });
 
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/ingest", {
     selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
     notice: "historical-refresh",
     fetched: result.fetchedCount,
@@ -99,7 +104,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
 }
 
 export async function updateSettingsAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/settings");
   const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
 
@@ -127,21 +132,15 @@ export async function updateSettingsAction(formData: FormData) {
       formData.get("reconcileCronSchedule") ?? "45 20 * * 0-4",
     ),
     reconcileEnabled: formData.get("reconcileEnabled") === "on",
-    rssMinDelayMs: Number(formData.get("rssMinDelayMs") ?? 3100),
+    rssMinDelayMs: Number(formData.get("rssMinDelayMs") ?? 1000),
     apiMinDelayMs: Number(formData.get("apiMinDelayMs") ?? 3100),
     retryBaseDelayMs: Number(formData.get("retryBaseDelayMs") ?? 800),
     feedCacheTtlMinutes: Number(formData.get("feedCacheTtlMinutes") ?? 60),
     apiCacheTtlMinutes: Number(formData.get("apiCacheTtlMinutes") ?? 180),
-    pdfFetchMode: String(formData.get("pdfFetchMode") ?? "personal-research-cache") as
-      | "personal-research-cache"
-      | "disabled",
-    pdfFallbackRetryCooldownMinutes: Number(
-      formData.get("pdfFallbackRetryCooldownMinutes") ?? 180,
-    ),
   });
 
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/settings", {
     selectedWeek,
     notice: "settings-saved",
     sortKey,
@@ -150,13 +149,13 @@ export async function updateSettingsAction(formData: FormData) {
 }
 
 export async function resetSettingsAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/settings");
   const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   await resetAppSettings();
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/settings", {
     selectedWeek,
     notice: "settings-reset",
     sortKey,
@@ -165,7 +164,7 @@ export async function resetSettingsAction(formData: FormData) {
 }
 
 export async function updateCategoriesAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/settings");
   const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
   const categories = await getCategoryConfigs();
@@ -180,7 +179,7 @@ export async function updateCategoriesAction(formData: FormData) {
   );
 
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/settings", {
     selectedWeek,
     notice: "categories-saved",
     sortKey,
@@ -189,7 +188,7 @@ export async function updateCategoriesAction(formData: FormData) {
 }
 
 export async function setActiveHomepageDayAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/edition");
   const selectedWeek = readString(formData.get("selectedWeek"));
   const activeHomepageWeekStart = readString(
     formData.get("activeHomepageWeekStart"),
@@ -201,7 +200,7 @@ export async function setActiveHomepageDayAction(formData: FormData) {
   });
 
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/edition", {
     selectedWeek: selectedWeek ?? activeHomepageWeekStart,
     notice: "homepage-day-set",
     sortKey,
@@ -210,14 +209,14 @@ export async function setActiveHomepageDayAction(formData: FormData) {
 }
 
 export async function togglePublishedPaperAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/edition");
   const announcementDay = readString(formData.get("announcementDay"));
   const paperId = readString(formData.get("paperId"));
   const published = readString(formData.get("published"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   if (!announcementDay || !paperId) {
-    redirect("/admin");
+    redirect("/admin/edition");
   }
 
   const nextPublishedState = published === "true";
@@ -240,7 +239,7 @@ export async function togglePublishedPaperAction(formData: FormData) {
   }
 
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/edition", {
     selectedWeek: getWeekStart(announcementDay),
     focusPaperId: paperId,
     notice: nextPublishedState ? "paper-published" : "paper-removed",
@@ -251,14 +250,14 @@ export async function togglePublishedPaperAction(formData: FormData) {
 }
 
 export async function reorderPublishedPaperAction(formData: FormData) {
-  await requireAdmin("/admin");
+  await requireAdmin("/admin/edition");
   const weekStart = readString(formData.get("weekStart"));
   const paperId = readString(formData.get("paperId"));
   const direction = readString(formData.get("direction"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
 
   if (!weekStart || !paperId || (direction !== "up" && direction !== "down")) {
-    redirect("/admin");
+    redirect("/admin/edition");
   }
 
   await reorderPublishedPaperForWeek({
@@ -268,7 +267,7 @@ export async function reorderPublishedPaperAction(formData: FormData) {
   });
 
   revalidateAll();
-  redirectToAdmin({
+  redirectToAdminPage("/admin/edition", {
     selectedWeek: weekStart,
     focusPaperId: paperId,
     notice: "homepage-order-saved",
@@ -281,9 +280,12 @@ function revalidateAll() {
   revalidatePath("/");
   revalidatePath("/archive");
   revalidatePath("/admin");
+  revalidatePath("/admin/edition");
+  revalidatePath("/admin/ingest");
+  revalidatePath("/admin/settings");
 }
 
-function redirectToAdmin(input: {
+function redirectToAdminPage(path: string, input: {
   selectedWeek?: string;
   notice?: string;
   fetched?: number;
@@ -333,7 +335,7 @@ function redirectToAdmin(input: {
   }
 
   const query = search.toString();
-  redirect(query ? `/admin?${query}` : "/admin");
+  redirect(query ? `${path}?${query}` : path);
 }
 
 function readString(value: FormDataEntryValue | null) {

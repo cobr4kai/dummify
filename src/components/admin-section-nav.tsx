@@ -4,7 +4,19 @@ import { cn } from "@/lib/utils/cn";
 const adminSections = [
   {
     href: "/admin",
-    label: "Control room",
+    label: "Overview",
+  },
+  {
+    href: "/admin/edition",
+    label: "Edition",
+  },
+  {
+    href: "/admin/ingest",
+    label: "Ingest",
+  },
+  {
+    href: "/admin/settings",
+    label: "Settings",
   },
   {
     href: "/admin/signups",
@@ -16,7 +28,9 @@ export function AdminSectionNav({ currentPath }: { currentPath: string }) {
   return (
     <nav className="mt-5 flex flex-wrap gap-2">
       {adminSections.map((section) => {
-        const isActive = currentPath === section.href;
+        const isActive = section.href === "/admin"
+          ? currentPath === section.href
+          : currentPath === section.href || currentPath.startsWith(`${section.href}/`);
 
         return (
           <Link
