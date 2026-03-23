@@ -290,6 +290,7 @@ vi.mock("@/lib/env", () => ({
 
 import {
   browseArticlesContent,
+  discoverArticlesContent,
   getArticleContent,
   getTopArticlesContent,
   openArticleContent,
@@ -451,6 +452,71 @@ describe("content service", () => {
     expect(result.sort).toBe("relevance");
     expect(result.results[0]?.id).toBe("paper-3");
     expect(result.results[0]?.matchedFields).toContain("topics");
+  });
+
+  it("does not label abstract-only discovery hits as brief matches", async () => {
+    const abstractOnlyPaper = {
+      ...papers.paperOne,
+      id: "paper-4",
+      arxivId: "2603.19999",
+      versionedId: "2603.19999v1",
+      title: "Agent Handoff Patterns Without Brief Coverage",
+      abstract:
+        "This paper studies agent handoff patterns and routing constraints for multi-agent systems in production settings.",
+      abstractUrl: "https://arxiv.org/abs/2603.19999",
+      pdfUrl: "https://arxiv.org/pdf/2603.19999.pdf",
+      searchText: "agent handoff patterns routing constraints multi-agent systems production settings",
+      technicalBriefs: [],
+      pdfCaches: [],
+      publishedItems: [],
+      scores: [
+        {
+          totalScore: 55,
+          rationale: "Archive-only relevance.",
+        },
+      ],
+      enrichments: [
+        {
+          ...papers.paperOne.enrichments[0],
+          payload: {
+            version: "structured_metadata_v1",
+            sourceBasis: "abstract_only",
+            thesis: "A paper about agent handoff patterns in production multi-agent systems.",
+            whyItMatters: "Useful as an abstract-backed read on routing and coordination constraints.",
+            topicTags: ["agents", "infra", "protocol design"],
+            methodType: "agent system",
+            evidenceStrength: "medium",
+            likelyAudience: ["builders", "pms"],
+            caveats: ["This is only grounded in the abstract, not a full brief."],
+            noveltyScore: 52,
+            businessRelevanceScore: 61,
+            searchText: "agent handoff patterns routing constraints agents infra protocol design builders pms abstract only",
+            generationMode: "deterministic_only",
+          },
+        },
+      ],
+    };
+
+    paperFindManyMock.mockResolvedValue([abstractOnlyPaper]);
+
+    const result = await discoverArticlesContent({
+      query: "agent handoff",
+      topic: undefined,
+      audience: undefined,
+      sort: "relevance",
+      week: undefined,
+      start_date: undefined,
+      end_date: undefined,
+      has_premium_brief: undefined,
+      has_extracted_pdf: undefined,
+      limit: 5,
+      verbosity: "standard",
+    });
+
+    expect(result.results[0]?.article.id).toBe("paper-4");
+    expect(result.results[0]?.discovery.matchedOn).toContain("title");
+    expect(result.results[0]?.discovery.matchedOn).toContain("abstract");
+    expect(result.results[0]?.discovery.matchedOn).not.toContain("brief");
   });
 
   it("applies verbosity controls to detail payloads", async () => {

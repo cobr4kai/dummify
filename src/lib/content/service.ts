@@ -1071,7 +1071,7 @@ function scoreDiscoverArticleMatch(article: ArticleDetail, query: string): Disco
   const title = normalizeSearchText(article.title);
   const metadataText = buildDiscoverMetadataText(article);
   const abstractText = normalizeSearchText(article.abstract);
-  const briefText = normalizeSearchText(article.bestAvailableText);
+  const briefText = normalizeSearchText(buildTechnicalBriefSearchText(article));
   const expandedTerms = expandDiscoverSearchTerms(query);
   const tokens = expandedTerms.filter((term) => term !== normalizedQuery);
   const matchedOn = new Set<string>();
@@ -1138,6 +1138,25 @@ function scoreDiscoverArticleMatch(article: ArticleDetail, query: string): Disco
     matchReason,
     matchSnippet: buildSearchSnippet(article, [normalizedQuery, ...tokens]),
   };
+}
+
+function buildTechnicalBriefSearchText(article: Pick<ArticleDetail, "technicalBrief">) {
+  if (!article.technicalBrief || article.technicalBrief.usedFallbackAbstract) {
+    return "";
+  }
+
+  return normalizeWhitespace(
+    [
+      article.technicalBrief.oneLineVerdict,
+      article.technicalBrief.whyItMatters,
+      article.technicalBrief.whatToIgnore,
+      ...article.technicalBrief.keyStats.map((item) => `${item.label} ${item.value} ${item.context}`),
+      ...article.technicalBrief.bullets.map((bullet) => bullet.text),
+      ...article.technicalBrief.evidence.map((item) => item.claim),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 function buildBrowseMatch(
