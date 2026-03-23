@@ -295,6 +295,51 @@ describe("mcp tool handlers", () => {
     expect(payload.comparison.provenanceByArticle[1]?.groundingTier).toBe("abstract");
   });
 
+  it("rejects duplicate compare refs that resolve to the same article", async () => {
+    getArticleContentMock
+      .mockResolvedValueOnce({ article: articleDetail })
+      .mockResolvedValueOnce({ article: articleDetail });
+
+    await expect(
+      handleCompareArticles({
+        article_refs: ["paper-1", "https://readabstracted.com/papers/paper-1"],
+        verbosity: "standard",
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_request",
+      status: 400,
+      details: {
+        duplicateResolvedIds: ["paper-1"],
+      },
+    });
+  });
+
+  it("does not advertise a fallback brief when only abstract-backed detail exists", async () => {
+    getArticleContentMock.mockResolvedValue({
+      article: {
+        ...articleDetail,
+        analysis: {
+          ...articleDetail.analysis,
+          sourceBasis: "abstract_only" as const,
+        },
+        technicalBrief: {
+          ...articleDetail.technicalBrief!,
+          sourceBasis: "abstract-fallback" as const,
+          usedFallbackAbstract: true,
+        },
+      },
+    });
+
+    const payload = await handleOpenArticle({
+      article_ref: articleDetail.id,
+      verbosity: "standard",
+    });
+
+    expect(payload.article.provenance.groundingTier).toBe("abstract");
+    expect(payload.article.provenance.briefState).toBe("none");
+    expect(payload.article.brief).toBeNull();
+  });
+
   it("returns structured error payloads", () => {
     const payload = errorToolResult(new Error("Unexpected failure"));
 
