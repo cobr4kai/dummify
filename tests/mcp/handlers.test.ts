@@ -149,6 +149,31 @@ describe("mcp tool handlers", () => {
     expect(payload.article.content.abstract).toBe(articleDetail.abstract);
   });
 
+  it("accepts full arxiv abstract urls as article refs", async () => {
+    getArticleContentMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        article: articleDetail,
+      });
+
+    const payload = await handleOpenArticle({
+      article_ref: "https://arxiv.org/abs/2603.08852v1",
+      verbosity: "standard",
+    });
+
+    expect(getArticleContentMock).toHaveBeenNthCalledWith(
+      1,
+      { url: "https://arxiv.org/abs/2603.08852v1" },
+      {},
+    );
+    expect(getArticleContentMock).toHaveBeenNthCalledWith(
+      2,
+      { arxiv_id: "https://arxiv.org/abs/2603.08852v1" },
+      {},
+    );
+    expect(payload.article.id).toBe(articleDetail.id);
+  });
+
   it("returns not found details for unresolved article refs", async () => {
     getArticleContentMock.mockResolvedValue(null);
 

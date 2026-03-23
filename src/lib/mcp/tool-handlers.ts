@@ -282,8 +282,17 @@ async function resolveArticleByRef(
 ) {
   const trimmed = articleRef.trim();
 
-  if (trimmed.startsWith("/papers/") || /^https?:\/\//i.test(trimmed)) {
+  if (trimmed.startsWith("/papers/")) {
     return lookupArticle({ url: trimmed }, context);
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    const byUrl = await lookupArticle({ url: trimmed }, context);
+    if (byUrl) {
+      return byUrl;
+    }
+
+    return lookupArticle({ arxiv_id: trimmed }, context);
   }
 
   const direct = await lookupArticle({ article_id: trimmed }, context);
