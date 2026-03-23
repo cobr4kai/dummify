@@ -494,6 +494,6 @@ describe("content service", () => {
     });
 
     expect(openResult?.requestedRef).toBe("https://arxiv.org/abs/2603.08852v1");
-    expect(openResult?.article.article.articleRef).toBe("paper-1");
+    expect(openResult?.article.article?.articleRef).toBe("paper-1");
   });
 });
