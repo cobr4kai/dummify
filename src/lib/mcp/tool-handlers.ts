@@ -1,28 +1,32 @@
 import { z, ZodError } from "zod";
 import {
-  articleComparisonSchema,
-  articleLookupInputSchema,
-  browseArticlesInputSchema,
-  browseArticlesResponseSchema,
-  compareArticlesInputSchema,
+  compareArticlesResponseSchema,
+  compareArticlesV2InputSchema,
+  discoverArticlesInputSchema,
+  discoverArticlesResponseSchema,
   openArticleInputSchema,
-  searchArticlesInputSchema,
+  openArticleResponseSchema,
+  summarizeTopArticlesInputSchema,
+  summarizeTopArticlesResponseSchema,
   type ArticleDetail,
-  type ArticleResponse,
-  type BrowseArticlesResponse,
-  type SearchArticlesResponse,
-  topArticlesInputSchema,
-  type TopArticlesResponse,
+  type ArticleLookupInput,
+  type ArticleSummary,
+  type CanonicalArticle,
+  type CompareArticlesResponse,
+  type CompareArticlesV2Input,
+  type DiscoverArticlesInput,
+  type DiscoverArticlesResponse,
+  type OpenArticleInput,
+  type OpenArticleResponse,
+  type SummarizeTopArticlesInput,
+  type SummarizeTopArticlesResponse,
 } from "@repo-types/content";
 import {
-  browseArticlesContent,
+  discoverArticlesContent,
   getArticleContent,
-  getArticlesForComparison,
   getTopArticlesContent,
-  resolveArticleReference,
-  searchArticlesContent,
-  suggestArticleRefs,
 } from "@/lib/content/service";
+import { formatWeekLabel } from "@/lib/utils/dates";
 
 export const mcpToolErrorSchema = z.object({
   error: z.object({
@@ -55,78 +59,112 @@ export type McpRequestContext = {
   requestOrigin?: string;
 };
 
-export async function handleListTopArticles(
-  input: unknown,
-  context: McpRequestContext = {},
-) {
-  const parsed = topArticlesInputSchema.parse(input);
-  return getTopArticlesContent(parsed, context);
-}
+type DetailLevel = "quick" | "standard" | "deep";
 
-export async function handleBrowseArticles(
-  input: unknown,
+export async function handleSummarizeTopArticles(
+  input: SummarizeTopArticlesInput,
   context: McpRequestContext = {},
 ) {
-  const parsed = browseArticlesInputSchema.parse(input);
-  return browseArticlesContent(parsed, context);
-}
-
-export async function handleOpenArticle(
-  input: unknown,
-  context: McpRequestContext = {},
-) {
-  const parsed = openArticleInputSchema.parse(input);
-  return handleGetArticle(
+  const parsed = summarizeTopArticlesInputSchema.parse(input);
+  const payload = await getTopArticlesContent(
     {
-      article_ref: parsed.article_ref,
-      article_id: undefined,
-      url: undefined,
-      arxiv_id: undefined,
-      verbosity: parsed.verbosity,
+      week: parsed.week,
+      limit: parsed.limit,
+      topic: parsed.topic,
     },
     context,
   );
+  const liveEdition = parsed.week
+    ? await getTopArticlesContent({ limit: 1 }, context)
+    : payload;
+
+  const articles = payload.articles.map((article, index) => ({
+    article: toCanonicalArticle(article, parsed.verbosity, { includeAbstract: false }),
+    editionPosition: index + 1,
+    editionReason: article.ranking?.rationale ?? article.summarySnippet ?? article.analysis.whyItMatters,
+  }));
+
+  return summarizeTopArticlesResponseSchema.parse({
+    schemaVersion: "2",
+    edition: {
+      editionType: "readabstracted_weekly",
+      weekStart: payload.weekStart,
+      weekLabel: payload.weekStart ? formatWeekLabel(payload.weekStart) : null,
+      isLive: payload.weekStart !== null && payload.weekStart === liveEdition.weekStart,
+      summary: {
+        editorialAngle: buildEditionEditorialAngle(payload.articles),
+        whyThisWeek: buildEditionWhyThisWeek(payload.articles),
+      },
+    },
+    articles,
+  });
 }
 
-export async function handleGetArticle(
-  input: unknown,
+export async function handleDiscoverArticles(
+  input: DiscoverArticlesInput,
   context: McpRequestContext = {},
 ) {
-  const parsed = articleLookupInputSchema.parse(input);
-  const payload = await getArticleContent(parsed, context);
-  if (!payload) {
-    const requestedRef = parsed.article_ref ?? parsed.article_id ?? parsed.url ?? parsed.arxiv_id ?? null;
-    const suggestions = requestedRef ? await suggestArticleRefs(requestedRef, context) : [];
+  const parsed = discoverArticlesInputSchema.parse(input);
+  const payload = await discoverArticlesContent(parsed, context);
+
+  return discoverArticlesResponseSchema.parse({
+    schemaVersion: "2",
+    mode: payload.mode,
+    query: payload.query,
+    topic: payload.topic,
+    audience: payload.audience,
+    sort: payload.sort,
+    weekStart: payload.weekStart,
+    startDate: payload.startDate,
+    endDate: payload.endDate,
+    limit: payload.limit,
+    results: payload.results.map((result) => ({
+      article: toCanonicalArticle(result.article, parsed.verbosity, { includeAbstract: false }),
+      discovery: result.discovery,
+    })),
+  });
+}
+
+export async function handleOpenArticle(
+  input: OpenArticleInput,
+  context: McpRequestContext = {},
+) {
+  const parsed = openArticleInputSchema.parse(input);
+  const resolved = await resolveArticleByRef(parsed.article_ref, context);
+
+  if (!resolved) {
     throw new McpServiceError("not_found", "Article not found.", {
       status: 404,
       details: {
-        requestedRef,
-        normalizedRef: requestedRef,
-        suggestions,
+        requestedRef: parsed.article_ref,
+        suggestions: buildArticleRefSuggestions(parsed.article_ref),
         supportedVerbosity: ["quick", "standard", "deep"],
       },
     });
   }
 
-  return payload;
-}
-
-export async function handleSearchArticles(
-  input: unknown,
-  context: McpRequestContext = {},
-) {
-  const parsed = searchArticlesInputSchema.parse(input);
-  return searchArticlesContent(parsed, context);
+  return openArticleResponseSchema.parse({
+    schemaVersion: "2",
+    article: toCanonicalArticle(resolved.article, parsed.verbosity, { includeAbstract: true }),
+  });
 }
 
 export async function handleCompareArticles(
-  input: unknown,
+  input: CompareArticlesV2Input,
   context: McpRequestContext = {},
 ) {
-  const parsed = compareArticlesInputSchema.parse(input);
-  const requestedRefs = parsed.article_refs ?? parsed.article_ids ?? [];
-  const resolutions = await Promise.all(requestedRefs.map((articleRef) => resolveArticleReference(articleRef)));
-  const missingRefs = requestedRefs.filter((_, index) => !resolutions[index]?.paperId);
+  const parsed = compareArticlesV2InputSchema.parse(input);
+  const resolvedArticles = await Promise.all(
+    parsed.article_refs.map(async (articleRef) => ({
+      articleRef,
+      resolved: await resolveArticleByRef(articleRef, context),
+    })),
+  );
+
+  const missingRefs = resolvedArticles
+    .filter((item) => !item.resolved)
+    .map((item) => item.articleRef);
+
   if (missingRefs.length > 0) {
     throw new McpServiceError(
       "not_found",
@@ -135,76 +173,31 @@ export async function handleCompareArticles(
         status: 404,
         details: {
           missingRefs,
-          supportedVerbosity: ["quick", "standard", "deep"],
         },
       },
     );
   }
 
-  const articles = await getArticlesForComparison(parsed, context);
-  if (articles.length !== requestedRefs.length) {
-    throw new McpServiceError(
-      "not_found",
-      "One or more articles could not be loaded for comparison.",
-      {
-        status: 404,
-        details: {
-          requestedRefs,
-          supportedVerbosity: ["quick", "standard", "deep"],
-        },
-      },
-    );
-  }
+  const articles = resolvedArticles.map((item) => item.resolved!.article);
+  const canonicalArticles = articles.map((article) =>
+    toCanonicalArticle(article, parsed.verbosity, { includeAbstract: true }),
+  );
+  const comparison = buildComparisonSummary(canonicalArticles, parsed.question ?? null);
 
-  const comparisonSummary = buildComparisonSummary(parsed.question, articles);
-  return articleComparisonSchema.parse({
+  return compareArticlesResponseSchema.parse({
+    schemaVersion: "2",
     question: parsed.question ?? null,
-    verbosity: parsed.verbosity ?? "standard",
-    focusTerms: buildFocusTerms(parsed.question, articles),
-    recommended_winner: comparisonSummary.recommended_winner,
-    best_for: comparisonSummary.best_for,
-    why: comparisonSummary.why,
-    main_tradeoff: comparisonSummary.main_tradeoff,
-    articles,
-    comparison: {
-      commonTopics: intersectNormalized(articles.map((article) => article.topics)),
-      commonTags: intersectNormalized(articles.map((article) => article.tags)),
-      scoreRanking: [...articles]
-        .sort(
-          (left, right) =>
-            (right.ranking?.totalScore ?? -Infinity) - (left.ranking?.totalScore ?? -Infinity),
-        )
-        .map((article) => ({
-          articleId: article.id,
-          title: article.title,
-          totalScore: article.ranking?.totalScore ?? null,
-        })),
-      publicationOrder: [...articles]
-        .sort(
-          (left, right) =>
-            new Date(left.publishedAt).getTime() - new Date(right.publishedAt).getTime(),
-        )
-        .map((article) => ({
-          articleId: article.id,
-          title: article.title,
-          publishedAt: article.publishedAt,
-        })),
-      sourceBasisByArticle: articles.map((article) => ({
-        articleId: article.id,
-        sourceBasis: article.analysis.sourceBasis,
-        usedFallbackAbstract: article.technicalBrief?.usedFallbackAbstract ?? null,
-      })),
-    },
+    articles: canonicalArticles,
+    comparison,
   });
 }
 
 export function successToolResult<
   T extends
-    | BrowseArticlesResponse
-    | TopArticlesResponse
-    | ArticleResponse
-    | SearchArticlesResponse
-    | z.infer<typeof articleComparisonSchema>,
+    | SummarizeTopArticlesResponse
+    | DiscoverArticlesResponse
+    | OpenArticleResponse
+    | CompareArticlesResponse,
 >(summary: string, payload: T) {
   return {
     content: [
@@ -283,45 +276,312 @@ export function errorToolResult(error: unknown) {
   };
 }
 
-function buildFocusTerms(question: string | undefined, articles: ArticleDetail[]) {
-  const fromQuestion = splitKeywords(question ?? "").slice(0, 8);
-  if (fromQuestion.length > 0) {
-    return fromQuestion;
+async function resolveArticleByRef(
+  articleRef: string,
+  context: McpRequestContext,
+) {
+  const trimmed = articleRef.trim();
+
+  if (trimmed.startsWith("/papers/") || /^https?:\/\//i.test(trimmed)) {
+    return lookupArticle({ url: trimmed }, context);
   }
 
-  return uniqueStrings(articles.flatMap((article) => article.topics)).slice(0, 8);
+  const direct = await lookupArticle({ article_id: trimmed }, context);
+  if (direct) {
+    return direct;
+  }
+
+  return lookupArticle({ arxiv_id: trimmed }, context);
 }
 
-function buildComparisonSummary(question: string | undefined, articles: ArticleDetail[]) {
-  const questionTerms = splitKeywords(question ?? "");
-  const scored = articles.map((article) => {
-    const topicFit = scoreQuestionFit(article, questionTerms);
-    const score = (article.ranking?.totalScore ?? 0) + topicFit;
-    return { article, score, topicFit };
-  }).sort((left, right) => right.score - left.score);
-
-  const winner = scored[0]?.article ?? null;
-  const runnerUp = scored[1]?.article ?? null;
+async function lookupArticle(
+  lookup: ArticleLookupInput,
+  context: McpRequestContext,
+) {
+  const payload = await getArticleContent(lookup, context);
+  if (!payload) {
+    return null;
+  }
 
   return {
-    recommended_winner: winner
+    lookup,
+    article: payload.article,
+  };
+}
+
+function toCanonicalArticle(
+  article: ArticleSummary | ArticleDetail,
+  detailLevel: DetailLevel,
+  options: { includeAbstract: boolean },
+): CanonicalArticle {
+  const rankingScore = article.ranking?.totalScore ?? null;
+  const rankingLabel = rankingScore === null
+    ? null
+    : rankingScore >= 85
+      ? "High editorial priority"
+      : rankingScore >= 70
+        ? "Editorially prioritized"
+        : "Scored for editorial relevance";
+  const provenance = buildProvenance(article);
+  const brief = buildCanonicalBrief(article, detailLevel);
+  const abstract = options.includeAbstract && "abstract" in article ? article.abstract : null;
+
+  return {
+    id: article.id,
+    title: article.title,
+    canonicalUrl: article.canonicalUrl,
+    arxivId: article.arxivId,
+    arxivUrl: article.arxivUrl,
+    publishedAt: article.publishedAt,
+    authors: article.authors,
+    categories: article.categories,
+    topics: article.topics,
+    tags: article.tags,
+    ranking: article.ranking
       ? {
-          articleId: winner.id,
-          title: winner.title,
+          score: rankingScore,
+          label: rankingLabel,
+          whyRanked: article.ranking.rationale ?? null,
         }
       : null,
-    best_for: scored.map(({ article, topicFit }) => ({
+    analysis: {
+      quickTake: article.subtitle ?? article.analysis.thesis ?? null,
+      whyItMatters: article.analysis.whyItMatters ?? null,
+      methodType: article.analysis.methodType ?? null,
+      likelyAudience: article.analysis.likelyAudience,
+      topicTags: article.analysis.topicTags,
+      caveats: limitByDetail(article.analysis.caveats, detailLevel, {
+        quick: 1,
+        standard: 2,
+        deep: 3,
+      }),
+      noveltyScore: article.analysis.noveltyScore ?? null,
+      businessRelevanceScore: article.analysis.businessRelevanceScore ?? null,
+    },
+    provenance,
+    content: {
+      abstract,
+    },
+    brief,
+  };
+}
+
+function buildProvenance(article: ArticleSummary | ArticleDetail): CanonicalArticle["provenance"] {
+  const technicalBrief = "technicalBrief" in article ? article.technicalBrief : null;
+  const hasTechnicalBrief = Boolean(technicalBrief);
+  const sourceUrls = uniqueStrings(
+    "sourceReferences" in article
+      ? article.sourceReferences.map((reference) => reference.sourceUrl)
+      : [article.canonicalUrl, article.arxivUrl, article.abstractUrl],
+  );
+
+  if (article.analysis.sourceBasis === "editorial") {
+    return {
+      groundingTier: "editorial",
+      briefState: hasTechnicalBrief ? "editorial_brief" : "none",
+      sourceUrls,
+    };
+  }
+
+  if (technicalBrief && !technicalBrief.usedFallbackAbstract) {
+    return {
+      groundingTier: "pdf",
+      briefState: "pdf_brief",
+      sourceUrls,
+    };
+  }
+
+  if (technicalBrief && technicalBrief.usedFallbackAbstract) {
+    return {
+      groundingTier: "abstract",
+      briefState: "abstract_brief",
+      sourceUrls,
+    };
+  }
+
+  return {
+    groundingTier: "abstract",
+    briefState: "none",
+    sourceUrls,
+  };
+}
+
+function buildCanonicalBrief(
+  article: ArticleSummary | ArticleDetail,
+  detailLevel: DetailLevel,
+): CanonicalArticle["brief"] {
+  if (!("technicalBrief" in article) || !article.technicalBrief) {
+    return null;
+  }
+
+  if (article.technicalBrief.usedFallbackAbstract) {
+    return null;
+  }
+
+  const highlights = uniqueStrings(
+    [
+      article.technicalBrief.oneLineVerdict,
+      article.technicalBrief.whyItMatters,
+      article.technicalBrief.whatToIgnore,
+      ...article.technicalBrief.bullets.map((bullet) => bullet.text),
+    ].filter(Boolean),
+  );
+
+  return {
+    kind: article.analysis.sourceBasis === "editorial" ? "editorial" : "pdf_backed",
+    highlights: limitByDetail(highlights, detailLevel, {
+      quick: 2,
+      standard: 3,
+      deep: 6,
+    }),
+    evidence: limitByDetail(
+      article.technicalBrief.evidence.map((item) => ({
+        claim: item.claim,
+        confidence: item.confidence,
+      })),
+      detailLevel,
+      {
+        quick: 1,
+        standard: 2,
+        deep: 6,
+      },
+    ),
+  };
+}
+
+function buildEditionEditorialAngle(articles: ArticleSummary[]) {
+  if (articles.length === 0) {
+    return null;
+  }
+
+  const commonTopics = uniqueStrings(articles.flatMap((article) => article.topics)).slice(0, 3);
+  if (commonTopics.length === 0) {
+    return "This week’s edition collects the strongest ReadAbstracted picks now live on the site.";
+  }
+
+  return `This week’s edition leans toward ${commonTopics.join(", ")} across the current curated homepage set.`;
+}
+
+function buildEditionWhyThisWeek(articles: ArticleSummary[]) {
+  if (articles.length === 0) {
+    return null;
+  }
+
+  const strongest = articles[0];
+  return strongest?.ranking?.rationale
+    ?? strongest?.summarySnippet
+    ?? strongest?.analysis.whyItMatters
+    ?? null;
+}
+
+function buildComparisonSummary(
+  articles: CanonicalArticle[],
+  question: string | null,
+): CompareArticlesResponse["comparison"] {
+  const sortedByScore = [...articles].sort(
+    (left, right) => (right.ranking?.score ?? -Infinity) - (left.ranking?.score ?? -Infinity),
+  );
+  const publicationOrder = [...articles].sort(
+    (left, right) => new Date(left.publishedAt).getTime() - new Date(right.publishedAt).getTime(),
+  );
+  const commonTopics = intersectNormalized(articles.map((article) => article.topics));
+  const commonTags = intersectNormalized(articles.map((article) => article.tags));
+  const winner = sortedByScore[0] ?? null;
+  const runnerUp = sortedByScore[1] ?? null;
+  const focusTerms = splitKeywords(question ?? "");
+  const bestFor = winner?.analysis.likelyAudience[0] ?? null;
+  const why = winner
+    ? buildWinnerReason(winner, runnerUp, focusTerms)
+    : null;
+
+  return {
+    recommendedWinner: winner?.id ?? null,
+    bestFor,
+    why,
+    mainTradeoff: buildMainTradeoff(winner, runnerUp),
+    commonTopics,
+    commonTags,
+    scoreRanking: sortedByScore.map((article) => ({
       articleId: article.id,
       title: article.title,
-      reasons: buildBestForReasons(article, questionTerms, topicFit),
+      totalScore: article.ranking?.score ?? null,
     })),
-    why: winner
-      ? buildWinnerWhy(winner, questionTerms)
-      : null,
-    main_tradeoff: winner && runnerUp
-      ? buildMainTradeoff(winner, runnerUp)
-      : null,
+    publicationOrder: publicationOrder.map((article) => ({
+      articleId: article.id,
+      title: article.title,
+      publishedAt: article.publishedAt,
+    })),
+    provenanceByArticle: articles.map((article) => ({
+      articleId: article.id,
+      groundingTier: article.provenance.groundingTier,
+      briefState: article.provenance.briefState,
+    })),
   };
+}
+
+function buildWinnerReason(
+  winner: CanonicalArticle,
+  runnerUp: CanonicalArticle | null,
+  focusTerms: string[],
+) {
+  const reasons = [
+    winner.analysis.whyItMatters,
+    winner.ranking?.whyRanked,
+    winner.analysis.quickTake,
+  ].filter(Boolean);
+
+  if (focusTerms.length > 0) {
+    const overlap = winner.topics
+      .concat(winner.tags)
+      .find((value) => focusTerms.some((term) => normalize(value).includes(term)));
+
+    if (overlap) {
+      reasons.unshift(`Strongest overlap with the requested focus on ${overlap}.`);
+    }
+  }
+
+  if (runnerUp && winner.provenance.groundingTier !== runnerUp.provenance.groundingTier) {
+    reasons.push(
+      winner.provenance.groundingTier === "editorial" || winner.provenance.groundingTier === "pdf"
+        ? "It is supported by a richer brief/provenance tier."
+        : "It is simpler but more directly aligned to the prompt.",
+    );
+  }
+
+  return reasons[0] ?? null;
+}
+
+function buildMainTradeoff(
+  winner: CanonicalArticle | null,
+  runnerUp: CanonicalArticle | null,
+) {
+  if (!winner || !runnerUp) {
+    return null;
+  }
+
+  if (winner.provenance.groundingTier !== runnerUp.provenance.groundingTier) {
+    return `${winner.title} has stronger grounding (${winner.provenance.groundingTier}), while ${runnerUp.title} may still be useful if you value topic fit over evidence depth.`;
+  }
+
+  return `${winner.title} scores higher editorially, while ${runnerUp.title} offers an alternative emphasis in ${runnerUp.analysis.topicTags[0] ?? "a narrower area"}.`;
+}
+
+function buildArticleRefSuggestions(articleRef: string) {
+  const trimmed = articleRef.trim();
+  return [
+    trimmed.startsWith("/papers/") || /^https?:\/\//i.test(trimmed)
+      ? "Use a canonical ReadAbstracted paper URL or path."
+      : "Use a ReadAbstracted paper ID, /papers/{id} path, or arXiv ID.",
+    "Try discover_articles first if you only know the topic or rough title.",
+  ];
+}
+
+function limitByDetail<T>(
+  items: T[],
+  detailLevel: DetailLevel,
+  limits: Record<DetailLevel, number>,
+) {
+  return items.slice(0, limits[detailLevel]);
 }
 
 function intersectNormalized(valueGroups: string[][]) {
@@ -361,67 +621,4 @@ function uniqueStrings(values: string[]) {
 
 function normalize(value: string) {
   return value.trim().toLowerCase();
-}
-
-function scoreQuestionFit(article: ArticleDetail, questionTerms: string[]) {
-  if (questionTerms.length === 0) {
-    return 0;
-  }
-
-  const haystack = normalize([
-    article.title,
-    article.topics.join(" "),
-    article.tags.join(" "),
-    article.summary.quickTake ?? "",
-    article.summary.whyItMatters ?? "",
-  ].join(" "));
-
-  return questionTerms.reduce((total, term) => total + (haystack.includes(term) ? 6 : 0), 0);
-}
-
-function buildBestForReasons(
-  article: ArticleDetail,
-  questionTerms: string[],
-  topicFit: number,
-) {
-  const reasons: string[] = [];
-
-  if (topicFit > 0) {
-    reasons.push("Strong overlap with the comparison question.");
-  }
-  if ((article.ranking?.totalScore ?? 0) >= 85) {
-    reasons.push("Higher editorial importance.");
-  }
-  if (article.technicalBrief?.sourceBasis === "full-pdf") {
-    reasons.push("Backed by a full-PDF technical brief.");
-  }
-  if (article.summary.whyItMatters) {
-    reasons.push(truncateSentence(article.summary.whyItMatters));
-  }
-
-  return reasons.slice(0, 3);
-}
-
-function buildWinnerWhy(article: ArticleDetail, questionTerms: string[]) {
-  const reasons = buildBestForReasons(article, questionTerms, scoreQuestionFit(article, questionTerms));
-  return reasons.join(" ");
-}
-
-function buildMainTradeoff(winner: ArticleDetail, runnerUp: ArticleDetail) {
-  const winnerSource = winner.technicalBrief?.sourceBasis === "full-pdf"
-    ? "deeper evidence"
-    : "lighter evidence";
-  const runnerUpSource = runnerUp.technicalBrief?.sourceBasis === "full-pdf"
-    ? "deeper evidence"
-    : "lighter evidence";
-
-  return `${winner.title} looks stronger on overall fit and ${winnerSource}, while ${runnerUp.title} remains a plausible alternative with ${runnerUpSource}.`;
-}
-
-function truncateSentence(value: string, maxLength = 120) {
-  const trimmed = value.trim();
-  if (trimmed.length <= maxLength) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
 }

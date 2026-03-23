@@ -1,5 +1,5 @@
 import { signupAction } from "@/app/actions";
-import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils/cn";
 
@@ -39,7 +39,7 @@ export function SignupBox({
             Join the Abstracted list
           </h2>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Get a simple heads-up when new weekly briefs or launch updates go live.
+            Get a short note when a new curated weekly edition or product update goes live.
           </p>
         </div>
 
@@ -61,13 +61,13 @@ export function SignupBox({
                 type="email"
               />
             </label>
-            <Button
+            <FormSubmitButton
               className={cn("w-full sm:w-auto", isHorizontal && "lg:mb-px lg:shrink-0")}
+              idleLabel="Join the list"
+              pendingLabel="Joining..."
               size="lg"
               type="submit"
-            >
-              Join the list
-            </Button>
+            />
           </div>
         </form>
       </div>

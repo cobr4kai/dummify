@@ -6,7 +6,8 @@ export default function NotFound() {
     <PageShell tone="utility">
       <EmptyState
         title="We couldn&apos;t find that page."
-        description="The requested paper or admin route does not exist in this local PaperBrief workspace."
+        description="The page you asked for doesn&apos;t exist here anymore, or the link was incomplete."
+        guidance="Try heading back to the weekly edition or archive to keep exploring."
       />
     </PageShell>
   );

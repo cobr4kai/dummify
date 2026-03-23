@@ -1,48 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  browseArticlesContentMock,
+  discoverArticlesContentMock,
   getArticleContentMock,
-  getArticlesForComparisonMock,
   getTopArticlesContentMock,
-  openArticleContentMock,
-  resolveArticleReferenceMock,
-  searchArticlesContentMock,
-  suggestArticleRefsMock,
 } = vi.hoisted(() => ({
-  browseArticlesContentMock: vi.fn(),
+  discoverArticlesContentMock: vi.fn(),
   getArticleContentMock: vi.fn(),
-  getArticlesForComparisonMock: vi.fn(),
   getTopArticlesContentMock: vi.fn(),
-  openArticleContentMock: vi.fn(),
-  resolveArticleReferenceMock: vi.fn(),
-  searchArticlesContentMock: vi.fn(),
-  suggestArticleRefsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/content/service", () => ({
-  browseArticlesContent: browseArticlesContentMock,
+  discoverArticlesContent: discoverArticlesContentMock,
   getArticleContent: getArticleContentMock,
-  getArticlesForComparison: getArticlesForComparisonMock,
   getTopArticlesContent: getTopArticlesContentMock,
-  openArticleContent: openArticleContentMock,
-  resolveArticleReference: resolveArticleReferenceMock,
-  searchArticlesContent: searchArticlesContentMock,
-  suggestArticleRefs: suggestArticleRefsMock,
 }));
 
 import {
   errorToolResult,
-  handleBrowseArticles,
   handleCompareArticles,
-  handleGetArticle,
-  handleListTopArticles,
+  handleDiscoverArticles,
   handleOpenArticle,
-  handleSearchArticles,
+  handleSummarizeTopArticles,
   successToolResult,
 } from "@/lib/mcp/tool-handlers";
 
-const articleOne = {
+const articleDetail = {
   id: "paper-1",
   arxivId: "2603.08852",
   title: "Agent Handoff Protocols",
@@ -70,11 +53,6 @@ const articleOne = {
     sourceBasis: "editorial" as const,
   },
   ranking: {
-    mode: "editorial" as const,
-    label: "Editorially prioritized this week.",
-    score: 92,
-    dimensions: [],
-    whyRanked: "High platform relevance.",
     totalScore: 92,
     rationale: "High platform relevance.",
   },
@@ -82,46 +60,11 @@ const articleOne = {
   pdfAvailability: {
     hasPdfUrl: true,
     hasExtractedText: true,
-    hasExtractedPdf: true,
     extractionStatus: "EXTRACTED" as const,
     usedFallbackAbstract: false,
     pageCount: 12,
     fileSizeBytes: 12000,
   },
-  article: {
-    id: "paper-1",
-    articleRef: "paper-1",
-    arxivId: "2603.08852",
-    title: "Agent Handoff Protocols",
-    canonicalUrl: "https://readabstracted.com/papers/paper-1",
-    arxivUrl: "https://arxiv.org/abs/2603.08852",
-    abstractUrl: "https://arxiv.org/abs/2603.08852",
-    publishedAt: "2026-03-18T15:00:00.000Z",
-    announcementDay: "2026-03-18",
-    weekStart: "2026-03-16",
-    authors: ["Alice A."],
-    categories: ["cs.AI"],
-    topics: ["agent systems", "protocol design", "infra"],
-    tags: ["cs.AI", "agents", "infra"],
-  },
-  summary: {
-    preview: "The handoff layer is becoming a platform bottleneck.",
-    quickTake: "Why the handoff layer matters now.",
-    whyItMatters: "Routing and provenance are becoming product surfaces.",
-    whyRanked: "High platform relevance.",
-    whyMatched: null,
-    abstract: "This paper studies protocol design for multi-agent systems.",
-  },
-  availability: {
-    hasPdfUrl: true,
-    hasExtractedText: true,
-    hasExtractedPdf: true,
-    extractionStatus: "EXTRACTED" as const,
-    usedFallbackAbstract: false,
-    pageCount: 12,
-    fileSizeBytes: 12000,
-  },
-  discovery: null,
   abstract: "This paper studies protocol design for multi-agent systems.",
   bestAvailableText: "This paper studies protocol design for multi-agent systems.",
   technicalBrief: {
@@ -132,7 +75,14 @@ const articleOne = {
     confidenceNotes: ["The strategic read is partly inferred from the setup."],
     keyStats: [],
     bullets: [],
-    evidence: [],
+    evidence: [
+      {
+        claim: "The paper grounds agent routing in operational protocol design.",
+        impactArea: "stack" as const,
+        confidence: "high" as const,
+        citations: [],
+      },
+    ],
     sourceBasis: "full-pdf" as const,
     usedFallbackAbstract: false,
   },
@@ -145,198 +95,179 @@ const articleOne = {
   ],
 };
 
-const articleTwo = {
-  ...articleOne,
-  id: "paper-2",
-  arxivId: "2603.08938",
-  title: "Inference Budget Controls",
-  canonicalUrl: "https://readabstracted.com/papers/paper-2",
-  arxivUrl: "https://arxiv.org/abs/2603.08938",
-  abstractUrl: "https://arxiv.org/abs/2603.08938",
-  publishedAt: "2026-03-20T15:00:00.000Z",
-  announcementDay: "2026-03-20",
-  ranking: {
-    mode: "editorial" as const,
-    label: "Editorially prioritized this week.",
-    score: 81,
-    dimensions: [],
-    whyRanked: "Useful but narrower.",
-    totalScore: 81,
-    rationale: "Useful but narrower.",
-  },
-  topics: ["inference controls", "protocol design", "infra"],
-  tags: ["cs.LG", "inference", "infra"],
-  analysis: {
-    ...articleOne.analysis,
-    thesis: "A paper about retrieval tuning and inference budget controls.",
-    topicTags: ["inference", "infra", "retrieval tuning"],
-    methodType: "inference or serving method",
-    likelyAudience: ["builders", "investors"] as const,
-    sourceBasis: "abstract_only" as const,
-  },
-  technicalBrief: {
-    ...articleOne.technicalBrief,
-    sourceBasis: "abstract-fallback" as const,
-    usedFallbackAbstract: true,
-  },
-  sourceReferences: [
-    {
-      label: "ReadAbstracted article",
-      kind: "readabstracted" as const,
-      sourceUrl: "https://readabstracted.com/papers/paper-2",
-    },
-  ],
+const articleSummary = {
+  id: articleDetail.id,
+  arxivId: articleDetail.arxivId,
+  title: articleDetail.title,
+  subtitle: articleDetail.subtitle,
+  canonicalUrl: articleDetail.canonicalUrl,
+  arxivUrl: articleDetail.arxivUrl,
+  abstractUrl: articleDetail.abstractUrl,
+  publishedAt: articleDetail.publishedAt,
+  announcementDay: articleDetail.announcementDay,
+  weekStart: articleDetail.weekStart,
+  authors: articleDetail.authors,
+  categories: articleDetail.categories,
+  topics: articleDetail.topics,
+  tags: articleDetail.tags,
+  analysis: articleDetail.analysis,
+  ranking: articleDetail.ranking,
+  summarySnippet: articleDetail.summarySnippet,
+  pdfAvailability: articleDetail.pdfAvailability,
 };
 
 describe("mcp tool handlers", () => {
   beforeEach(() => {
-    browseArticlesContentMock.mockReset();
+    discoverArticlesContentMock.mockReset();
     getArticleContentMock.mockReset();
-    getArticlesForComparisonMock.mockReset();
     getTopArticlesContentMock.mockReset();
-    openArticleContentMock.mockReset();
-    resolveArticleReferenceMock.mockReset();
-    searchArticlesContentMock.mockReset();
-    suggestArticleRefsMock.mockReset();
   });
 
-  it("returns not found for missing article lookups", async () => {
+  it("opens articles by falling back from internal id to arxiv id", async () => {
+    getArticleContentMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        article: articleDetail,
+      });
+
+    const payload = await handleOpenArticle({
+      article_ref: articleDetail.arxivId,
+      verbosity: "standard",
+    });
+
+    expect(getArticleContentMock).toHaveBeenNthCalledWith(
+      1,
+      { article_id: articleDetail.arxivId },
+      {},
+    );
+    expect(getArticleContentMock).toHaveBeenNthCalledWith(
+      2,
+      { arxiv_id: articleDetail.arxivId },
+      {},
+    );
+    expect(payload.article.provenance.groundingTier).toBe("editorial");
+    expect(payload.article.content.abstract).toBe(articleDetail.abstract);
+  });
+
+  it("returns not found details for unresolved article refs", async () => {
     getArticleContentMock.mockResolvedValue(null);
-    suggestArticleRefsMock.mockResolvedValue([]);
 
     await expect(
-      handleGetArticle({
-        article_id: "missing",
-        url: undefined,
-        arxiv_id: undefined,
+      handleOpenArticle({
+        article_ref: "missing-ref",
+        verbosity: "standard",
       }),
     ).rejects.toMatchObject({
       code: "not_found",
       status: 404,
-      message: "Article not found.",
-    });
-  });
-
-  it("uses the new browse/open workflow handlers", async () => {
-    browseArticlesContentMock.mockResolvedValue({
-      feed: "top",
-      query: null,
-      topic: null,
-      audience: null,
-      sort: "editorial",
-      weekStart: "2026-03-16",
-      startDate: null,
-      endDate: null,
-      limit: 10,
-      hasExtractedPdf: null,
-      topicSuggestions: ["agents"],
-      articles: [],
-    });
-    getArticleContentMock.mockResolvedValue({
-      requestedRef: "paper-1",
-      normalizedRef: "paper-1",
-      resolvedBy: "article_ref",
-      verbosity: "standard",
-      article: articleOne,
-    });
-
-    const browsePayload = await handleBrowseArticles({
-      limit: 10,
-    });
-    const openPayload = await handleOpenArticle({
-      article_ref: "paper-1",
-      verbosity: "standard",
-    });
-
-    expect(browsePayload.feed).toBe("top");
-    expect(openPayload.article.id).toBe("paper-1");
-    expect(openPayload.verbosity).toBe("standard");
-  });
-
-  it("builds structured comparison payloads without prose answers", async () => {
-    resolveArticleReferenceMock.mockResolvedValue({ paperId: "paper-1" });
-    resolveArticleReferenceMock.mockResolvedValueOnce({ paperId: "paper-1" });
-    resolveArticleReferenceMock.mockResolvedValueOnce({ paperId: "paper-2" });
-    getArticlesForComparisonMock.mockResolvedValue([articleOne, articleTwo]);
-
-    const payload = await handleCompareArticles({
-      article_refs: ["paper-1", "paper-2"],
-      question: "Which one is stronger on infra platform implications?",
-      verbosity: "standard",
-    });
-
-    expect(payload.verbosity).toBe("standard");
-    expect(payload.articles).toHaveLength(2);
-    expect(payload.focusTerms).toContain("infra");
-    expect(payload.recommended_winner?.articleId).toBe("paper-1");
-    expect(payload.best_for[0]?.reasons.length).toBeGreaterThan(0);
-    expect(payload.why).toBeTruthy();
-    expect(payload.main_tradeoff).toContain("Agent Handoff Protocols");
-    expect(payload.comparison.commonTopics).toContain("protocol design");
-    expect(payload.comparison.scoreRanking[0]?.articleId).toBe("paper-1");
-    expect(payload.comparison.sourceBasisByArticle[1]?.sourceBasis).toBe("abstract_only");
-  });
-
-  it("normalizes MCP top-article inputs through the shared schema", async () => {
-    getTopArticlesContentMock.mockResolvedValue({
-      feed: "top",
-      query: null,
-      weekStart: "2026-03-16",
-      startDate: null,
-      endDate: null,
-      topic: "AI",
-      audience: null,
-      sort: "editorial",
-      limit: 10,
-      hasExtractedPdf: null,
-      topicSuggestions: [],
-      articles: [],
-    });
-
-    const payload = await handleListTopArticles({
-      topic: "AI",
-    });
-
-    expect(payload.limit).toBe(10);
-    expect(getTopArticlesContentMock).toHaveBeenCalledWith(
-      {
-        topic: "AI",
-        limit: 10,
+      details: {
+        requestedRef: "missing-ref",
       },
-      {},
-    );
+    });
   });
 
-  it("normalizes MCP search inputs through the shared schema", async () => {
-    searchArticlesContentMock.mockResolvedValue({
-      feed: "search",
-      query: "AI",
+  it("summarizes the weekly edition with canonical article payloads", async () => {
+    getTopArticlesContentMock
+      .mockResolvedValueOnce({
+        weekStart: "2026-03-16",
+        topic: null,
+        limit: 10,
+        articles: [articleSummary],
+      })
+      .mockResolvedValueOnce({
+        weekStart: "2026-03-16",
+        topic: null,
+        limit: 1,
+        articles: [articleSummary],
+      });
+
+    const payload = await handleSummarizeTopArticles({
+      limit: 10,
+      verbosity: "standard",
+    });
+
+    expect(payload.edition.editionType).toBe("readabstracted_weekly");
+    expect(payload.edition.isLive).toBe(true);
+    expect(payload.articles[0]?.article.analysis.quickTake).toBe(articleSummary.subtitle);
+  });
+
+  it("preserves discovery-only metadata on discover responses", async () => {
+    discoverArticlesContentMock.mockResolvedValue({
+      mode: "search",
+      query: "robotics",
       topic: null,
       audience: null,
       sort: "relevance",
-      verbosity: "standard",
       weekStart: null,
-      startDate: null,
-      endDate: null,
-      limit: 5,
-      hasExtractedPdf: null,
-      topicSuggestions: [],
-      results: [],
+      startDate: "2026-03-01",
+      endDate: "2026-03-22",
+      limit: 10,
+      results: [
+        {
+          article: articleDetail,
+          discovery: {
+            rank: 1,
+            sort: "relevance",
+            matchedOn: ["title", "taxonomy"],
+            matchReason: "Exact title phrase match.",
+            matchSnippet: articleDetail.summarySnippet,
+          },
+        },
+      ],
     });
 
-    const payload = await handleSearchArticles({
-      query: "AI",
-      limit: 5,
+    const payload = await handleDiscoverArticles({
+      query: "robotics",
+      limit: 10,
+      verbosity: "standard",
     });
 
-    expect(payload.query).toBe("AI");
-    expect(searchArticlesContentMock).toHaveBeenCalledWith(
-      {
-        query: "AI",
-        limit: 5,
-      },
-      {},
-    );
+    expect(payload.mode).toBe("search");
+    expect(payload.results[0]?.discovery.matchReason).toBe("Exact title phrase match.");
+    expect(payload.results[0]?.article.content.abstract).toBeNull();
+  });
+
+  it("builds structured comparison payloads with a deterministic recommendation", async () => {
+    getArticleContentMock
+      .mockResolvedValueOnce({ article: articleDetail })
+      .mockResolvedValueOnce({
+        article: {
+          ...articleDetail,
+          id: "paper-2",
+          title: "Inference Budget Controls",
+          canonicalUrl: "https://readabstracted.com/papers/paper-2",
+          arxivId: "2603.08938",
+          arxivUrl: "https://arxiv.org/abs/2603.08938",
+          abstractUrl: "https://arxiv.org/abs/2603.08938",
+          ranking: {
+            totalScore: 81,
+            rationale: "Useful but narrower.",
+          },
+          analysis: {
+            ...articleDetail.analysis,
+            sourceBasis: "abstract_only" as const,
+            likelyAudience: ["builders", "investors"] as const,
+          },
+          technicalBrief: null,
+          sourceReferences: [
+            {
+              label: "ReadAbstracted article",
+              kind: "readabstracted" as const,
+              sourceUrl: "https://readabstracted.com/papers/paper-2",
+            },
+          ],
+        },
+      });
+
+    const payload = await handleCompareArticles({
+      article_refs: ["paper-1", "paper-2"],
+      question: "Which one is better for builders?",
+      verbosity: "standard",
+    });
+
+    expect(payload.comparison.recommendedWinner).toBe("paper-1");
+    expect(payload.comparison.bestFor).toBe("builders");
+    expect(payload.comparison.provenanceByArticle[1]?.groundingTier).toBe("abstract");
   });
 
   it("returns structured error payloads", () => {
@@ -353,22 +284,21 @@ describe("mcp tool handlers", () => {
   });
 
   it("wraps successful payloads for MCP results", () => {
-    const payload = successToolResult("Returned 0 articles.", {
-      feed: "top",
+    const payload = successToolResult("Returned 0 discovered articles.", {
+      schemaVersion: "2" as const,
+      mode: "browse" as const,
       query: null,
-      weekStart: "2026-03-16",
-      startDate: null,
-      endDate: null,
       topic: null,
       audience: null,
-      sort: "editorial",
+      sort: "editorial" as const,
+      weekStart: null,
+      startDate: null,
+      endDate: null,
       limit: 10,
-      hasExtractedPdf: null,
-      topicSuggestions: [],
-      articles: [],
+      results: [],
     });
 
-    expect(payload.structuredContent.articles).toEqual([]);
-    expect(payload.content[0]?.text).toBe("Returned 0 articles.");
+    expect(payload.structuredContent.results).toEqual([]);
+    expect(payload.content[0]?.text).toBe("Returned 0 discovered articles.");
   });
 });

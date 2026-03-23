@@ -65,7 +65,7 @@ export function TechnicalBriefView({
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="highlight">Score {Math.round(score?.totalScore ?? 0)}</Badge>
             <Badge variant={technicalBrief.usedFallbackAbstract ? "danger" : "success"}>
-              {technicalBrief.usedFallbackAbstract ? "Abstract-based" : "PDF-backed"}
+              {technicalBrief.usedFallbackAbstract ? "Abstract-only analysis" : "Full-paper brief"}
             </Badge>
             {focusTags.map((tag) => (
               <Badge key={tag} variant="default">
@@ -96,6 +96,9 @@ export function TechnicalBriefView({
       <Card>
         <CardHeader>
           <CardTitle>Evidence ledger</CardTitle>
+          <CardDescription>
+            The strongest claims in the brief, along with the confidence and citation depth behind them.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {evidence.map((item, index) => (

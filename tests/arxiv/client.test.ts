@@ -160,7 +160,7 @@ describe("ArxivClient", () => {
   });
 
   it("waits on the shared request gate before issuing metadata fetches", async () => {
-    let releaseGate: (() => void) | null = null;
+    let releaseGate: () => void = () => {};
     const requestGate = {
       waitForTurn: vi.fn(
         () =>
@@ -186,7 +186,7 @@ describe("ArxivClient", () => {
     expect(requestGate.waitForTurn).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
 
-    releaseGate?.();
+    releaseGate();
     await pendingFetch;
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

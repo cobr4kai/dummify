@@ -1,90 +1,29 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { z } from "zod";
 import {
-  articleComparisonSchema,
-  articleResponseSchema,
-  browseArticlesResponseSchema,
-  searchArticlesResponseSchema,
-  topArticlesResponseSchema,
+  compareArticlesResponseSchema,
+  compareArticlesV2InputSchema,
+  discoverArticlesInputSchema,
+  discoverArticlesResponseSchema,
+  openArticleInputSchema,
+  openArticleResponseSchema,
+  summarizeTopArticlesInputSchema,
+  summarizeTopArticlesResponseSchema,
+  type CompareArticlesV2Input,
+  type DiscoverArticlesInput,
+  type OpenArticleInput,
+  type SummarizeTopArticlesInput,
 } from "@repo-types/content";
 import { env } from "@/lib/env";
 import {
-  handleBrowseArticles,
   errorToolResult,
   handleCompareArticles,
-  handleGetArticle,
-  handleListTopArticles,
+  handleDiscoverArticles,
   handleOpenArticle,
-  handleSearchArticles,
+  handleSummarizeTopArticles,
   type McpRequestContext,
   successToolResult,
 } from "@/lib/mcp/tool-handlers";
-
-const audienceSchema = z.enum(["builders", "researchers", "investors", "pms"]);
-const sortSchema = z.enum(["editorial", "relevance", "recency"]);
-const verbositySchema = z.enum(["quick", "standard", "deep"]);
-
-const mcpBrowseArticlesInputSchema = z.object({
-  feed: z.enum(["top", "search"]).optional(),
-  query: z.string().trim().min(1).optional(),
-  topic: z.string().trim().min(1).optional(),
-  audience: audienceSchema.optional(),
-  sort: sortSchema.optional(),
-  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  has_extracted_pdf: z.boolean().optional(),
-  limit: z.number().int().min(1).max(25).optional(),
-});
-
-const mcpTopArticlesInputSchema = z.object({
-  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  limit: z.number().int().min(1).max(25).optional(),
-  topic: z.string().trim().min(1).optional(),
-  audience: audienceSchema.optional(),
-  sort: sortSchema.optional(),
-  has_extracted_pdf: z.boolean().optional(),
-});
-
-const mcpOpenArticleInputSchema = z.object({
-  article_ref: z.string().trim().min(1),
-  verbosity: verbositySchema.optional(),
-});
-
-const mcpGetArticleInputSchema = z.object({
-  article_ref: z.string().trim().min(1).optional(),
-  article_id: z.string().trim().min(1).optional(),
-  url: z.string().trim().min(1).optional(),
-  arxiv_id: z.string().trim().min(1).optional(),
-  verbosity: verbositySchema.optional(),
-});
-
-const mcpSearchArticlesInputSchema = z.object({
-  query: z.string().trim().min(1),
-  topic: z.string().trim().min(1).optional(),
-  audience: audienceSchema.optional(),
-  sort: sortSchema.optional(),
-  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  has_extracted_pdf: z.boolean().optional(),
-  verbosity: verbositySchema.optional(),
-  limit: z.number().int().min(1).max(25).optional(),
-});
-
-const mcpCompareArticlesInputSchema = z.object({
-  article_refs: z.array(z.string().trim().min(1)).min(2).max(5),
-  question: z.string().trim().min(1).optional(),
-  verbosity: verbositySchema.optional(),
-});
-
-type McpBrowseArticlesInput = z.infer<typeof mcpBrowseArticlesInputSchema>;
-type McpTopArticlesInput = z.infer<typeof mcpTopArticlesInputSchema>;
-type McpOpenArticleInput = z.infer<typeof mcpOpenArticleInputSchema>;
-type McpGetArticleInput = z.infer<typeof mcpGetArticleInputSchema>;
-type McpSearchArticlesInput = z.infer<typeof mcpSearchArticlesInputSchema>;
-type McpCompareArticlesInput = z.infer<typeof mcpCompareArticlesInputSchema>;
 
 export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
   const server = new McpServer({
@@ -95,23 +34,23 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
   });
 
   server.registerTool(
-    "browse_articles",
+    "summarize_top_articles",
     {
-      title: "Browse ReadAbstracted articles",
+      title: "Summarize the ReadAbstracted weekly edition",
       description:
-        "Browse top ReadAbstracted papers or search the archive with optional topic, audience, date, and extracted-PDF filters.",
-      inputSchema: mcpBrowseArticlesInputSchema,
-      outputSchema: browseArticlesResponseSchema,
+        "Returns the curated ReadAbstracted weekly edition that mirrors the website homepage, including editorial framing and the curated article order.",
+      inputSchema: summarizeTopArticlesInputSchema,
+      outputSchema: summarizeTopArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: McpBrowseArticlesInput) => {
+    async (input: SummarizeTopArticlesInput) => {
       try {
-        const payload = await handleBrowseArticles(input, context);
+        const payload = await handleSummarizeTopArticles(input, context);
         return successToolResult(
-          `Returned ${payload.articles.length} ReadAbstracted articles for browsing.`,
+          `Returned ${payload.articles.length} articles from the ReadAbstracted weekly edition.`,
           payload,
         );
       } catch (error) {
@@ -121,23 +60,23 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
   );
 
   server.registerTool(
-    "list_top_articles",
+    "discover_articles",
     {
-      title: "List top ReadAbstracted articles",
+      title: "Discover ReadAbstracted articles",
       description:
-        "Returns the current or requested week's top ReadAbstracted articles with metadata, ranking, topics, and summary snippets.",
-      inputSchema: mcpTopArticlesInputSchema,
-      outputSchema: topArticlesResponseSchema,
+        "Searches or browses the wider ReadAbstracted archive, returning opinionated context, provenance, and discovery-specific match information.",
+      inputSchema: discoverArticlesInputSchema,
+      outputSchema: discoverArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: McpTopArticlesInput) => {
+    async (input: DiscoverArticlesInput) => {
       try {
-        const payload = await handleListTopArticles(input, context);
+        const payload = await handleDiscoverArticles(input, context);
         return successToolResult(
-          `Returned ${payload.articles.length} top ReadAbstracted articles.`,
+          `Returned ${payload.results.length} discovered ReadAbstracted articles.`,
           payload,
         );
       } catch (error) {
@@ -151,67 +90,18 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
     {
       title: "Open a ReadAbstracted article",
       description:
-        "Recommended drill-down tool. Open one article using a single article reference and optional verbosity control.",
-      inputSchema: mcpOpenArticleInputSchema,
-      outputSchema: articleResponseSchema,
+        "Opens one ReadAbstracted article by canonical article reference and returns the canonical article object with opinionated context and provenance.",
+      inputSchema: openArticleInputSchema,
+      outputSchema: openArticleResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: McpOpenArticleInput) => {
+    async (input: OpenArticleInput) => {
       try {
         const payload = await handleOpenArticle(input, context);
         return successToolResult(`Opened ${payload.article.title}.`, payload);
-      } catch (error) {
-        return errorToolResult(error);
-      }
-    },
-  );
-
-  server.registerTool(
-    "get_article",
-    {
-      title: "Open a ReadAbstracted article",
-      description:
-        "Compatibility alias for open_article. Accepts legacy identifier inputs and returns the same normalized article payload.",
-      inputSchema: mcpGetArticleInputSchema,
-      outputSchema: articleResponseSchema,
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
-    },
-    async (input: McpGetArticleInput) => {
-      try {
-        const payload = await handleGetArticle(input, context);
-        return successToolResult(`Opened ${payload.article.title}.`, payload);
-      } catch (error) {
-        return errorToolResult(error);
-      }
-    },
-  );
-
-  server.registerTool(
-    "search_articles",
-    {
-      title: "Search ReadAbstracted articles",
-      description:
-        "Searches ReadAbstracted articles by query, topic, and date filters, returning structured matches with snippets and relevance scores.",
-      inputSchema: mcpSearchArticlesInputSchema,
-      outputSchema: searchArticlesResponseSchema,
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
-    },
-    async (input: McpSearchArticlesInput) => {
-      try {
-        const payload = await handleSearchArticles(input, context);
-        return successToolResult(
-          `Found ${payload.results.length} matching ReadAbstracted articles for "${payload.query}".`,
-          payload,
-        );
       } catch (error) {
         return errorToolResult(error);
       }
@@ -223,20 +113,17 @@ export function createReadAbstractedMcpServer(context: McpRequestContext = {}) {
     {
       title: "Compare ReadAbstracted articles",
       description:
-        "Builds a structured comparison across two to five ReadAbstracted articles without generating the final prose answer.",
-      inputSchema: mcpCompareArticlesInputSchema,
-      outputSchema: articleComparisonSchema,
+        "Builds a structured comparison across two to five ReadAbstracted articles, including a deterministic recommendation and tradeoff summary.",
+      inputSchema: compareArticlesV2InputSchema,
+      outputSchema: compareArticlesResponseSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async (input: McpCompareArticlesInput) => {
+    async (input: CompareArticlesV2Input) => {
       try {
-        const payload = await handleCompareArticles({
-          article_refs: input.article_refs,
-          question: input.question,
-        }, context);
+        const payload = await handleCompareArticles(input, context);
         return successToolResult(
           `Prepared a structured comparison for ${payload.articles.length} ReadAbstracted articles.`,
           payload,

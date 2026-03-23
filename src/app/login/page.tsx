@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/form-submit-button";
 import { PageShell } from "@/components/page-shell";
 import { loginAction } from "@/app/login/actions";
 import { env } from "@/lib/env";
@@ -36,8 +36,8 @@ export default async function LoginPage({
           <CardTitle>Unlock Abstracted settings</CardTitle>
           <CardDescription>
             {isConfigured
-              ? "The admin area is protected by the shared `ADMIN_PASSWORD` configured in your environment."
-              : "Set `ADMIN_PASSWORD` in your environment before using the admin area."}
+              ? "Use the shared admin password to manage the edition, ingest, and settings workspaces."
+              : "Set `ADMIN_PASSWORD` in your environment before using the admin workspace."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -61,9 +61,12 @@ export default async function LoginPage({
                 That password did not match the configured admin secret.
               </p>
             ) : null}
-            <Button disabled={!isConfigured} type="submit">
-              Continue to admin
-            </Button>
+            <FormSubmitButton
+              disabled={!isConfigured}
+              idleLabel="Continue to admin"
+              pendingLabel="Unlocking..."
+              type="submit"
+            />
           </form>
         </CardContent>
       </Card>

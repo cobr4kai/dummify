@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/content/service", () => ({
-  browseArticlesContent: async () => ({
-    feed: "top",
+  discoverArticlesContent: async () => ({
+    mode: "browse",
     query: null,
     topic: null,
     audience: null,
@@ -11,50 +11,17 @@ vi.mock("@/lib/content/service", () => ({
     startDate: null,
     endDate: null,
     limit: 10,
-    hasExtractedPdf: null,
-    topicSuggestions: [],
-    articles: [],
-  }),
-  getArticleContent: async () => null,
-  getArticlesForComparison: async () => [],
-  getTopArticlesContent: async () => ({
-    feed: "top",
-    query: null,
-    topic: null,
-    audience: null,
-    sort: "editorial",
-    weekStart: null,
-    startDate: null,
-    endDate: null,
-    limit: 10,
-    hasExtractedPdf: null,
-    topicSuggestions: [],
-    articles: [],
-  }),
-  openArticleContent: async () => null,
-  resolveArticleReference: async () => ({
-    paperId: null,
-    requestedRef: null,
-    normalizedRef: null,
-    resolvedBy: null,
-  }),
-  searchArticlesContent: async () => ({
-    feed: "search",
-    query: "",
-    topic: null,
-    audience: null,
-    sort: "relevance",
-    verbosity: "standard",
-    weekStart: null,
-    startDate: null,
-    endDate: null,
-    limit: 10,
-    hasExtractedPdf: null,
-    topicSuggestions: [],
     results: [],
   }),
-  suggestArticleRefs: async () => [],
+  getArticleContent: async () => null,
+  getTopArticlesContent: async () => ({
+    weekStart: null,
+    topic: null,
+    limit: 10,
+    articles: [],
+  }),
 }));
+
 import { DELETE, GET, POST } from "@/app/api/mcp/route";
 
 const PROTOCOL_VERSION = "2025-11-25";
@@ -113,7 +80,7 @@ describe("mcp route", () => {
     expect(payload.result.capabilities.tools).toBeDefined();
   });
 
-  it("publishes MCP-friendly tool schemas", async () => {
+  it("lists the new canonical tool surface", async () => {
     const response = await POST(
       new Request("https://example.com/api/mcp", {
         method: "POST",
@@ -133,26 +100,13 @@ describe("mcp route", () => {
 
     expect(response.status).toBe(200);
     const payload = await response.json();
-    const listTopTool = payload.result.tools.find(
-      (tool: { name: string }) => tool.name === "list_top_articles",
-    );
-    const browseTool = payload.result.tools.find(
-      (tool: { name: string }) => tool.name === "browse_articles",
-    );
-    const openTool = payload.result.tools.find(
-      (tool: { name: string }) => tool.name === "open_article",
-    );
-    const getArticleTool = payload.result.tools.find(
-      (tool: { name: string }) => tool.name === "get_article",
-    );
-
-    expect(browseTool).toBeDefined();
-    expect(openTool).toBeDefined();
-    expect(listTopTool.inputSchema.required ?? []).not.toContain("topic");
-    expect(openTool.inputSchema.required ?? []).toEqual(["article_ref"]);
-    expect(openTool.inputSchema.properties.verbosity.enum).toEqual(["quick", "standard", "deep"]);
-    expect(getArticleTool.inputSchema.required ?? []).toEqual([]);
-    expect(listTopTool.outputSchema?.type).toBe("object");
+    const toolNames = payload.result.tools.map((tool: { name: string }) => tool.name);
+    expect(toolNames).toEqual([
+      "summarize_top_articles",
+      "discover_articles",
+      "open_article",
+      "compare_articles",
+    ]);
   });
 
   it("returns parse errors for malformed json", async () => {

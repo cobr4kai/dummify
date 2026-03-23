@@ -3,9 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export function EmptyState({
   title,
   description,
+  guidance = "Try a broader keyword, switch weeks, or come back after the next curated update.",
 }: {
   title: string;
   description: string;
+  guidance?: string;
 }) {
   return (
     <Card className="border-dashed">
@@ -15,8 +17,7 @@ export function EmptyState({
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">
-          Try seeding demo data with `npx prisma db seed`, ingesting a recent
-          arXiv day from Admin, or checking your category filters.
+          {guidance}
         </p>
       </CardContent>
     </Card>
