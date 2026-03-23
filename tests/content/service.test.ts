@@ -290,6 +290,7 @@ vi.mock("@/lib/env", () => ({
 
 import {
   browseArticlesContent,
+  discoverArticlesContent,
   getArticleContent,
   getTopArticlesContent,
   openArticleContent,
@@ -511,5 +512,37 @@ describe("content service", () => {
 
     expect(openResult?.requestedRef).toBe("https://arxiv.org/abs/2603.08852v1");
     expect(openResult?.article.article?.articleRef).toBe("paper-1");
+  });
+
+  it("keeps discovery match labels honest for abstract-only papers", async () => {
+    const abstractOnlyPaper = {
+      ...papers.paperThree,
+      technicalBriefs: [],
+      pdfCaches: [],
+      scores: papers.paperThree.scores,
+      enrichments: papers.paperThree.enrichments,
+      publishedItems: [],
+    };
+
+    paperFindManyMock.mockResolvedValue([abstractOnlyPaper, papers.paperTwo]);
+
+    const result = await discoverArticlesContent({
+      query: "robotics",
+      topic: undefined,
+      audience: undefined,
+      sort: "relevance",
+      week: undefined,
+      start_date: undefined,
+      end_date: undefined,
+      has_premium_brief: undefined,
+      has_extracted_pdf: undefined,
+      limit: 5,
+      verbosity: "standard",
+    });
+
+    expect(result.results[0]?.article.id).toBe("paper-3");
+    expect(result.results[0]?.article.technicalBrief).toBeNull();
+    expect(result.results[0]?.discovery.matchedOn).not.toContain("brief");
+    expect(result.results[0]?.discovery.matchedOn).toContain("taxonomy");
   });
 });
