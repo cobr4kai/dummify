@@ -87,6 +87,7 @@ import {
   runDailyRefreshAction,
   runHistoricalRefreshAction,
   setActiveHomepageDayAction,
+  togglePublishedPaperAction,
   updateSettingsAction,
 } from "@/app/admin/actions";
 
@@ -160,5 +161,33 @@ describe("admin actions", () => {
       "REDIRECT:/admin/edition?week=2026-03-16&notice=homepage-day-set",
     );
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/edition");
+  });
+
+  it("publishes a paper without blocking the redirect on brief generation", async () => {
+    const formData = new FormData();
+    formData.set("announcementDay", "2026-03-20");
+    formData.set("paperId", "paper-1");
+    formData.set("published", "true");
+
+    setPublishedPaperStateMock.mockResolvedValue(undefined);
+    getCurrentTechnicalBriefMock.mockResolvedValue(null);
+    ensurePaperTechnicalBriefMock.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return "generated";
+    });
+
+    await expect(togglePublishedPaperAction(formData)).rejects.toThrow(
+      "REDIRECT:/admin/edition?week=2026-03-16&notice=paper-published&focusPaper=paper-1&brief=missing",
+    );
+    expect(requireAdminMock).toHaveBeenCalledWith("/admin/edition");
+    expect(setPublishedPaperStateMock).toHaveBeenCalledWith({
+      announcementDay: "2026-03-20",
+      paperId: "paper-1",
+      published: true,
+    });
+    expect(getCurrentTechnicalBriefMock).toHaveBeenCalledWith("paper-1");
+    expect(ensurePaperTechnicalBriefMock).toHaveBeenCalledWith("paper-1", {
+      requirePdf: true,
+    });
   });
 });
