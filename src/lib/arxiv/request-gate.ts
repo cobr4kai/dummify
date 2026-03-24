@@ -4,6 +4,7 @@ export type ArxivLane = "api" | "rss";
 
 export type ArxivRequestGate = {
   waitForTurn(lane: ArxivLane, minDelayMs: number): Promise<void>;
+  applyPenalty(lane: ArxivLane, penaltyMs: number): Promise<void>;
 };
 
 type GateDependencies = {
@@ -41,6 +42,20 @@ class PrismaArxivRequestGate implements ArxivRequestGate {
     return next;
   }
 
+  async applyPenalty(lane: ArxivLane, penaltyMs: number) {
+    if (penaltyMs <= 0) {
+      return;
+    }
+
+    const queued = this.queueByLane.get(lane) ?? Promise.resolve();
+    const next = queued.then(() => this.reservePenalty(lane, penaltyMs));
+    this.queueByLane.set(
+      lane,
+      next.catch(() => {}),
+    );
+    await next;
+  }
+
   private async reserveSlot(lane: ArxivLane, minDelayMs: number) {
     const nowMs = this.nowFn();
     const reservedAt = await prisma.$transaction(async (tx) => {
@@ -71,6 +86,31 @@ class PrismaArxivRequestGate implements ArxivRequestGate {
     if (delay > 0) {
       await this.sleepFn(delay);
     }
+  }
+
+  private async reservePenalty(lane: ArxivLane, penaltyMs: number) {
+    const nowMs = this.nowFn();
+    await prisma.$transaction(async (tx) => {
+      const key = GATE_SETTING_KEYS[lane];
+      const existing = await tx.appSetting.findUnique({
+        where: { key },
+      });
+      const nextAllowedAt = parseNextAllowedAt(existing?.value);
+      const penalizedUntil = Math.max(nextAllowedAt, nowMs + penaltyMs);
+
+      await tx.appSetting.upsert({
+        where: { key },
+        update: {
+          value: penalizedUntil,
+          description: GATE_SETTING_DESCRIPTIONS[lane],
+        },
+        create: {
+          key,
+          value: penalizedUntil,
+          description: GATE_SETTING_DESCRIPTIONS[lane],
+        },
+      });
+    });
   }
 }
 

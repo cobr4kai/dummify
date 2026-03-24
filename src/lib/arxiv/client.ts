@@ -49,6 +49,9 @@ export class ArxivClient {
   private readonly options: ResolvedArxivClientOptions;
   private nextApiAllowedAt = 0;
   private nextRssAllowedAt = 0;
+  private static readonly MAX_FETCH_ATTEMPTS = 4;
+  private static readonly RATE_LIMIT_COOLDOWN_MULTIPLIER = 4;
+  private static readonly MIN_RATE_LIMIT_COOLDOWN_MS = 12_000;
 
   constructor(options: ArxivClientOptions = {}) {
     this.options = {
@@ -236,7 +239,7 @@ export class ArxivClient {
 
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt < 4; attempt += 1) {
+    for (let attempt = 0; attempt < ArxivClient.MAX_FETCH_ATTEMPTS; attempt += 1) {
       try {
         await this.waitForLane(lane);
 
@@ -266,16 +269,29 @@ export class ArxivClient {
           throw new NonRetryableArxivError(`arXiv returned ${response.status}.`);
         }
 
-        throw new RetryableArxivError(`arXiv returned ${response.status}.`);
+        throw new RetryableArxivError(`arXiv returned ${response.status}.`, {
+          status: response.status,
+          retryAfterMs: parseRetryAfterMs(
+            response.headers.get("retry-after"),
+            this.options.nowFn(),
+          ),
+        });
       } catch (error) {
         if (error instanceof NonRetryableArxivError) {
           throw error;
         }
 
         lastError = error instanceof Error ? error : new Error("Unknown fetch error");
-        this.applyRetryPenalty(lane, attempt);
-        const backoff =
-          this.options.retryBaseDelayMs * 2 ** attempt + Math.round(Math.random() * 250);
+        if (attempt === ArxivClient.MAX_FETCH_ATTEMPTS - 1) {
+          break;
+        }
+
+        const backoff = this.computeRetryDelayMs(
+          lane,
+          attempt,
+          error instanceof RetryableArxivError ? error : null,
+        );
+        await this.applyRetryPenalty(lane, backoff);
         await this.options.sleepFn(backoff);
       }
     }
@@ -302,18 +318,7 @@ export class ArxivClient {
     const hydratedById = new Map<string, PaperSourceRecord>();
 
     for (const batch of chunk(ids, 25)) {
-      const xml = await this.fetchXml(
-        `${this.options.apiBaseUrl}?${new URLSearchParams({
-          id_list: batch.join(","),
-          start: "0",
-          max_results: batch.length.toString(),
-        }).toString()}`,
-        "api",
-      );
-
-      for (const paper of parseAtomFeed(xml)) {
-        hydratedById.set(paper.arxivId, paper);
-      }
+      await this.hydrateBatch(batch, hydratedById);
     }
 
     return hydratedById;
@@ -338,16 +343,70 @@ export class ArxivClient {
     }
   }
 
-  private applyRetryPenalty(lane: ArxivLane, attempt: number) {
-    const minDelay = lane === "api" ? this.options.apiMinDelayMs : this.options.rssMinDelayMs;
-    const penalty =
-      minDelay + this.options.retryBaseDelayMs * 2 ** (attempt + 1);
-    const nextAllowedAt = this.options.nowFn() + penalty;
+  private async applyRetryPenalty(lane: ArxivLane, penaltyMs: number) {
+    const nextAllowedAt = this.options.nowFn() + penaltyMs;
+    await this.options.requestGate.applyPenalty(lane, penaltyMs);
 
     if (lane === "api") {
       this.nextApiAllowedAt = Math.max(this.nextApiAllowedAt, nextAllowedAt);
     } else {
       this.nextRssAllowedAt = Math.max(this.nextRssAllowedAt, nextAllowedAt);
+    }
+  }
+
+  private computeRetryDelayMs(
+    lane: ArxivLane,
+    attempt: number,
+    retryableError: RetryableArxivError | null,
+  ) {
+    const minDelay = lane === "api" ? this.options.apiMinDelayMs : this.options.rssMinDelayMs;
+    const exponentialDelay =
+      this.options.retryBaseDelayMs * 2 ** attempt + Math.round(Math.random() * 250);
+    const retryAfterDelay = retryableError?.retryAfterMs ?? 0;
+    const rateLimitDelay =
+      retryableError && (retryableError.status === 429 || retryableError.status === 403)
+        ? Math.max(
+            minDelay * ArxivClient.RATE_LIMIT_COOLDOWN_MULTIPLIER,
+            ArxivClient.MIN_RATE_LIMIT_COOLDOWN_MS,
+          )
+        : 0;
+
+    return Math.max(exponentialDelay, retryAfterDelay, rateLimitDelay);
+  }
+
+  private async hydrateBatch(
+    batch: string[],
+    hydratedById: Map<string, PaperSourceRecord>,
+  ): Promise<void> {
+    try {
+      const xml = await this.fetchXml(
+        `${this.options.apiBaseUrl}?${new URLSearchParams({
+          id_list: batch.join(","),
+          start: "0",
+          max_results: batch.length.toString(),
+        }).toString()}`,
+        "api",
+      );
+
+      for (const paper of parseAtomFeed(xml)) {
+        hydratedById.set(paper.arxivId, paper);
+      }
+    } catch (error) {
+      if (!(error instanceof RetryableArxivError)) {
+        throw error;
+      }
+
+      if (batch.length === 1) {
+        console.warn(
+          `Skipping arXiv API hydration for ${batch[0]} after repeated retryable failures; daily ingest will fall back to RSS metadata.`,
+        );
+        return;
+      }
+
+      const midpoint = Math.ceil(batch.length / 2);
+      await this.options.sleepFn(this.options.apiMinDelayMs);
+      await this.hydrateBatch(batch.slice(0, midpoint), hydratedById);
+      await this.hydrateBatch(batch.slice(midpoint), hydratedById);
     }
   }
 }
@@ -370,6 +429,37 @@ function isRetryableStatus(status: number) {
   return status === 403 || status === 429 || status >= 500;
 }
 
-class RetryableArxivError extends Error {}
+class RetryableArxivError extends Error {
+  readonly status: number | null;
+  readonly retryAfterMs: number | null;
+
+  constructor(
+    message: string,
+    options: { status?: number | null; retryAfterMs?: number | null } = {},
+  ) {
+    super(message);
+    this.name = "RetryableArxivError";
+    this.status = options.status ?? null;
+    this.retryAfterMs = options.retryAfterMs ?? null;
+  }
+}
 
 class NonRetryableArxivError extends Error {}
+
+function parseRetryAfterMs(value: string | null, nowMs: number) {
+  if (!value) {
+    return null;
+  }
+
+  const seconds = Number.parseInt(value, 10);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const retryAtMs = Date.parse(value);
+  if (Number.isNaN(retryAtMs)) {
+    return null;
+  }
+
+  return Math.max(0, retryAtMs - nowMs);
+}

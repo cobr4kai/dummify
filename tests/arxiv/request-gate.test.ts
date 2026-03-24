@@ -74,4 +74,18 @@ describe("PrismaArxivRequestGate", () => {
     expect(sleepMock.mock.calls.map(([delay]) => delay)).toEqual([3_000]);
     expect(appSettingState.get("arxivApiNextAllowedAtMs")).toBe(7_000);
   });
+
+  it("extends the shared cooldown when a penalty is applied", async () => {
+    let nowMs = 1_000;
+    const gate = createArxivRequestGate({
+      nowFn: () => nowMs,
+      sleepFn: vi.fn(async () => {}),
+    });
+
+    await gate.waitForTurn("api", 3_000);
+    nowMs = 1_500;
+    await gate.applyPenalty("api", 12_000);
+
+    expect(appSettingState.get("arxivApiNextAllowedAtMs")).toBe(13_500);
+  });
 });

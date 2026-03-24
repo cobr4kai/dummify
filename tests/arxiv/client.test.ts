@@ -30,6 +30,19 @@ const atomEntryXml = `<?xml version="1.0" encoding="UTF-8"?>
 const emptyAtomXml = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom"></feed>`;
 
+const dailyFeedXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Practical Agentic Search for Enterprise Workflows</title>
+      <link>https://arxiv.org/abs/2603.01234v2</link>
+      <description>arXiv:2603.01234v2 Announce Type: new Abstract: We study cost-aware agentic search for enterprise workflows.</description>
+      <pubDate>Wed, 11 Mar 2026 00:00:00 GMT</pubDate>
+      <category>cs.AI</category>
+    </item>
+  </channel>
+</rss>`;
+
 const cacheRoots: string[] = [];
 
 afterEach(async () => {
@@ -70,6 +83,7 @@ describe("ArxivClient", () => {
       apiCacheTtlMinutes: 60,
       requestGate: {
         waitForTurn: waitForTurnMock,
+        applyPenalty: vi.fn(async () => {}),
       },
     });
 
@@ -96,6 +110,7 @@ describe("ArxivClient", () => {
       rssMinDelayMs: 0,
       requestGate: {
         waitForTurn: waitForTurnMock,
+        applyPenalty: vi.fn(async () => {}),
       },
     });
 
@@ -118,6 +133,7 @@ describe("ArxivClient", () => {
       rssMinDelayMs: 0,
       requestGate: {
         waitForTurn: waitForTurnMock,
+        applyPenalty: vi.fn(async () => {}),
       },
     });
 
@@ -128,6 +144,45 @@ describe("ArxivClient", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       "search_query=%28cat%3Acs.AI+OR+cat%3Acs.LG%29+AND+submittedDate",
     );
+  });
+
+  it("honors Retry-After when arXiv rate limits the client", async () => {
+    let nowMs = Date.parse("2026-03-23T00:00:00.000Z");
+    const applyPenaltyMock = vi.fn(async () => {});
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response("retry later", {
+          status: 429,
+          headers: {
+            "retry-after": "5",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(atomEntryXml, { status: 200 }));
+    const sleepMock = vi.fn(async (ms: number) => {
+      nowMs += ms;
+    });
+
+    const client = new ArxivClient({
+      fetchFn: fetchMock,
+      sleepFn: sleepMock,
+      nowFn: () => nowMs,
+      apiMinDelayMs: 0,
+      rssMinDelayMs: 0,
+      retryBaseDelayMs: 100,
+      requestGate: {
+        waitForTurn: waitForTurnMock,
+        applyPenalty: applyPenaltyMock,
+      },
+    });
+
+    await client.fetchByArxivId("2603.01234");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(applyPenaltyMock).toHaveBeenCalledWith("api", expect.any(Number));
+    expect(sleepMock).toHaveBeenCalledWith(expect.any(Number));
+    expect(sleepMock.mock.calls[0]?.[0]).toBeGreaterThanOrEqual(5000);
   });
 
   it("bypasses the cached API response when requested for a single-paper refetch", async () => {
@@ -149,6 +204,7 @@ describe("ArxivClient", () => {
       apiCacheTtlMinutes: 60,
       requestGate: {
         waitForTurn: waitForTurnMock,
+        applyPenalty: vi.fn(async () => {}),
       },
     });
 
@@ -168,6 +224,7 @@ describe("ArxivClient", () => {
             releaseGate = resolve;
           }),
       ),
+      applyPenalty: vi.fn(async () => {}),
     };
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -189,5 +246,42 @@ describe("ArxivClient", () => {
     releaseGate();
     await pendingFetch;
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to RSS-only daily records when API hydration stays rate-limited", async () => {
+    const applyPenaltyMock = vi.fn(async () => {});
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes("rss.arxiv.org")) {
+          return new Response(dailyFeedXml, { status: 200 });
+        }
+
+        return new Response("retry later", { status: 429 });
+      });
+    const sleepMock = vi.fn(async () => {});
+
+    const client = new ArxivClient({
+      fetchFn: fetchMock,
+      sleepFn: sleepMock,
+      apiMinDelayMs: 0,
+      rssMinDelayMs: 0,
+      retryBaseDelayMs: 1,
+      requestGate: {
+        waitForTurn: waitForTurnMock,
+        applyPenalty: applyPenaltyMock,
+      },
+    });
+
+    const papers = await client.fetchDaily(["cs.AI"], "2026-03-11");
+
+    expect(papers).toHaveLength(1);
+    expect(papers[0]?.sourceMetadata).toMatchObject({
+      sourceType: "arxiv-rss-fallback",
+      announceType: "new",
+    });
+    expect(papers[0]?.abstract).toContain("cost-aware agentic search");
+    expect(applyPenaltyMock).toHaveBeenCalled();
   });
 });
