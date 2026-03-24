@@ -1,5 +1,4 @@
 import { BriefMode } from "@prisma/client";
-import { DEFAULT_SCORING_VERSION } from "@/config/defaults";
 import { prisma } from "@/lib/db";
 import { getPublishedPaperIdsForWeek } from "@/lib/publishing/service";
 import { getAppSettings, getCategoryConfigs, type AppSettings } from "@/lib/settings/service";
@@ -479,25 +478,6 @@ export async function getAdminSnapshot(options?: {
   const pdfCacheCount = await prisma.paperPdfCache.count({
     where: { isCurrent: true },
   });
-  const [currentScoreCount, legacyScoreCount] = await Promise.all([
-    prisma.paperScore.count({
-      where: {
-        isCurrent: true,
-        mode: BriefMode.GENAI,
-        scoringVersion: DEFAULT_SCORING_VERSION,
-      },
-    }),
-    prisma.paperScore.count({
-      where: {
-        isCurrent: true,
-        mode: BriefMode.GENAI,
-        NOT: {
-          scoringVersion: DEFAULT_SCORING_VERSION,
-        },
-      },
-    }),
-  ]);
-
   const selectedEdition = selectedWeek ? await getEditionDataForWeek(selectedWeek) : null;
   const activeEdition =
     activeHomepageWeekStart && activeHomepageWeekStart !== selectedWeek
@@ -537,8 +517,6 @@ export async function getAdminSnapshot(options?: {
     activeHomepageIsCurated: activeHomepageSnapshot.isCurated,
     technicalBriefCount,
     pdfCacheCount,
-    currentScoreCount,
-    legacyScoreCount,
   };
 }
 

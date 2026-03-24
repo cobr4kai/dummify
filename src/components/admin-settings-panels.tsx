@@ -48,8 +48,6 @@ export function AdminSettingsPanels({
   resetSettingsAction,
   updateCategoriesAction,
   currentScoringVersion = DEFAULT_SCORING_VERSION,
-  currentScoreCount = 0,
-  legacyScoreCount = 0,
   sortKey,
   sortDirection,
 }: {
@@ -59,8 +57,6 @@ export function AdminSettingsPanels({
   resetSettingsAction: (formData: FormData) => Promise<void>;
   updateCategoriesAction: (formData: FormData) => Promise<void>;
   currentScoringVersion?: string;
-  currentScoreCount?: number;
-  legacyScoreCount?: number;
   sortKey?: string | null;
   sortDirection?: string | null;
 }) {
@@ -122,10 +118,8 @@ export function AdminSettingsPanels({
             <div className="sm:col-span-2 rounded-[24px] border border-border/80 bg-white/60 px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="highlight">Current scoring version {currentScoringVersion}</Badge>
-                <Badge variant="success">Current scores {currentScoreCount}</Badge>
-                <Badge variant={legacyScoreCount > 0 ? "muted" : "success"}>
-                  Legacy score coverage {legacyScoreCount}
-                </Badge>
+                <Badge variant="muted">Applies to new ingests</Badge>
+                <Badge variant="muted">Older papers may still be legacy</Badge>
               </div>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 Switching presets changes the base weighting for new ingests. Existing scored

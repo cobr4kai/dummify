@@ -62,8 +62,6 @@ export default async function AdminSettingsPage({
       <section>
         <AdminSettingsPanels
           categories={snapshot.categories}
-          currentScoreCount={snapshot.currentScoreCount}
-          legacyScoreCount={snapshot.legacyScoreCount}
           resetSettingsAction={resetSettingsAction}
           settings={snapshot.settings}
           sortDirection={sortDirection}
