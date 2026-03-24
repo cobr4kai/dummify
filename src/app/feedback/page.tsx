@@ -21,6 +21,7 @@ export default async function FeedbackPage({
   const params = await searchParams;
   const sourcePath = sanitizeInternalPath(params.from, "");
   const status = params.status;
+  const notice = getFeedbackNotice(status, sourcePath);
 
   return (
     <PageShell
@@ -32,11 +33,11 @@ export default async function FeedbackPage({
             Product feedback
           </p>
           <h1 className="mt-3 text-3xl text-foreground sm:text-4xl">
-            Tell me whether Abstracted is useful.
+            How is ReadAbstracted feeling so far?
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-foreground/78 sm:text-base">
-            This is for overall product feedback: bugs, suggestions, confusing moments, and what
-            feels genuinely helpful. It is not tied to one paper page, and a short note is enough.
+            A quick signal is enough. If something felt especially useful, confusing, or frustrating,
+            add a short note and I will read it in the product inbox.
           </p>
         </div>
       )}
@@ -44,10 +45,10 @@ export default async function FeedbackPage({
       <section className="mx-auto max-w-3xl">
         <Card>
           <CardHeader>
-            <CardTitle>Overall product signal</CardTitle>
+            <CardTitle>Quick feedback</CardTitle>
             <CardDescription>
-              A quick yes or no is enough. Add context if you want me to understand what felt good
-              or frustrating.
+              This goes directly to the product inbox. Short notes are welcome, and email is only
+              needed if you want a follow-up.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -56,17 +57,17 @@ export default async function FeedbackPage({
 
               <fieldset className="space-y-3">
                 <legend className="text-sm font-medium text-foreground">
-                  Is Abstracted useful overall?
+                  Has ReadAbstracted been useful so far?
                 </legend>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="cursor-pointer rounded-[24px] border border-border/80 bg-white/60 p-4 transition hover:border-foreground/20 hover:bg-white">
+                  <label className="cursor-pointer rounded-[24px] border border-border/80 bg-white/60 p-4 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-emerald-400 has-[:checked]:bg-emerald-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(52,211,153,0.25)]">
                     <input className="sr-only" name="sentiment" type="radio" value="USEFUL" />
                     <span className="block text-sm font-semibold text-foreground">Yes</span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
-                      It is useful overall, even if there are rough edges.
+                      It has been useful overall, even if there are still rough edges.
                     </span>
                   </label>
-                  <label className="cursor-pointer rounded-[24px] border border-border/80 bg-white/60 p-4 transition hover:border-foreground/20 hover:bg-white">
+                  <label className="cursor-pointer rounded-[24px] border border-border/80 bg-white/60 p-4 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(251,191,36,0.25)]">
                     <input className="sr-only" name="sentiment" type="radio" value="NOT_USEFUL" />
                     <span className="block text-sm font-semibold text-foreground">No</span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
@@ -76,8 +77,17 @@ export default async function FeedbackPage({
                 </div>
               </fieldset>
 
+              {notice ? (
+                <div className={notice.className}>
+                  <p className="text-sm font-medium">{notice.title}</p>
+                  {notice.body ? (
+                    <p className="mt-1 text-sm leading-6 text-current/80">{notice.body}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <label className="block space-y-2 text-sm font-medium text-foreground">
-                What should I know?
+                Anything you want me to know?
                 <Textarea
                   maxLength={2000}
                   name="message"
@@ -86,36 +96,23 @@ export default async function FeedbackPage({
               </label>
 
               <label className="block space-y-2 text-sm font-medium text-foreground">
-                Email for follow-up
+                Email for follow-up (optional)
                 <Input
                   autoComplete="email"
                   name="email"
                   placeholder="you@example.com"
                   type="email"
                 />
+                <span className="block text-xs font-normal leading-5 text-muted-foreground">
+                  Only include your email if you want a follow-up.
+                </span>
               </label>
 
-              {status === "success" ? (
-                <p className="text-sm text-emerald-700">
-                  Thanks. Your feedback is in the inbox now.
-                </p>
-              ) : status === "invalid" ? (
-                <p className="text-sm text-danger">
-                  Please choose Yes or No, and make sure any email address is valid.
-                </p>
-              ) : status === "error" ? (
-                <p className="text-sm text-danger">
-                  The feedback did not go through this time. Please try again.
-                </p>
-              ) : sourcePath ? (
-                <p className="text-sm text-muted-foreground">
-                  Sending this from <span className="font-medium text-foreground">{sourcePath}</span>.
-                </p>
-              ) : null}
-
               <FormSubmitButton
+                className="w-full sm:w-auto"
                 idleLabel="Send feedback"
                 pendingLabel="Sending..."
+                size="lg"
                 type="submit"
               />
             </form>
@@ -124,4 +121,40 @@ export default async function FeedbackPage({
       </section>
     </PageShell>
   );
+}
+
+function getFeedbackNotice(status: string | undefined, sourcePath: string) {
+  if (status === "success") {
+    return {
+      className: "rounded-[24px] border border-emerald-200 bg-emerald-50/80 p-4 text-emerald-900",
+      title: "Thanks. Your note is in the inbox now.",
+      body: "If you left an email, I may follow up.",
+    };
+  }
+
+  if (status === "invalid") {
+    return {
+      className: "rounded-[24px] border border-rose-200 bg-rose-50/80 p-4 text-rose-900",
+      title: "Choose Yes or No before sending.",
+      body: "If you add an email, it needs to be valid.",
+    };
+  }
+
+  if (status === "error") {
+    return {
+      className: "rounded-[24px] border border-rose-200 bg-rose-50/80 p-4 text-rose-900",
+      title: "Your feedback did not go through this time.",
+      body: "Please try again.",
+    };
+  }
+
+  if (sourcePath) {
+    return {
+      className: "rounded-[24px] border border-border/80 bg-white/60 p-4 text-foreground",
+      title: `Page: ${sourcePath}`,
+      body: "A short note is enough if something felt useful, confusing, broken, or missing.",
+    };
+  }
+
+  return null;
 }

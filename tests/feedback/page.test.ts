@@ -14,7 +14,7 @@ describe("FeedbackPage", () => {
     const html = renderToStaticMarkup(page);
 
     expect(html).toContain('value="/archive"');
-    expect(html).toContain("Thanks. Your feedback is in the inbox now.");
-    expect(html).toContain("Is Abstracted useful overall?");
+    expect(html).toContain("Thanks. Your note is in the inbox now.");
+    expect(html).toContain("Has ReadAbstracted been useful so far?");
   });
 });
