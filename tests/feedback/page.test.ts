@@ -16,5 +16,6 @@ describe("FeedbackPage", () => {
     expect(html).toContain('value="/archive"');
     expect(html).toContain("Thanks. Your note is in the inbox now.");
     expect(html).toContain("Has ReadAbstracted been useful so far?");
+    expect(html).not.toContain("Page: /archive");
   });
 });

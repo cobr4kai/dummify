@@ -11,6 +11,7 @@ describe("AppHeader", () => {
 
     expect(html).toContain('href="/feedback?from=%2Farchive"');
     expect(html).toContain(">Feedback<");
+    expect(html).toContain("nav-link");
   });
 
   it("does not show the feedback utility link on admin routes", () => {

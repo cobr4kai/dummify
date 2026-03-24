@@ -67,8 +67,8 @@ export function AppHeader({
               {showFeedbackLink ? (
                 <Link
                   className={cn(
-                    "rounded-full border border-border/80 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-foreground/20 hover:bg-white/80 hover:text-foreground",
-                    feedbackIsActive && "border-foreground/20 bg-white text-foreground",
+                    "nav-link rounded-full px-4 py-2 text-sm font-medium",
+                    feedbackIsActive && "nav-link-active",
                   )}
                   href={feedbackHref}
                 >
@@ -115,8 +115,8 @@ export function AppHeader({
             {showFeedbackLink ? (
               <Link
                 className={cn(
-                  "rounded-full border border-border/80 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-foreground/20 hover:bg-white/80 hover:text-foreground",
-                  feedbackIsActive && "border-foreground/20 bg-white text-foreground",
+                  "nav-link rounded-full px-4 py-2 text-sm font-medium",
+                  feedbackIsActive && "nav-link-active",
                 )}
                 href={feedbackHref}
               >

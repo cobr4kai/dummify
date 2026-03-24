@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -42,36 +42,38 @@ export default async function FeedbackPage({
         </div>
       )}
     >
-      <section className="mx-auto max-w-3xl">
+      <section className="mx-auto max-w-[42rem]">
         <Card>
-          <CardHeader>
+          <CardHeader className="mb-3">
             <CardTitle>Quick feedback</CardTitle>
-            <CardDescription>
-              This goes directly to the product inbox. Short notes are welcome, and email is only
-              needed if you want a follow-up.
-            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={submitFeedbackAction} className="space-y-6">
+            <form action={submitFeedbackAction} className="space-y-5">
               <input name="sourcePath" type="hidden" value={sourcePath} />
 
-              <fieldset className="space-y-3">
+              {sourcePath && status !== "success" && status !== "invalid" && status !== "error" ? (
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                  About {sourcePath}
+                </p>
+              ) : null}
+
+              <fieldset className="space-y-2.5">
                 <legend className="text-sm font-medium text-foreground">
                   Has ReadAbstracted been useful so far?
                 </legend>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="cursor-pointer rounded-[24px] border border-border/80 bg-white/60 p-4 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-emerald-400 has-[:checked]:bg-emerald-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(52,211,153,0.25)]">
+                  <label className="cursor-pointer rounded-[22px] border border-border/80 bg-white/50 p-3.5 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-emerald-400 has-[:checked]:bg-emerald-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(52,211,153,0.25)]">
                     <input className="sr-only" name="sentiment" type="radio" value="USEFUL" />
                     <span className="block text-sm font-semibold text-foreground">Yes</span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
-                      It has been useful overall, even if there are still rough edges.
+                      Useful overall, even with rough edges.
                     </span>
                   </label>
-                  <label className="cursor-pointer rounded-[24px] border border-border/80 bg-white/60 p-4 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(251,191,36,0.25)]">
+                  <label className="cursor-pointer rounded-[22px] border border-border/80 bg-white/50 p-3.5 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(251,191,36,0.25)]">
                     <input className="sr-only" name="sentiment" type="radio" value="NOT_USEFUL" />
                     <span className="block text-sm font-semibold text-foreground">No</span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
-                      It is not useful enough yet, or something important is getting in the way.
+                      Not useful enough yet, or something important is missing.
                     </span>
                   </label>
                 </div>
@@ -95,26 +97,30 @@ export default async function FeedbackPage({
                 />
               </label>
 
-              <label className="block space-y-2 text-sm font-medium text-foreground">
-                Email for follow-up (optional)
-                <Input
-                  autoComplete="email"
-                  name="email"
-                  placeholder="you@example.com"
-                  type="email"
-                />
-                <span className="block text-xs font-normal leading-5 text-muted-foreground">
-                  Only include your email if you want a follow-up.
-                </span>
-              </label>
+              <div className="space-y-4 border-t border-border/70 pt-4">
+                <label className="block space-y-2 text-sm font-medium text-foreground">
+                  Email for follow-up (optional)
+                  <Input
+                    autoComplete="email"
+                    name="email"
+                    placeholder="you@example.com"
+                    type="email"
+                  />
+                  <span className="block text-xs font-normal leading-5 text-muted-foreground">
+                    Only include your email if you want a follow-up.
+                  </span>
+                </label>
 
-              <FormSubmitButton
-                className="w-full sm:w-auto"
-                idleLabel="Send feedback"
-                pendingLabel="Sending..."
-                size="lg"
-                type="submit"
-              />
+                <div className="flex flex-wrap items-center gap-3">
+                  <FormSubmitButton
+                    className="w-full sm:w-auto"
+                    idleLabel="Send feedback"
+                    pendingLabel="Sending..."
+                    size="lg"
+                    type="submit"
+                  />
+                </div>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -149,11 +155,7 @@ function getFeedbackNotice(status: string | undefined, sourcePath: string) {
   }
 
   if (sourcePath) {
-    return {
-      className: "rounded-[24px] border border-border/80 bg-white/60 p-4 text-foreground",
-      title: `Page: ${sourcePath}`,
-      body: "A short note is enough if something felt useful, confusing, broken, or missing.",
-    };
+    return null;
   }
 
   return null;
