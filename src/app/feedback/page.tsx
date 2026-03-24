@@ -62,16 +62,22 @@ export default async function FeedbackPage({
                   Has ReadAbstracted been useful so far?
                 </legend>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="cursor-pointer rounded-[22px] border border-border/80 bg-white/50 p-3.5 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-emerald-400 has-[:checked]:bg-emerald-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(52,211,153,0.25)]">
-                    <input className="sr-only" name="sentiment" type="radio" value="USEFUL" />
-                    <span className="block text-sm font-semibold text-foreground">Yes</span>
+                  <label className="surface-muted cursor-pointer rounded-[22px] border border-border/80 p-3.5 transition hover:border-foreground/20 hover:bg-[var(--panel-bg)] has-[:checked]:border-emerald-400 has-[:checked]:bg-[color-mix(in_srgb,var(--panel-bg)_78%,rgb(16,185,129)_22%)] has-[:checked]:shadow-[0_0_0_1px_rgba(52,211,153,0.28)]">
+                    <input className="peer sr-only" name="sentiment" type="radio" value="USEFUL" />
+                    <span className="flex items-center justify-between gap-3 text-sm font-semibold text-foreground">
+                      <span>Yes</span>
+                      <span className="h-3 w-3 rounded-full border border-border/80 bg-transparent transition peer-checked:border-emerald-200 peer-checked:bg-emerald-100" />
+                    </span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
                       Useful overall, even with rough edges.
                     </span>
                   </label>
-                  <label className="cursor-pointer rounded-[22px] border border-border/80 bg-white/50 p-3.5 transition hover:border-foreground/20 hover:bg-white has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50/80 has-[:checked]:shadow-[0_0_0_1px_rgba(251,191,36,0.25)]">
-                    <input className="sr-only" name="sentiment" type="radio" value="NOT_USEFUL" />
-                    <span className="block text-sm font-semibold text-foreground">No</span>
+                  <label className="surface-muted cursor-pointer rounded-[22px] border border-border/80 p-3.5 transition hover:border-foreground/20 hover:bg-[var(--panel-bg)] has-[:checked]:border-amber-400 has-[:checked]:bg-[color-mix(in_srgb,var(--panel-bg)_80%,rgb(245,158,11)_20%)] has-[:checked]:shadow-[0_0_0_1px_rgba(251,191,36,0.28)]">
+                    <input className="peer sr-only" name="sentiment" type="radio" value="NOT_USEFUL" />
+                    <span className="flex items-center justify-between gap-3 text-sm font-semibold text-foreground">
+                      <span>No</span>
+                      <span className="h-3 w-3 rounded-full border border-border/80 bg-transparent transition peer-checked:border-amber-200 peer-checked:bg-amber-100" />
+                    </span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
                       Not useful enough yet, or something important is missing.
                     </span>
