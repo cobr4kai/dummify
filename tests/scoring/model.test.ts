@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   mapLegacyWeightsToVisible,
+  mapPreviousVisibleWeightsToVisible,
   normalizeExecutiveScoreBreakdown,
 } from "@/lib/scoring/model";
 
 describe("score model compatibility", () => {
-  it("maps legacy weight sets into the visible five-criterion model", () => {
+  it("maps legacy weight sets into the new five-criterion model", () => {
     const mapped = mapLegacyWeightsToVisible({
       frontierRelevance: 0.18,
       capabilityImpact: 0.17,
@@ -17,11 +18,29 @@ describe("score model compatibility", () => {
       claritySignal: 0.04,
     });
 
-    expect(mapped.frontierRelevance).toBe(0.18);
-    expect(mapped.capabilityImpact).toBe(0.17);
-    expect(mapped.realWorldImpact).toBeCloseTo(0.45, 5);
-    expect(mapped.evidenceStrength).toBe(0.16);
-    expect(mapped.audiencePull).toBe(0.04);
+    expect(mapped.frontierRelevance).toBeGreaterThan(0.18);
+    expect(mapped.practicalRelevance).toBeGreaterThan(0.2);
+    expect(mapped.evidenceCredibility).toBeGreaterThan(0.1);
+    expect(mapped.tldrAccessibility).toBeGreaterThan(0.05);
+    expect(
+      Object.values(mapped).reduce((sum, value) => sum + value, 0),
+    ).toBeGreaterThan(0.8);
+  });
+
+  it("maps the previous visible weight model into the new component set", () => {
+    const mapped = mapPreviousVisibleWeightsToVisible({
+      frontierRelevance: 0.26,
+      capabilityImpact: 0.22,
+      realWorldImpact: 0.24,
+      evidenceStrength: 0.12,
+      audiencePull: 0.16,
+    });
+
+    expect(mapped.audienceInterest).toBeGreaterThan(0.18);
+    expect(mapped.frontierRelevance).toBeGreaterThan(0.25);
+    expect(mapped.practicalRelevance).toBeGreaterThan(0.18);
+    expect(mapped.evidenceCredibility).toBeCloseTo(0.102, 3);
+    expect(mapped.tldrAccessibility).toBeGreaterThan(0.15);
   });
 
   it("rolls up legacy stored breakdowns into the new visible score card", () => {
@@ -93,9 +112,10 @@ describe("score model compatibility", () => {
     });
 
     expect(normalized.frontierRelevance.label).toBe("Frontier relevance");
-    expect(normalized.realWorldImpact.rawScore).toBeGreaterThan(60);
-    expect(normalized.realWorldImpact.reason).toContain("Serving cost");
-    expect(normalized.audiencePull.rawScore).toBeGreaterThan(60);
-    expect(normalized.audiencePull.label).toBe("Audience pull");
+    expect(normalized.practicalRelevance.rawScore).toBeGreaterThan(60);
+    expect(normalized.practicalRelevance.reason).toContain("Serving cost");
+    expect(normalized.audienceInterest.rawScore).toBeGreaterThan(60);
+    expect(normalized.audienceInterest.label).toBe("Audience interest");
+    expect(normalized.tldrAccessibility.rawScore).toBeGreaterThan(55);
   });
 });

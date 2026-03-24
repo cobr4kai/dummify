@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   ensurePaperTechnicalBriefMock,
   getCategoryConfigsMock,
+  getAppSettingsMock,
   getCurrentTechnicalBriefMock,
   headersMock,
   redirectMock,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => ({
   ensurePaperTechnicalBriefMock: vi.fn(),
   getCategoryConfigsMock: vi.fn(),
+  getAppSettingsMock: vi.fn(),
   getCurrentTechnicalBriefMock: vi.fn(),
   headersMock: vi.fn(),
   redirectMock: vi.fn((url: string) => {
@@ -60,6 +62,7 @@ vi.mock("@/lib/publishing/service", () => ({
 
 vi.mock("@/lib/settings/service", () => ({
   getCategoryConfigs: getCategoryConfigsMock,
+  getAppSettings: getAppSettingsMock,
   resetAppSettings: resetAppSettingsMock,
   updateAppSettings: updateAppSettingsMock,
   updateCategoryConfigs: updateCategoryConfigsMock,
@@ -94,6 +97,7 @@ describe("admin actions", () => {
     updateAppSettingsMock.mockReset();
     resetAppSettingsMock.mockReset();
     getCategoryConfigsMock.mockReset();
+    getAppSettingsMock.mockReset();
     updateCategoryConfigsMock.mockReset();
     setPublishedPaperStateMock.mockReset();
     reorderPublishedPaperForWeekMock.mockReset();
@@ -110,6 +114,9 @@ describe("admin actions", () => {
       summaryCount: 2,
     });
     updateAppSettingsMock.mockResolvedValue(undefined);
+    getAppSettingsMock.mockResolvedValue({
+      genAiScoringPreset: "non_research",
+    });
   });
 
   it("redirects daily refresh back to ingest", async () => {
@@ -133,11 +140,11 @@ describe("admin actions", () => {
 
   it("redirects settings saves back to settings", async () => {
     const formData = new FormData();
+    formData.set("audienceInterest", "1");
     formData.set("frontierRelevance", "1");
-    formData.set("capabilityImpact", "1");
-    formData.set("realWorldImpact", "1");
-    formData.set("evidenceStrength", "1");
-    formData.set("audiencePull", "1");
+    formData.set("practicalRelevance", "1");
+    formData.set("evidenceCredibility", "1");
+    formData.set("tldrAccessibility", "1");
 
     await expect(updateSettingsAction(formData)).rejects.toThrow(
       "REDIRECT:/admin/settings?notice=settings-saved",

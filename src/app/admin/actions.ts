@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
+import { getDefaultRankingWeightsForPreset } from "@/config/defaults";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
 import { runIngestionJob } from "@/lib/ingestion/service";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/lib/publishing/service";
 import {
   getCategoryConfigs,
+  getAppSettings,
   resetAppSettings,
   updateAppSettings,
   updateCategoryConfigs,
@@ -107,14 +109,22 @@ export async function updateSettingsAction(formData: FormData) {
   await requireAdmin("/admin/settings");
   const selectedWeek = readString(formData.get("selectedWeek"));
   const { sortKey, sortDirection } = await readAdminSortState(formData);
-
+  const currentSettings = await getAppSettings();
+  const nextPreset =
+    readString(formData.get("genAiScoringPreset")) === "research_tldr"
+      ? "research_tldr"
+      : "non_research";
   const genAiRankingWeights = {
+    audienceInterest: Number(formData.get("audienceInterest") ?? 0),
     frontierRelevance: Number(formData.get("frontierRelevance") ?? 0),
-    capabilityImpact: Number(formData.get("capabilityImpact") ?? 0),
-    realWorldImpact: Number(formData.get("realWorldImpact") ?? 0),
-    evidenceStrength: Number(formData.get("evidenceStrength") ?? 0),
-    audiencePull: Number(formData.get("audiencePull") ?? 0),
+    practicalRelevance: Number(formData.get("practicalRelevance") ?? 0),
+    evidenceCredibility: Number(formData.get("evidenceCredibility") ?? 0),
+    tldrAccessibility: Number(formData.get("tldrAccessibility") ?? 0),
   };
+  const nextWeights =
+    nextPreset !== currentSettings.genAiScoringPreset
+      ? getDefaultRankingWeightsForPreset(nextPreset)
+      : genAiRankingWeights;
 
   await updateAppSettings({
     genAiFeaturedCount: Number(formData.get("genAiFeaturedCount") ?? 10),
@@ -122,7 +132,9 @@ export async function updateSettingsAction(formData: FormData) {
     highBusinessRelevanceThreshold: Number(
       formData.get("highBusinessRelevanceThreshold") ?? 70,
     ),
-    genAiRankingWeights,
+    rankingWeights: nextWeights,
+    genAiRankingWeights: nextWeights,
+    genAiScoringPreset: nextPreset,
     genAiUsePremiumSynthesis: formData.get("genAiUsePremiumSynthesis") === "on",
     pdfCacheDir: String(formData.get("pdfCacheDir") ?? ".paperbrief-cache"),
     primaryCronSchedule: String(

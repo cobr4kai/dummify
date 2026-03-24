@@ -22,12 +22,15 @@ export const MATURITY_ESTIMATES = [
 
 export type MaturityEstimate = (typeof MATURITY_ESTIMATES)[number];
 
+export const SCORING_PRESETS = ["non_research", "research_tldr"] as const;
+export type ScoringPreset = (typeof SCORING_PRESETS)[number];
+
 export const EXECUTIVE_SCORE_COMPONENTS = [
+  "audienceInterest",
   "frontierRelevance",
-  "capabilityImpact",
-  "realWorldImpact",
-  "evidenceStrength",
-  "audiencePull",
+  "practicalRelevance",
+  "evidenceCredibility",
+  "tldrAccessibility",
 ] as const;
 
 export type ExecutiveScoreComponentKey = (typeof EXECUTIVE_SCORE_COMPONENTS)[number];

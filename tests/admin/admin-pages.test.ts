@@ -37,6 +37,7 @@ const baseSnapshot = {
     genAiFeaturedCount: 10,
     genAiShortlistSize: 25,
     highBusinessRelevanceThreshold: 70,
+    genAiScoringPreset: "non_research",
     pdfCacheDir: ".paperbrief-cache",
     primaryCronSchedule: "15 17 * * 0-4",
     reconcileCronSchedule: "45 20 * * 0-4",
@@ -48,11 +49,11 @@ const baseSnapshot = {
     feedCacheTtlMinutes: 60,
     apiCacheTtlMinutes: 180,
     genAiRankingWeights: {
+      audienceInterest: 1,
       frontierRelevance: 1,
-      capabilityImpact: 1,
-      realWorldImpact: 1,
-      evidenceStrength: 1,
-      audiencePull: 1,
+      practicalRelevance: 1,
+      evidenceCredibility: 1,
+      tldrAccessibility: 1,
     },
   },
   categories: [
@@ -89,6 +90,8 @@ const baseSnapshot = {
   activeHomepageIsCurated: true,
   technicalBriefCount: 12,
   pdfCacheCount: 15,
+  currentScoreCount: 18,
+  legacyScoreCount: 6,
 };
 
 describe("admin route pages", () => {

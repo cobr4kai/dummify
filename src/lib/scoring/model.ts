@@ -4,10 +4,29 @@ import {
   type ExecutiveScoreBreakdown,
   type ExecutiveScoreComponentKey,
   type ExecutiveScoringWeights,
+  type ScoringPreset,
   type ScoreBreakdown,
   type ScoreBreakdownItem,
 } from "@/lib/types";
 import { clamp, round } from "@/lib/utils/strings";
+
+export const PREVIOUS_VISIBLE_EXECUTIVE_SCORE_COMPONENTS = [
+  "frontierRelevance",
+  "capabilityImpact",
+  "realWorldImpact",
+  "evidenceStrength",
+  "audiencePull",
+] as const;
+
+export type PreviousVisibleExecutiveScoreComponentKey =
+  (typeof PREVIOUS_VISIBLE_EXECUTIVE_SCORE_COMPONENTS)[number];
+export type PreviousVisibleExecutiveScoringWeights = Record<
+  PreviousVisibleExecutiveScoreComponentKey,
+  number
+>;
+export type PreviousVisibleExecutiveScoreBreakdown = ScoreBreakdown<
+  PreviousVisibleExecutiveScoreComponentKey
+>;
 
 export const LEGACY_EXECUTIVE_SCORE_COMPONENTS = [
   "frontierRelevance",
@@ -35,35 +54,54 @@ export const EXECUTIVE_SCORE_COMPONENT_METADATA: Record<
     description: string;
   }
 > = {
+  audienceInterest: {
+    label: "Audience interest",
+    shortLabel: "Audience",
+    description:
+      "Feels broadly newsworthy or immediately legible to smart readers who care about where AI is going.",
+  },
   frontierRelevance: {
     label: "Frontier relevance",
     shortLabel: "Frontier",
     description:
-      "Directly targets modern frontier-model, multimodal, agentic, or deployment-relevant AI systems.",
+      "Speaks directly to meaningful AI advancement, especially in active areas like agents, multimodality, evaluation, and deployment.",
   },
-  capabilityImpact: {
-    label: "Capability impact",
-    shortLabel: "Capability",
+  practicalRelevance: {
+    label: "Practical relevance",
+    shortLabel: "Practical",
     description:
-      "Claims a meaningful change in what AI systems can do or how well they perform.",
+      "Has visible consequences for how teams build, deploy, evaluate, buy, or understand real AI systems.",
   },
-  realWorldImpact: {
-    label: "Real-world impact",
-    shortLabel: "Real-world",
-    description:
-      "Could materially affect cost, deployment, workflow automation, productization, or business decision-making.",
-  },
-  evidenceStrength: {
-    label: "Evidence strength",
+  evidenceCredibility: {
+    label: "Evidence credibility",
     shortLabel: "Evidence",
     description:
-      "Includes credible comparative evidence, benchmark structure, or support strong enough to take the claim seriously.",
+      "Shows enough rigor, quantification, or comparative structure that the core claim is worth taking seriously.",
   },
-  audiencePull: {
-    label: "Audience pull",
-    shortLabel: "Audience",
+  tldrAccessibility: {
+    label: "TL;DR accessibility",
+    shortLabel: "TL;DR",
     description:
-      "Addresses a topic that smart non-research readers are likely to care about immediately, not just technical specialists.",
+      "Can be turned into a concise, useful takeaway without asking the reader to parse a dense specialist paper first.",
+  },
+};
+
+export const SCORING_PRESET_METADATA: Record<
+  ScoringPreset,
+  {
+    label: string;
+    description: string;
+  }
+> = {
+  non_research: {
+    label: "General audience",
+    description:
+      "Optimized for broad editorial relevance across builders, operators, PMs, and business-minded readers.",
+  },
+  research_tldr: {
+    label: "Research TL;DR",
+    description:
+      "Optimized for concise technical significance and strong paper triage without assuming the reader wants a full research deep dive.",
   },
 };
 
@@ -88,9 +126,9 @@ const LEGACY_REAL_WORLD_KEYS: LegacyExecutiveScoreComponentKey[] = [
   "strategicBusinessImpact",
 ];
 
-export function mapLegacyWeightsToVisible(
+export function mapLegacyWeightsToPreviousVisible(
   weights: LegacyExecutiveScoringWeights,
-): ExecutiveScoringWeights {
+): PreviousVisibleExecutiveScoringWeights {
   return {
     frontierRelevance: weights.frontierRelevance,
     capabilityImpact: weights.capabilityImpact,
@@ -102,6 +140,36 @@ export function mapLegacyWeightsToVisible(
     evidenceStrength: weights.evidenceStrength,
     audiencePull: weights.claritySignal,
   };
+}
+
+export function mapPreviousVisibleWeightsToVisible(
+  weights: PreviousVisibleExecutiveScoringWeights,
+): ExecutiveScoringWeights {
+  return {
+    audienceInterest:
+      weights.frontierRelevance * 0.2 +
+      weights.realWorldImpact * 0.2 +
+      weights.audiencePull * 0.65,
+    frontierRelevance:
+      weights.frontierRelevance * 0.65 + weights.capabilityImpact * 0.55,
+    practicalRelevance:
+      weights.capabilityImpact * 0.2 + weights.realWorldImpact * 0.7,
+    evidenceCredibility: weights.evidenceStrength * 0.85,
+    tldrAccessibility:
+      weights.frontierRelevance * 0.15 +
+      weights.capabilityImpact * 0.25 +
+      weights.realWorldImpact * 0.1 +
+      weights.evidenceStrength * 0.15 +
+      weights.audiencePull * 0.35,
+  };
+}
+
+export function mapLegacyWeightsToVisible(
+  weights: LegacyExecutiveScoringWeights,
+): ExecutiveScoringWeights {
+  return mapPreviousVisibleWeightsToVisible(
+    mapLegacyWeightsToPreviousVisible(weights),
+  );
 }
 
 export function normalizeExecutiveScoreBreakdown(
@@ -127,6 +195,116 @@ export function normalizeExecutiveScoreBreakdown(
         ];
       }),
     ) as ExecutiveScoreBreakdown;
+  }
+
+  return mapPreviousVisibleBreakdownToVisible(
+    normalizeToPreviousVisibleBreakdown(breakdown),
+  );
+}
+
+export function mapPreviousVisibleBreakdownToVisible(
+  breakdown: PreviousVisibleExecutiveScoreBreakdown,
+): ExecutiveScoreBreakdown {
+  const weights = mapPreviousVisibleWeightsToVisible(
+    Object.fromEntries(
+      PREVIOUS_VISIBLE_EXECUTIVE_SCORE_COMPONENTS.map((key) => [
+        key,
+        breakdown[key]?.weight ?? 0,
+      ]),
+    ) as PreviousVisibleExecutiveScoringWeights,
+  );
+
+  const audienceInterest = buildMappedScoreItem(
+    "audienceInterest",
+    weights.audienceInterest,
+    [
+      { item: breakdown.frontierRelevance, coefficient: 0.2 },
+      { item: breakdown.realWorldImpact, coefficient: 0.2 },
+      { item: breakdown.audiencePull, coefficient: 0.65 },
+    ],
+  );
+  const frontierRelevance = buildMappedScoreItem(
+    "frontierRelevance",
+    weights.frontierRelevance,
+    [
+      { item: breakdown.frontierRelevance, coefficient: 0.65 },
+      { item: breakdown.capabilityImpact, coefficient: 0.55 },
+    ],
+  );
+  const practicalRelevance = buildMappedScoreItem(
+    "practicalRelevance",
+    weights.practicalRelevance,
+    [
+      { item: breakdown.capabilityImpact, coefficient: 0.2 },
+      { item: breakdown.realWorldImpact, coefficient: 0.7 },
+    ],
+  );
+  const evidenceCredibility = buildMappedScoreItem(
+    "evidenceCredibility",
+    weights.evidenceCredibility,
+    [{ item: breakdown.evidenceStrength, coefficient: 0.85 }],
+  );
+  const tldrAccessibility = buildMappedScoreItem(
+    "tldrAccessibility",
+    weights.tldrAccessibility,
+    [
+      { item: breakdown.frontierRelevance, coefficient: 0.15 },
+      { item: breakdown.capabilityImpact, coefficient: 0.25 },
+      { item: breakdown.realWorldImpact, coefficient: 0.1 },
+      { item: breakdown.evidenceStrength, coefficient: 0.15 },
+      { item: breakdown.audiencePull, coefficient: 0.35 },
+    ],
+  );
+
+  return {
+    audienceInterest,
+    frontierRelevance,
+    practicalRelevance,
+    evidenceCredibility,
+    tldrAccessibility,
+  };
+}
+
+export function defaultReasonForVisibleComponent(
+  key: ExecutiveScoreComponentKey,
+  rawScore: number,
+) {
+  const { label } = EXECUTIVE_SCORE_COMPONENT_METADATA[key];
+
+  if (rawScore >= 75) {
+    return `${label} is a strong signal in the title and abstract.`;
+  }
+
+  if (rawScore >= 50) {
+    return `${label} appears meaningfully in the paper framing.`;
+  }
+
+  return `${label} is present but not dominant in the abstract.`;
+}
+
+function normalizeToPreviousVisibleBreakdown(
+  breakdown: ScoreBreakdown<string>,
+): PreviousVisibleExecutiveScoreBreakdown {
+  const hasPreviousVisibleBreakdown = PREVIOUS_VISIBLE_EXECUTIVE_SCORE_COMPONENTS.every(
+    (key) => breakdown[key],
+  );
+
+  if (hasPreviousVisibleBreakdown) {
+    return Object.fromEntries(
+      PREVIOUS_VISIBLE_EXECUTIVE_SCORE_COMPONENTS.map((key) => {
+        const item = breakdown[key] as ScoreBreakdownItem<string>;
+        return [
+          key,
+          buildPreviousVisibleScoreItem(
+            key,
+            item.rawScore,
+            item.weight,
+            item.reason,
+            item.weightedScore,
+          ),
+        ];
+      }),
+    ) as PreviousVisibleExecutiveScoreBreakdown;
   }
 
   const legacyFrontier = readLegacyItem(breakdown, "frontierRelevance");
@@ -157,62 +335,66 @@ export function normalizeExecutiveScoreBreakdown(
   );
 
   return {
-    frontierRelevance: buildVisibleScoreItem(
+    frontierRelevance: buildPreviousVisibleScoreItem(
       "frontierRelevance",
       legacyFrontier?.rawScore ?? 0,
       legacyFrontier?.weight ?? 0,
       legacyFrontier?.reason ??
-        defaultReasonForVisibleComponent("frontierRelevance", legacyFrontier?.rawScore ?? 0),
+        "Frontier relevance is a strong signal in the older scoring model.",
       legacyFrontier?.weightedScore,
     ),
-    capabilityImpact: buildVisibleScoreItem(
+    capabilityImpact: buildPreviousVisibleScoreItem(
       "capabilityImpact",
       legacyCapability?.rawScore ?? 0,
       legacyCapability?.weight ?? 0,
       legacyCapability?.reason ??
-        defaultReasonForVisibleComponent("capabilityImpact", legacyCapability?.rawScore ?? 0),
+        "Capability impact appears meaningfully in the older scoring model.",
       legacyCapability?.weightedScore,
     ),
-    realWorldImpact: buildVisibleScoreItem(
+    realWorldImpact: buildPreviousVisibleScoreItem(
       "realWorldImpact",
       realWorldRawScore,
       legacyRealWorldItems.reduce((sum, item) => sum + item.weight, 0),
       strongestRealWorldSignal?.reason ??
-        defaultReasonForVisibleComponent("realWorldImpact", realWorldRawScore),
+        "Real-world impact is a meaningful signal in the older scoring model.",
     ),
-    evidenceStrength: buildVisibleScoreItem(
+    evidenceStrength: buildPreviousVisibleScoreItem(
       "evidenceStrength",
       legacyEvidence?.rawScore ?? 0,
       legacyEvidence?.weight ?? 0,
       legacyEvidence?.reason ??
-        defaultReasonForVisibleComponent("evidenceStrength", legacyEvidence?.rawScore ?? 0),
+        "Evidence strength appears meaningfully in the older scoring model.",
       legacyEvidence?.weightedScore,
     ),
-    audiencePull: buildVisibleScoreItem(
+    audiencePull: buildPreviousVisibleScoreItem(
       "audiencePull",
       audiencePullRawScore,
       legacyClarity?.weight ?? 0,
       legacyClarity?.reason ??
-        defaultReasonForVisibleComponent("audiencePull", audiencePullRawScore),
+        "Audience pull appears meaningfully in the older scoring model.",
     ),
   };
 }
 
-export function defaultReasonForVisibleComponent(
+function buildMappedScoreItem(
   key: ExecutiveScoreComponentKey,
-  rawScore: number,
-) {
-  const { label } = EXECUTIVE_SCORE_COMPONENT_METADATA[key];
+  weight: number,
+  sources: Array<{
+    item: ScoreBreakdownItem<string>;
+    coefficient: number;
+  }>,
+): ScoreBreakdownItem<ExecutiveScoreComponentKey> {
+  const rawScore = clamp(
+    round(weightedAverage(sources.map(({ item, coefficient }) => [item.rawScore, coefficient]))),
+  );
+  const strongestReason = pickStrongestReason(sources);
 
-  if (rawScore >= 75) {
-    return `${label} is a strong signal in the title and abstract.`;
-  }
-
-  if (rawScore >= 50) {
-    return `${label} appears meaningfully in the paper framing.`;
-  }
-
-  return `${label} is present but not dominant in the abstract.`;
+  return buildVisibleScoreItem(
+    key,
+    rawScore,
+    weight,
+    strongestReason ?? defaultReasonForVisibleComponent(key, rawScore),
+  );
 }
 
 function buildVisibleScoreItem(
@@ -233,6 +415,49 @@ function buildVisibleScoreItem(
         : round(clamp(rawScore) * weight),
     reason,
   };
+}
+
+function buildPreviousVisibleScoreItem(
+  key: PreviousVisibleExecutiveScoreComponentKey,
+  rawScore: number,
+  weight: number,
+  reason: string,
+  weightedScore?: number,
+): ScoreBreakdownItem<PreviousVisibleExecutiveScoreComponentKey> {
+  return {
+    key,
+    label: key,
+    rawScore: clamp(rawScore),
+    weight,
+    weightedScore:
+      typeof weightedScore === "number"
+        ? weightedScore
+        : round(clamp(rawScore) * weight),
+    reason,
+  };
+}
+
+function weightedAverage(entries: Array<[number, number]>) {
+  const totalWeight = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  if (totalWeight <= 0) {
+    return 0;
+  }
+
+  return entries.reduce((sum, [value, weight]) => sum + value * weight, 0) / totalWeight;
+}
+
+function pickStrongestReason(
+  sources: Array<{
+    item: ScoreBreakdownItem<string>;
+    coefficient: number;
+  }>,
+) {
+  return [...sources]
+    .sort(
+      (left, right) =>
+        right.item.rawScore * right.coefficient - left.item.rawScore * left.coefficient,
+    )[0]
+    ?.item.reason;
 }
 
 function readLegacyItem(

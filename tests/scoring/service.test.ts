@@ -27,19 +27,19 @@ describe("computeBriefScore", () => {
     expect(score.breakdown.frontierRelevance.weight).toBe(
       DEFAULT_GENAI_RANKING_WEIGHTS.frontierRelevance,
     );
-    expect(score.breakdown.realWorldImpact.rawScore).toBeGreaterThanOrEqual(45);
-    expect(score.breakdown.audiencePull.rawScore).toBeGreaterThanOrEqual(45);
+    expect(score.breakdown.practicalRelevance.rawScore).toBeGreaterThanOrEqual(45);
+    expect(score.breakdown.audienceInterest.rawScore).toBeGreaterThanOrEqual(45);
     expect(score.rationale.length).toBeGreaterThan(20);
   });
 
   it("uses the new five-criterion default weight model", () => {
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.audienceInterest).toBe(0.28);
     expect(DEFAULT_GENAI_RANKING_WEIGHTS.frontierRelevance).toBe(0.26);
-    expect(DEFAULT_GENAI_RANKING_WEIGHTS.capabilityImpact).toBe(0.22);
-    expect(DEFAULT_GENAI_RANKING_WEIGHTS.realWorldImpact).toBe(0.24);
-    expect(DEFAULT_GENAI_RANKING_WEIGHTS.evidenceStrength).toBe(0.12);
-    expect(DEFAULT_GENAI_RANKING_WEIGHTS.audiencePull).toBe(0.16);
-    expect(DEFAULT_GENAI_RANKING_WEIGHTS.frontierRelevance).toBeGreaterThan(
-      DEFAULT_GENAI_RANKING_WEIGHTS.evidenceStrength,
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.practicalRelevance).toBe(0.22);
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.evidenceCredibility).toBe(0.16);
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.tldrAccessibility).toBe(0.08);
+    expect(DEFAULT_GENAI_RANKING_WEIGHTS.audienceInterest).toBeGreaterThan(
+      DEFAULT_GENAI_RANKING_WEIGHTS.tldrAccessibility,
     );
     expect(
       Object.values(DEFAULT_GENAI_RANKING_WEIGHTS).reduce((sum, value) => sum + value, 0),
@@ -55,7 +55,7 @@ describe("computeBriefScore", () => {
     });
 
     expect(score.totalScore).toBeGreaterThan(0);
-    expect(score.breakdown.audiencePull.rawScore).toBeLessThanOrEqual(60);
+    expect(score.breakdown.audienceInterest.rawScore).toBeLessThanOrEqual(60);
     expect(score.frontierRelevanceScore).toBeLessThan(
       DEFAULT_HIGH_BUSINESS_RELEVANCE_THRESHOLD,
     );
@@ -76,8 +76,8 @@ describe("computeBriefScore", () => {
       categories: ["cs.LG", "cs.CV"],
     });
 
-    expect(quantified.breakdown.evidenceStrength.rawScore).toBeGreaterThan(
-      vague.breakdown.evidenceStrength.rawScore,
+    expect(quantified.breakdown.evidenceCredibility.rawScore).toBeGreaterThan(
+      vague.breakdown.evidenceCredibility.rawScore,
     );
     expect(quantified.totalScore).toBeGreaterThan(vague.totalScore);
   });
@@ -123,12 +123,12 @@ describe("computeBriefScore", () => {
       },
     });
 
-    expect(withoutMetadata.breakdown.realWorldImpact.rawScore).toBeLessThan(
-      withMetadata.breakdown.realWorldImpact.rawScore,
+    expect(withoutMetadata.breakdown.practicalRelevance.rawScore).toBeLessThan(
+      withMetadata.breakdown.practicalRelevance.rawScore,
     );
   });
 
-  it("rewards topics with natural business-reader relevance through audience pull", () => {
+  it("rewards topics with natural business-reader relevance through audience interest", () => {
     const highPull = computeBriefScore({
       title: "Agent Workflows for Enterprise Knowledge Work",
       abstract:
@@ -143,8 +143,8 @@ describe("computeBriefScore", () => {
       categories: ["stat.ML"],
     });
 
-    expect(highPull.breakdown.audiencePull.rawScore).toBeGreaterThan(
-      lowPull.breakdown.audiencePull.rawScore,
+    expect(highPull.breakdown.audienceInterest.rawScore).toBeGreaterThan(
+      lowPull.breakdown.audienceInterest.rawScore,
     );
     expect(highPull.totalScore).toBeGreaterThan(lowPull.totalScore);
   });

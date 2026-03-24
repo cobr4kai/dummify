@@ -8,10 +8,12 @@ import {
 import {
   defaultReasonForVisibleComponent,
   EXECUTIVE_SCORE_COMPONENT_METADATA,
+  mapPreviousVisibleBreakdownToVisible,
+  PREVIOUS_VISIBLE_EXECUTIVE_SCORE_COMPONENTS,
+  type PreviousVisibleExecutiveScoreBreakdown,
+  type PreviousVisibleExecutiveScoreComponentKey,
 } from "@/lib/scoring/model";
 import type {
-  ExecutiveScoreBreakdown,
-  ExecutiveScoreComponentKey,
   ExecutiveScoreComputationResult,
   ExecutiveScoringWeights,
   PaperSourceRecord,
@@ -24,23 +26,25 @@ import {
   splitKeywords,
 } from "@/lib/utils/strings";
 
+type AnalysisSignal = Pick<
+  StructuredMetadataEnrichment,
+  | "thesis"
+  | "whyItMatters"
+  | "topicTags"
+  | "methodType"
+  | "evidenceStrength"
+  | "likelyAudience"
+  | "caveats"
+  | "noveltyScore"
+  | "businessRelevanceScore"
+  | "sourceBasis"
+>;
+
 export function computeBriefScore(
   paper: Pick<PaperSourceRecord, "title" | "abstract" | "categories"> &
     Partial<Pick<PaperSourceRecord, "sourceFeedCategories" | "sourceMetadata">>,
   weights: ExecutiveScoringWeights = DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
-  analysis?: Pick<
-    StructuredMetadataEnrichment,
-    | "thesis"
-    | "whyItMatters"
-    | "topicTags"
-    | "methodType"
-    | "evidenceStrength"
-    | "likelyAudience"
-    | "caveats"
-    | "noveltyScore"
-    | "businessRelevanceScore"
-    | "sourceBasis"
-  > | null,
+  analysis?: AnalysisSignal | null,
 ): ExecutiveScoreComputationResult {
   const normalizedText = normalizeSearchText(
     [
@@ -57,22 +61,26 @@ export function computeBriefScore(
       .filter(Boolean)
       .join(" "),
   );
-  const breakdown = {} as ExecutiveScoreBreakdown;
 
-  for (const key of Object.keys(weights) as ExecutiveScoreComponentKey[]) {
-    breakdown[key] = computeExecutiveComponentScore(
+  const previousVisibleBreakdown = {} as PreviousVisibleExecutiveScoreBreakdown;
+
+  for (const key of PREVIOUS_VISIBLE_EXECUTIVE_SCORE_COMPONENTS) {
+    previousVisibleBreakdown[key] = computePreviousVisibleComponentScore(
       key,
       normalizedText,
       paper.categories,
-      weights[key],
       paper.abstract,
       paper.sourceMetadata,
       analysis ?? undefined,
     );
   }
 
-  applyCrossListBonus(breakdown, paper.sourceFeedCategories ?? []);
+  applyCrossListBonus(previousVisibleBreakdown, paper.sourceFeedCategories ?? []);
 
+  const breakdown = applyTargetWeights(
+    mapPreviousVisibleBreakdownToVisible(previousVisibleBreakdown),
+    weights,
+  );
   const totalScore = round(
     Object.values(breakdown).reduce((sum, item) => sum + item.weightedScore, 0),
   );
@@ -90,14 +98,13 @@ export function computeBriefScore(
 }
 
 export function getScoreModeLabel() {
-  return "Brief score";
+  return "TL;DR score";
 }
 
-function computeExecutiveComponentScore(
-  key: ExecutiveScoreComponentKey,
+function computePreviousVisibleComponentScore(
+  key: PreviousVisibleExecutiveScoreComponentKey,
   normalizedText: string,
   categories: string[],
-  weight: number,
   abstract: string,
   sourceMetadata?: Record<string, unknown>,
   analysis?: Pick<
@@ -111,7 +118,7 @@ function computeExecutiveComponentScore(
     | "businessRelevanceScore"
     | "sourceBasis"
   >,
-): ScoreBreakdownItem<ExecutiveScoreComponentKey> {
+): ScoreBreakdownItem<PreviousVisibleExecutiveScoreComponentKey> {
   let rawScore = baseComponentScore(key, abstract, analysis);
   const reasons: Array<{ reason: string; weight: number }> = [];
 
@@ -155,18 +162,38 @@ function computeExecutiveComponentScore(
 
   return {
     key,
-    label: EXECUTIVE_SCORE_COMPONENT_METADATA[key].label,
+    label: key,
     rawScore,
-    weight,
-    weightedScore: round(rawScore * weight),
-    reason:
-      topReason?.reason ??
-      defaultReasonForVisibleComponent(key, rawScore),
+    weight: 0,
+    weightedScore: 0,
+    reason: topReason?.reason ?? defaultReasonForPreviousVisibleComponent(key, rawScore),
   };
 }
 
+function applyTargetWeights(
+  breakdown: ExecutiveScoreComputationResult["breakdown"],
+  weights: ExecutiveScoringWeights,
+) {
+  return Object.fromEntries(
+    Object.entries(breakdown).map(([key, item]) => {
+      const weight = weights[key as keyof ExecutiveScoringWeights];
+      return [
+        key,
+        {
+          ...item,
+          weight,
+          weightedScore: round(item.rawScore * weight),
+          label:
+            EXECUTIVE_SCORE_COMPONENT_METADATA[key as keyof typeof EXECUTIVE_SCORE_COMPONENT_METADATA]
+              .label,
+        },
+      ];
+    }),
+  ) as ExecutiveScoreComputationResult["breakdown"];
+}
+
 function baseComponentScore(
-  key: ExecutiveScoreComponentKey,
+  key: PreviousVisibleExecutiveScoreComponentKey,
   abstract: string,
   analysis?: Pick<
     StructuredMetadataEnrichment,
@@ -192,7 +219,8 @@ function baseComponentScore(
     }
 
     if (analysis) {
-      score += analysis.likelyAudience.filter((audience) => audience !== "researchers").length * 5;
+      score +=
+        analysis.likelyAudience.filter((audience) => audience !== "researchers").length * 5;
     }
 
     return score;
@@ -225,7 +253,7 @@ function baseComponentScore(
 }
 
 function applyCrossListBonus(
-  breakdown: ExecutiveScoreBreakdown,
+  breakdown: PreviousVisibleExecutiveScoreBreakdown,
   sourceFeedCategories: string[],
 ) {
   const relevantFeedCount = new Set(
@@ -242,7 +270,6 @@ function applyCrossListBonus(
   const overlapBonus = Math.min(12, (relevantFeedCount - 1) * 6);
   const item = breakdown.frontierRelevance;
   item.rawScore = clamp(item.rawScore + overlapBonus);
-  item.weightedScore = round(item.rawScore * item.weight);
   item.reason =
     "Cross-listed across multiple operator-relevant arXiv feeds, increasing odds that the paper matters beyond a narrow niche.";
 }
@@ -257,7 +284,7 @@ function readInstitutionSignal(sourceMetadata?: Record<string, unknown>) {
 }
 
 function applyStructuredMetadataSignal(
-  key: ExecutiveScoreComponentKey,
+  key: PreviousVisibleExecutiveScoreComponentKey,
   analysis: Pick<
     StructuredMetadataEnrichment,
     | "topicTags"
@@ -276,7 +303,11 @@ function applyStructuredMetadataSignal(
   let reason: string | null = null;
 
   if (key === "frontierRelevance") {
-    if (analysis.topicTags.some((tag) => ["agents", "models", "inference", "infra"].includes(tag))) {
+    if (
+      analysis.topicTags.some((tag) =>
+        ["agents", "models", "inference", "infra", "reasoning"].includes(tag),
+      )
+    ) {
       delta += 6;
       reason =
         "Structured metadata tags the paper as directly relevant to current frontier deployment themes.";
@@ -284,10 +315,10 @@ function applyStructuredMetadataSignal(
   }
 
   if (key === "capabilityImpact") {
-    if (/(training|inference|agent|world model|retrieval)/i.test(analysis.methodType)) {
+    if (/(training|inference|agent|world model|retrieval|benchmark|evaluation)/i.test(analysis.methodType)) {
       delta += 5;
       reason =
-        "Structured metadata suggests the paper proposes a concrete system or method rather than only a descriptive synthesis.";
+        "Structured metadata suggests the paper proposes a concrete method, benchmark, or system rather than only descriptive framing.";
     }
   }
 
@@ -295,7 +326,7 @@ function applyStructuredMetadataSignal(
     if (analysis.sourceBasis === "editorial") {
       delta += 6;
       reason =
-        "The paper already cleared the curated editorial layer, which is a useful proxy for real-world importance.";
+        "The paper already cleared the curated editorial layer, which is a useful proxy for practical importance.";
     } else if (analysis.businessRelevanceScore >= 70) {
       delta += 5;
       reason =
@@ -328,4 +359,25 @@ function applyStructuredMetadataSignal(
       });
     }
   }
+}
+
+function defaultReasonForPreviousVisibleComponent(
+  key: PreviousVisibleExecutiveScoreComponentKey,
+  rawScore: number,
+) {
+  const mappedDefaults: Record<PreviousVisibleExecutiveScoreComponentKey, string> = {
+    frontierRelevance: defaultReasonForVisibleComponent("frontierRelevance", rawScore),
+    capabilityImpact:
+      rawScore >= 60
+        ? "Capability impact is a meaningful signal in the title and abstract."
+        : "Capability impact is present but not dominant in the abstract.",
+    realWorldImpact:
+      rawScore >= 60
+        ? "Practical consequences are a meaningful signal in the paper framing."
+        : "Practical consequences are present but not dominant in the abstract.",
+    evidenceStrength: defaultReasonForVisibleComponent("evidenceCredibility", rawScore),
+    audiencePull: defaultReasonForVisibleComponent("audienceInterest", rawScore),
+  };
+
+  return mappedDefaults[key];
 }

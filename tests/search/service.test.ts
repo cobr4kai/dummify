@@ -252,6 +252,31 @@ vi.mock("@/lib/db", () => {
           mockData.papers.reduce((count, paper) => count + paper.pdfCaches.length, 0)
         ),
       },
+      paperScore: {
+        count: vi.fn(async ({ where }: Record<string, unknown>) => {
+          const scoringVersion = (where as { scoringVersion?: string; NOT?: { scoringVersion?: string } })
+            .scoringVersion;
+          const excludedVersion = (where as { NOT?: { scoringVersion?: string } }).NOT
+            ?.scoringVersion;
+
+          return mockData.papers.reduce((count, paper) => {
+            const score = paper.scores[0];
+            if (!score) {
+              return count;
+            }
+
+            const scoreVersion = "2026-03-22.v4";
+            if (scoringVersion && scoreVersion !== scoringVersion) {
+              return count;
+            }
+            if (excludedVersion && scoreVersion === excludedVersion) {
+              return count;
+            }
+
+            return count + 1;
+          }, 0);
+        }),
+      },
     },
   };
 });

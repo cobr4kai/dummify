@@ -1,5 +1,8 @@
-import type { LegacyExecutiveScoringWeights } from "@/lib/scoring/model";
-import type { ExecutiveScoringWeights } from "@/lib/types";
+import type {
+  LegacyExecutiveScoringWeights,
+  PreviousVisibleExecutiveScoringWeights,
+} from "@/lib/scoring/model";
+import type { ExecutiveScoringWeights, ScoringPreset } from "@/lib/types";
 
 export const APP_NAME = "Abstracted";
 export const APP_TAGLINE =
@@ -40,13 +43,43 @@ export const PREVIOUS_EXECUTIVE_BRIEF_RANKING_WEIGHTS: LegacyExecutiveScoringWei
   claritySignal: 0.04,
 };
 
-export const DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS: ExecutiveScoringWeights = {
+export const PREVIOUS_VISIBLE_EXECUTIVE_BRIEF_RANKING_WEIGHTS: PreviousVisibleExecutiveScoringWeights =
+  {
+    frontierRelevance: 0.26,
+    capabilityImpact: 0.22,
+    realWorldImpact: 0.24,
+    evidenceStrength: 0.12,
+    audiencePull: 0.16,
+  };
+
+export const DEFAULT_NON_RESEARCH_RANKING_WEIGHTS: ExecutiveScoringWeights = {
+  audienceInterest: 0.28,
   frontierRelevance: 0.26,
-  capabilityImpact: 0.22,
-  realWorldImpact: 0.24,
-  evidenceStrength: 0.12,
-  audiencePull: 0.16,
+  practicalRelevance: 0.22,
+  evidenceCredibility: 0.16,
+  tldrAccessibility: 0.08,
 };
+
+export const DEFAULT_RESEARCH_TLDR_RANKING_WEIGHTS: ExecutiveScoringWeights = {
+  audienceInterest: 0.18,
+  frontierRelevance: 0.30,
+  practicalRelevance: 0.16,
+  evidenceCredibility: 0.24,
+  tldrAccessibility: 0.12,
+};
+
+export const DEFAULT_SCORING_PRESET: ScoringPreset = "non_research";
+
+export function getDefaultRankingWeightsForPreset(
+  preset: ScoringPreset,
+): ExecutiveScoringWeights {
+  return preset === "research_tldr"
+    ? DEFAULT_RESEARCH_TLDR_RANKING_WEIGHTS
+    : DEFAULT_NON_RESEARCH_RANKING_WEIGHTS;
+}
+
+export const DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS =
+  getDefaultRankingWeightsForPreset(DEFAULT_SCORING_PRESET);
 
 export const DEFAULT_RANKING_WEIGHTS = DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS;
 export const DEFAULT_GENAI_RANKING_WEIGHTS = DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS;
@@ -73,7 +106,7 @@ export const DEFAULT_OPENAI_SYNTHESIS_MODEL = "gpt-5.4";
 export const DEFAULT_ENABLE_PREMIUM_SYNTHESIS = true;
 export const DEFAULT_PDF_CACHE_DIR =
   process.env.PAPERBRIEF_CACHE_DIR?.trim() || ".paperbrief-cache";
-export const DEFAULT_SCORING_VERSION = "2026-03-22.v4";
+export const DEFAULT_SCORING_VERSION = "2026-03-23.v5";
 
 export const DEFAULT_APP_SETTINGS = {
   featuredPaperCount: DEFAULT_FEATURED_PAPER_COUNT,
@@ -84,6 +117,7 @@ export const DEFAULT_APP_SETTINGS = {
   audienceFitThreshold: DEFAULT_AUDIENCE_FIT_THRESHOLD,
   rankingWeights: DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
   genAiRankingWeights: DEFAULT_GENAI_RANKING_WEIGHTS,
+  genAiScoringPreset: DEFAULT_SCORING_PRESET,
   genAiUsePremiumSynthesis: DEFAULT_ENABLE_PREMIUM_SYNTHESIS,
   pdfCacheDir: DEFAULT_PDF_CACHE_DIR,
   primaryCronSchedule: DEFAULT_PRIMARY_CRON_SCHEDULE,

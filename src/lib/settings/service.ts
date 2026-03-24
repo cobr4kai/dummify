@@ -5,19 +5,31 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CATEGORIES,
   DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+  DEFAULT_SCORING_PRESET,
   LEGACY_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
   PREVIOUS_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+  PREVIOUS_VISIBLE_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
 } from "@/config/defaults";
 import {
   LEGACY_EXECUTIVE_SCORE_COMPONENTS,
+  mapPreviousVisibleWeightsToVisible,
   mapLegacyWeightsToVisible,
   type LegacyExecutiveScoringWeights,
+  type PreviousVisibleExecutiveScoringWeights,
 } from "@/lib/scoring/model";
-import type { ExecutiveScoringWeights } from "@/lib/types";
+import { SCORING_PRESETS, type ExecutiveScoringWeights, type ScoringPreset } from "@/lib/types";
 
 const ARXIV_METADATA_MIN_DELAY_FLOOR_MS = 3000;
 
 const executiveRankingWeightsSchema = z.object({
+  audienceInterest: z.number(),
+  frontierRelevance: z.number(),
+  practicalRelevance: z.number(),
+  evidenceCredibility: z.number(),
+  tldrAccessibility: z.number(),
+});
+
+const previousVisibleExecutiveRankingWeightsSchema = z.object({
   frontierRelevance: z.number(),
   capabilityImpact: z.number(),
   realWorldImpact: z.number(),
@@ -36,6 +48,8 @@ const legacyExecutiveRankingWeightsSchema = z.object({
   claritySignal: z.number(),
 });
 
+const scoringPresetSchema = z.enum(SCORING_PRESETS);
+
 const appSettingsSchema = z.object({
   featuredPaperCount: z.number().int().min(1).max(50),
   genAiFeaturedCount: z.number().int().min(1).max(20),
@@ -48,6 +62,7 @@ const appSettingsSchema = z.object({
   audienceFitThreshold: z.number().min(0).max(100),
   rankingWeights: executiveRankingWeightsSchema,
   genAiRankingWeights: executiveRankingWeightsSchema,
+  genAiScoringPreset: scoringPresetSchema,
   genAiUsePremiumSynthesis: z.boolean(),
   pdfCacheDir: z.string().min(1),
   primaryCronSchedule: z.string().min(1),
@@ -77,7 +92,9 @@ const settingDescriptions: Record<keyof AppSettings, string> = {
   audienceFitThreshold: "Legacy audience threshold retained for compatibility.",
   rankingWeights: "Legacy score weights retained for compatibility.",
   genAiRankingWeights:
-    "Editable heuristic weights for the canonical weekly edition score, with extra emphasis on frontier relevance, real-world impact, evidence strength, and audience pull.",
+    "Editable heuristic weights for the canonical weekly edition score across audience interest, frontier relevance, practical relevance, evidence credibility, and TL;DR accessibility.",
+  genAiScoringPreset:
+    "Preset that controls whether new scoring favors broad non-research readers or research readers who still want a concise TL;DR.",
   genAiUsePremiumSynthesis:
     "Whether to use the premium synthesis model when the environment allows it.",
   pdfCacheDir:
@@ -192,6 +209,10 @@ export async function getAppSettings(): Promise<AppSettings> {
     genAiRankingWeights:
       parseExecutiveWeights(raw.genAiRankingWeights) ??
       DEFAULT_APP_SETTINGS.genAiRankingWeights,
+    genAiScoringPreset:
+      raw.genAiScoringPreset === "non_research" || raw.genAiScoringPreset === "research_tldr"
+        ? raw.genAiScoringPreset
+        : DEFAULT_APP_SETTINGS.genAiScoringPreset,
     genAiUsePremiumSynthesis:
       typeof raw.genAiUsePremiumSynthesis === "boolean"
         ? raw.genAiUsePremiumSynthesis
@@ -306,6 +327,7 @@ export async function resetAppSettings() {
     audienceFitThreshold: DEFAULT_APP_SETTINGS.audienceFitThreshold,
     rankingWeights: DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
     genAiRankingWeights: DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+    genAiScoringPreset: DEFAULT_SCORING_PRESET,
     genAiUsePremiumSynthesis: DEFAULT_APP_SETTINGS.genAiUsePremiumSynthesis,
     pdfCacheDir: DEFAULT_APP_SETTINGS.pdfCacheDir,
     primaryCronSchedule: DEFAULT_APP_SETTINGS.primaryCronSchedule,
@@ -334,6 +356,25 @@ async function upgradeLegacyRankingWeightDefaults() {
   });
 
   const updates = settings.flatMap((setting) => {
+    const previousVisibleParsed = previousVisibleExecutiveRankingWeightsSchema.safeParse(
+      setting.value,
+    );
+    if (previousVisibleParsed.success) {
+      const nextValue = weightsMatchPreviousVisible(
+        previousVisibleParsed.data,
+        PREVIOUS_VISIBLE_EXECUTIVE_BRIEF_RANKING_WEIGHTS,
+      )
+        ? DEFAULT_EXECUTIVE_BRIEF_RANKING_WEIGHTS
+        : normalizeWeights(mapPreviousVisibleWeightsToVisible(previousVisibleParsed.data));
+
+      return [
+        prisma.appSetting.update({
+          where: { key: setting.key },
+          data: { value: nextValue },
+        }),
+      ];
+    }
+
     const legacyParsed = legacyExecutiveRankingWeightsSchema.safeParse(setting.value);
 
     if (!legacyParsed.success) {
@@ -374,6 +415,19 @@ function weightsMatchLegacy(
   );
 }
 
+function weightsMatchPreviousVisible(
+  left: PreviousVisibleExecutiveScoringWeights,
+  right: PreviousVisibleExecutiveScoringWeights,
+) {
+  return (
+    Math.abs(left.frontierRelevance - right.frontierRelevance) < 0.0001 &&
+    Math.abs(left.capabilityImpact - right.capabilityImpact) < 0.0001 &&
+    Math.abs(left.realWorldImpact - right.realWorldImpact) < 0.0001 &&
+    Math.abs(left.evidenceStrength - right.evidenceStrength) < 0.0001 &&
+    Math.abs(left.audiencePull - right.audiencePull) < 0.0001
+  );
+}
+
 function normalizeWeights(weights: ExecutiveScoringWeights) {
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
 
@@ -392,6 +446,11 @@ function parseExecutiveWeights(value: unknown) {
   const parsed = executiveRankingWeightsSchema.safeParse(value);
   if (parsed.success) {
     return parsed.data;
+  }
+
+  const previousVisibleParsed = previousVisibleExecutiveRankingWeightsSchema.safeParse(value);
+  if (previousVisibleParsed.success) {
+    return normalizeWeights(mapPreviousVisibleWeightsToVisible(previousVisibleParsed.data));
   }
 
   const legacyParsed = legacyExecutiveRankingWeightsSchema.safeParse(value);

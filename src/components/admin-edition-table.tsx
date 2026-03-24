@@ -27,11 +27,11 @@ import { formatWeekLabel } from "@/lib/utils/dates";
 import { parseJsonValue } from "@/lib/utils/json";
 
 const scoreColumns = [
+  { key: "audienceInterest", label: "Audience" },
   { key: "frontierRelevance", label: "Frontier" },
-  { key: "capabilityImpact", label: "Capability" },
-  { key: "realWorldImpact", label: "Real-world" },
-  { key: "evidenceStrength", label: "Evidence" },
-  { key: "audiencePull", label: "Audience" },
+  { key: "practicalRelevance", label: "Practical" },
+  { key: "evidenceCredibility", label: "Evidence" },
+  { key: "tldrAccessibility", label: "TL;DR" },
 ] as const satisfies ReadonlyArray<{
   key: ExecutiveScoreComponentKey;
   label: string;

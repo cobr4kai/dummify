@@ -1,4 +1,4 @@
-import type { ExecutiveScoreComponentKey } from "@/lib/types";
+import type { PreviousVisibleExecutiveScoreComponentKey } from "@/lib/scoring/model";
 
 type KeywordMatcher = { pattern: RegExp; score: number; reason: string };
 
@@ -10,7 +10,7 @@ export const EXECUTIVE_PRIORITY_FEED_CATEGORIES = [
 ] as const;
 
 export const EXECUTIVE_COMPONENT_KEYWORDS: Record<
-  ExecutiveScoreComponentKey,
+  PreviousVisibleExecutiveScoreComponentKey,
   KeywordMatcher[]
 > = {
   frontierRelevance: [
@@ -172,7 +172,7 @@ export const EXECUTIVE_COMPONENT_KEYWORDS: Record<
 };
 
 export const EXECUTIVE_CATEGORY_BOOSTS: Partial<
-  Record<ExecutiveScoreComponentKey, Record<string, number>>
+  Record<PreviousVisibleExecutiveScoreComponentKey, Record<string, number>>
 > = {
   frontierRelevance: {
     "cs.AI": 8,

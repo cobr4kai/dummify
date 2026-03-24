@@ -1,44 +1,27 @@
+import { DEFAULT_SCORING_VERSION } from "@/config/defaults";
 import { EXECUTIVE_SCORE_COMPONENT_METADATA } from "@/lib/scoring/model";
-import type { ExecutiveScoreComponentKey } from "@/lib/types";
+import { SCORING_PRESET_METADATA } from "@/lib/scoring/model";
+import type { ExecutiveScoreComponentKey, ScoringPreset } from "@/lib/types";
 import { AdminSortStateInputs } from "@/components/admin-sort-state-inputs";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const RANKING_WEIGHT_FIELDS: Array<{
   key: ExecutiveScoreComponentKey;
-  description: string;
 }> = [
-  {
-    key: "frontierRelevance",
-    description:
-      "Directly targets modern frontier-model, multimodal, agentic, or deployment-relevant AI systems.",
-  },
-  {
-    key: "capabilityImpact",
-    description:
-      "Claims a meaningful change in what AI systems can do or how well they perform.",
-  },
-  {
-    key: "realWorldImpact",
-    description:
-      "Could materially affect cost, deployment, workflow automation, productization, or business decision-making.",
-  },
-  {
-    key: "evidenceStrength",
-    description:
-      "Includes credible comparative evidence, benchmark structure, or support strong enough to take the claim seriously.",
-  },
-  {
-    key: "audiencePull",
-    description:
-      "Addresses a topic that smart non-research readers are likely to care about immediately, not just technical specialists.",
-  },
+  { key: "audienceInterest" },
+  { key: "frontierRelevance" },
+  { key: "practicalRelevance" },
+  { key: "evidenceCredibility" },
+  { key: "tldrAccessibility" },
 ];
 
 type AppSettingsShape = {
   genAiFeaturedCount: number;
   genAiShortlistSize: number;
   highBusinessRelevanceThreshold: number;
+  genAiScoringPreset: ScoringPreset;
   pdfCacheDir: string;
   primaryCronSchedule: string;
   reconcileCronSchedule: string;
@@ -64,6 +47,9 @@ export function AdminSettingsPanels({
   updateSettingsAction,
   resetSettingsAction,
   updateCategoriesAction,
+  currentScoringVersion = DEFAULT_SCORING_VERSION,
+  currentScoreCount = 0,
+  legacyScoreCount = 0,
   sortKey,
   sortDirection,
 }: {
@@ -72,6 +58,9 @@ export function AdminSettingsPanels({
   updateSettingsAction: (formData: FormData) => Promise<void>;
   resetSettingsAction: (formData: FormData) => Promise<void>;
   updateCategoriesAction: (formData: FormData) => Promise<void>;
+  currentScoringVersion?: string;
+  currentScoreCount?: number;
+  legacyScoreCount?: number;
   sortKey?: string | null;
   sortDirection?: string | null;
 }) {
@@ -90,45 +79,109 @@ export function AdminSettingsPanels({
             <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
 
             <div className="sm:col-span-2 mt-2 space-y-2">
-              <p className="text-sm font-semibold text-foreground">Editorial scoring</p>
+              <p className="text-sm font-semibold text-foreground">Scoring mode</p>
               <p className="text-xs leading-5 text-muted-foreground">
-                Tune the ranking model that shapes what rises to the top for business readers.
+                Pick the ranking posture for new papers first. Older papers may still show legacy
+                scores until they are re-scored.
               </p>
             </div>
-            <label className="space-y-2 text-sm font-medium">
-              High-signal threshold
-              <input
-                className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
-                defaultValue={settings.highBusinessRelevanceThreshold}
-                name="highBusinessRelevanceThreshold"
-                step="0.1"
-                type="number"
-              />
-            </label>
-            <label className="flex items-center gap-3 text-sm text-foreground sm:col-span-2">
-              <input
-                defaultChecked={settings.genAiUsePremiumSynthesis}
-                name="genAiUsePremiumSynthesis"
-                type="checkbox"
-              />
-              Use premium synthesis model when the environment allows it
-            </label>
+            <div className="sm:col-span-2 grid gap-3 md:grid-cols-2">
+              {(Object.keys(SCORING_PRESET_METADATA) as ScoringPreset[]).map((preset) => {
+                const metadata = SCORING_PRESET_METADATA[preset];
+                const isSelected = settings.genAiScoringPreset === preset;
 
-            {RANKING_WEIGHT_FIELDS.map(({ key, description }) => (
-              <label key={key} className="space-y-2 text-sm font-medium">
-                {EXECUTIVE_SCORE_COMPONENT_METADATA[key].label}
-                <span className="block text-xs leading-5 text-muted-foreground">
-                  {description}
-                </span>
-                <input
-                  className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
-                  defaultValue={settings.genAiRankingWeights[key]}
-                  name={key}
-                  step="0.01"
-                  type="number"
-                />
-              </label>
-            ))}
+                return (
+                  <label
+                    key={preset}
+                    className={`cursor-pointer rounded-[24px] border px-4 py-4 transition-colors ${
+                      isSelected
+                        ? "border-accent bg-accent/10"
+                        : "border-border/80 bg-white/60 hover:border-accent/50"
+                    }`}
+                  >
+                    <input
+                      className="sr-only"
+                      defaultChecked={isSelected}
+                      name="genAiScoringPreset"
+                      type="radio"
+                      value={preset}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{metadata.label}</p>
+                      <Badge variant={isSelected ? "highlight" : "muted"}>
+                        {isSelected ? "Active" : "Available"}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {metadata.description}
+                    </p>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="sm:col-span-2 rounded-[24px] border border-border/80 bg-white/60 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="highlight">Current scoring version {currentScoringVersion}</Badge>
+                <Badge variant="success">Current scores {currentScoreCount}</Badge>
+                <Badge variant={legacyScoreCount > 0 ? "muted" : "success"}>
+                  Legacy score coverage {legacyScoreCount}
+                </Badge>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Switching presets changes the base weighting for new ingests. Existing scored
+                papers stay readable and keep their older version until you re-score them through a
+                future ingest or backfill.
+              </p>
+            </div>
+
+            <details className="sm:col-span-2 rounded-[22px] border border-border/80 bg-white/60 px-4 py-3">
+              <summary className="cursor-pointer text-sm font-semibold text-foreground">
+                Advanced scoring details
+              </summary>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2 space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Editorial scoring</p>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Use these only if you need to fine-tune the active preset. Changing the preset
+                    and saving will reset these weights to that preset's defaults.
+                  </p>
+                </div>
+                <label className="space-y-2 text-sm font-medium">
+                  High-signal threshold
+                  <input
+                    className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                    defaultValue={settings.highBusinessRelevanceThreshold}
+                    name="highBusinessRelevanceThreshold"
+                    step="0.1"
+                    type="number"
+                  />
+                </label>
+                <label className="flex items-center gap-3 text-sm text-foreground sm:col-span-2">
+                  <input
+                    defaultChecked={settings.genAiUsePremiumSynthesis}
+                    name="genAiUsePremiumSynthesis"
+                    type="checkbox"
+                  />
+                  Use premium synthesis model when the environment allows it
+                </label>
+
+                {RANKING_WEIGHT_FIELDS.map(({ key }) => (
+                  <label key={key} className="space-y-2 text-sm font-medium">
+                    {EXECUTIVE_SCORE_COMPONENT_METADATA[key].label}
+                    <span className="block text-xs leading-5 text-muted-foreground">
+                      {EXECUTIVE_SCORE_COMPONENT_METADATA[key].description}
+                    </span>
+                    <input
+                      className="h-11 w-full rounded-2xl border border-border bg-white/70 px-4 text-sm"
+                      defaultValue={settings.genAiRankingWeights[key]}
+                      name={key}
+                      step="0.01"
+                      type="number"
+                    />
+                  </label>
+                ))}
+              </div>
+            </details>
 
             <div className="sm:col-span-2 mt-2 space-y-2">
               <p className="text-sm font-semibold text-foreground">Cache and pacing</p>
