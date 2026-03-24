@@ -52,6 +52,11 @@ enum TriggerSource {
   SEED
 }
 
+enum FeedbackSentiment {
+  USEFUL
+  NOT_USEFUL
+}
+
 model Paper {
   id              String            @id @default(cuid())
   arxivId         String            @unique
@@ -272,4 +277,19 @@ model EmailSignup {
 
   @@index([createdAt])
   @@index([lastSubmittedAt])
+}
+
+model AppFeedback {
+  id              String            @id @default(cuid())
+  sentiment       FeedbackSentiment
+  message         String?
+  email           String?
+  normalizedEmail String?
+  sourcePath      String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([createdAt])
+  @@index([sentiment])
+  @@index([normalizedEmail])
 }

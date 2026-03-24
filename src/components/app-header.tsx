@@ -25,6 +25,9 @@ export function AppHeader({
   const navItems = isUtilityRoute(currentPath)
     ? [...publicNavItems, utilityNavItem]
     : publicNavItems;
+  const showFeedbackLink = !isUtilityRoute(currentPath);
+  const feedbackHref = getFeedbackHref(currentPath);
+  const feedbackIsActive = currentPath === "/feedback";
 
   return (
     <header className={cn(showReaderMasthead ? "mb-8" : "nav-glass sticky top-0 z-30")} data-tone={tone}>
@@ -61,6 +64,17 @@ export function AppHeader({
                   );
                 })}
               </nav>
+              {showFeedbackLink ? (
+                <Link
+                  className={cn(
+                    "rounded-full border border-border/80 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-foreground/20 hover:bg-white/80 hover:text-foreground",
+                    feedbackIsActive && "border-foreground/20 bg-white text-foreground",
+                  )}
+                  href={feedbackHref}
+                >
+                  Feedback
+                </Link>
+              ) : null}
               {navMeta ? <div className="flex flex-wrap items-center gap-2 sm:ml-2">{navMeta}</div> : null}
             </div>
           </div>
@@ -98,6 +112,17 @@ export function AppHeader({
                 );
               })}
             </nav>
+            {showFeedbackLink ? (
+              <Link
+                className={cn(
+                  "rounded-full border border-border/80 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-foreground/20 hover:bg-white/80 hover:text-foreground",
+                  feedbackIsActive && "border-foreground/20 bg-white text-foreground",
+                )}
+                href={feedbackHref}
+              >
+                Feedback
+              </Link>
+            ) : null}
             {navMeta ? <div className="flex flex-wrap items-center gap-2 lg:ml-2">{navMeta}</div> : null}
           </div>
         </div>
@@ -108,6 +133,14 @@ export function AppHeader({
 
 function isUtilityRoute(currentPath?: string) {
   return currentPath?.startsWith("/admin") || currentPath?.startsWith("/login");
+}
+
+function getFeedbackHref(currentPath?: string) {
+  if (!currentPath || currentPath === "/feedback") {
+    return "/feedback";
+  }
+
+  return `/feedback?from=${encodeURIComponent(currentPath)}`;
 }
 
 function isActivePath(currentPath: string | undefined, href: string) {

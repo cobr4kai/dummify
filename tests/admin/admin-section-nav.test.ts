@@ -14,10 +14,12 @@ describe("AdminSectionNav", () => {
     expect(html).toContain('href="/admin/ingest"');
     expect(html).toContain('href="/admin/settings"');
     expect(html).toContain('href="/admin/signups"');
+    expect(html).toContain('href="/admin/feedback"');
     expect(html).toContain("Overview");
     expect(html).toContain("Edition");
     expect(html).toContain("Ingest");
     expect(html).toContain("Settings");
     expect(html).toContain("Signups");
+    expect(html).toContain("Feedback");
   });
 });

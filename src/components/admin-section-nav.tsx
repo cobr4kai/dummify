@@ -22,6 +22,10 @@ const adminSections = [
     href: "/admin/signups",
     label: "Signups",
   },
+  {
+    href: "/admin/feedback",
+    label: "Feedback",
+  },
 ];
 
 export function AdminSectionNav({ currentPath }: { currentPath: string }) {

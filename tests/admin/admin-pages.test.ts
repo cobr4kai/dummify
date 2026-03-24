@@ -16,8 +16,19 @@ vi.mock("@/lib/search/service", () => ({
   getAdminSnapshot: getAdminSnapshotMock,
 }));
 
+vi.mock("@/lib/feedback/service", () => ({
+  getAppFeedbackSnapshot: vi.fn().mockResolvedValue({
+    totalCount: 0,
+    usefulCount: 0,
+    notUsefulCount: 0,
+    withEmailCount: 0,
+    feedback: [],
+  }),
+}));
+
 import AdminPage from "@/app/admin/page";
 import AdminEditionPage from "@/app/admin/edition/page";
+import AdminFeedbackPage from "@/app/admin/feedback/page";
 import AdminIngestPage from "@/app/admin/ingest/page";
 import AdminSettingsPage from "@/app/admin/settings/page";
 
@@ -120,5 +131,11 @@ describe("admin route pages", () => {
 
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/settings");
     expect(getAdminSnapshotMock).toHaveBeenCalledWith();
+  });
+
+  it("requires admin access for feedback", async () => {
+    await AdminFeedbackPage();
+
+    expect(requireAdminMock).toHaveBeenCalledWith("/admin/feedback");
   });
 });
