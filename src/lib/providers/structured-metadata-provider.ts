@@ -48,7 +48,6 @@ export class StructuredMetadataProvider {
     try {
       const completion = await client.chat.completions.parse({
         model: this.model,
-        temperature: 0.1,
         messages: [
           {
             role: "system",

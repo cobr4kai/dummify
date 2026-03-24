@@ -357,4 +357,55 @@ describe("runIngestionJob", () => {
       "Starting reconcile daily ingestion for the operator brief.",
     );
   });
+
+  it("collapses repeated structured metadata fallback warnings into one summary line", async () => {
+    fetchDailyMock.mockResolvedValue([
+      demoPaperFixtures[0].paper,
+      demoPaperFixtures[1].paper,
+      demoPaperFixtures[2].paper,
+    ]);
+    getEnrichmentProvidersMock.mockReturnValue([
+      {
+        provider: "structured_metadata_v1",
+        isAvailable: () => true,
+        enrich: vi.fn(async (paper: { arxivId: string }) => ({
+          provider: "structured_metadata_v1",
+          providerRecordId: null,
+          payload: {
+            version: "structured_metadata_v1",
+            sourceBasis: "abstract_only",
+            thesis: "Fallback structured thesis.",
+            whyItMatters: "Fallback structured why-it-matters for deterministic mode.",
+            topicTags: ["agents"],
+            methodType: "system",
+            evidenceStrength: "medium",
+            likelyAudience: ["builders"],
+            caveats: ["Deterministic-only fallback was used."],
+            noveltyScore: 50,
+            businessRelevanceScore: 55,
+            searchText: `fallback metadata ${paper.arxivId}`,
+            generationMode: "deterministic_only",
+          },
+          warnings: [
+            "Structured metadata model fallback: 400 Unsupported value: 'temperature' does not support 0.1 with this model. Only the default (1) value is supported.",
+          ],
+        })),
+      },
+    ]);
+
+    await runIngestionJob({
+      mode: "DAILY",
+      triggerSource: TriggerSource.MANUAL,
+      announcementDay: "2026-03-11",
+    });
+
+    expect(dbState.runs[0]?.logLines).toContain(
+      "Structured metadata fell back to deterministic-only for 3 papers: 400 Unsupported value: 'temperature' does not support 0.1 with this model. Only the default (1) value is supported.",
+    );
+    expect(
+      (dbState.runs[0]?.logLines as string[]).filter((line) =>
+        line.includes("Structured metadata model fallback:"),
+      ),
+    ).toHaveLength(0);
+  });
 });

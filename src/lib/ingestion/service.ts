@@ -572,13 +572,41 @@ function appendEnrichmentWarnings(logLines: string[], warnings: string[]) {
     return;
   }
 
-  for (const warning of warnings.slice(0, ENRICHMENT_WARNING_LOG_LIMIT)) {
+  const groupedWarnings = new Map<string, { count: number; sample: string }>();
+
+  for (const warning of warnings) {
+    const summaryKey = warning.replace(/^Paper\s+\S+:\s+/, "");
+    const existing = groupedWarnings.get(summaryKey);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+
+    groupedWarnings.set(summaryKey, {
+      count: 1,
+      sample: warning,
+    });
+  }
+
+  const summaryLines = Array.from(groupedWarnings.entries()).map(([summaryKey, details]) => {
+    if (details.count === 1) {
+      return details.sample;
+    }
+
+    if (summaryKey.startsWith("Structured metadata model fallback:")) {
+      return `Structured metadata fell back to deterministic-only for ${details.count} papers: ${summaryKey.replace("Structured metadata model fallback: ", "")}`;
+    }
+
+    return `${summaryKey} (${details.count} papers)`;
+  });
+
+  for (const warning of summaryLines.slice(0, ENRICHMENT_WARNING_LOG_LIMIT)) {
     logLines.push(warning);
   }
 
-  if (warnings.length > ENRICHMENT_WARNING_LOG_LIMIT) {
+  if (summaryLines.length > ENRICHMENT_WARNING_LOG_LIMIT) {
     logLines.push(
-      `Suppressed ${warnings.length - ENRICHMENT_WARNING_LOG_LIMIT} additional enrichment warnings.`,
+      `Suppressed ${summaryLines.length - ENRICHMENT_WARNING_LOG_LIMIT} additional enrichment warning groups.`,
     );
   }
 }
