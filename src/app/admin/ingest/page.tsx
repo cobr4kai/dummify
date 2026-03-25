@@ -16,6 +16,7 @@ type SearchParams = Promise<{
   fetched?: string;
   upserted?: string;
   generated?: string;
+  error?: string;
   week?: string;
   sort?: string;
   dir?: string;
@@ -38,6 +39,7 @@ export default async function AdminIngestPage({
     fetched: readCount(params.fetched),
     upserted: readCount(params.upserted),
     generated: readCount(params.generated),
+    error: readStringParam(params.error),
   });
 
   return (
@@ -91,6 +93,7 @@ function getIngestNotice(input: {
   fetched?: number;
   upserted?: number;
   generated?: number;
+  error?: string | null;
 }): AdminNotice {
   switch (input.notice) {
     case "missing-range":
@@ -124,6 +127,22 @@ function getIngestNotice(input: {
           "The historical ingestion window finished and the refreshed archive is now available in admin.",
         ),
         variant: "success",
+      };
+    case "daily-refresh-failed":
+      return {
+        title: "Fetch today did not finish",
+        description: input.error
+          ? `The ingest request was stopped before completion. ${input.error}`
+          : "The ingest request was stopped before completion. The existing stored archive is unchanged.",
+        variant: "danger",
+      };
+    case "historical-refresh-failed":
+      return {
+        title: "Backfill archive window did not finish",
+        description: input.error
+          ? `The backfill request was stopped before completion. ${input.error}`
+          : "The backfill request was stopped before completion. The existing stored archive is unchanged.",
+        variant: "danger",
       };
     default:
       return null;
@@ -162,4 +181,8 @@ function readCount(value: string | undefined) {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readStringParam(value: string | undefined) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }

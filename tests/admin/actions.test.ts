@@ -130,6 +130,16 @@ describe("admin actions", () => {
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/ingest");
   });
 
+  it("redirects daily refresh failures back to ingest with an error notice", async () => {
+    const formData = new FormData();
+    formData.set("announcementDay", "2026-03-20");
+    runIngestionJobMock.mockRejectedValueOnce(new Error("arXiv returned 429."));
+
+    await expect(runDailyRefreshAction(formData)).rejects.toThrow(
+      "REDIRECT:/admin/ingest?week=2026-03-16&notice=daily-refresh-failed&error=arXiv+returned+429.",
+    );
+  });
+
   it("redirects missing historical ranges back to ingest", async () => {
     const formData = new FormData();
 
@@ -137,6 +147,17 @@ describe("admin actions", () => {
       "REDIRECT:/admin/ingest?notice=missing-range",
     );
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/ingest");
+  });
+
+  it("redirects historical refresh failures back to ingest with an error notice", async () => {
+    const formData = new FormData();
+    formData.set("from", "2026-03-01");
+    formData.set("to", "2026-03-02");
+    runIngestionJobMock.mockRejectedValueOnce(new Error("OpenAI timed out."));
+
+    await expect(runHistoricalRefreshAction(formData)).rejects.toThrow(
+      "REDIRECT:/admin/ingest?week=2026-03-09&notice=historical-refresh-failed&error=OpenAI+timed+out.",
+    );
   });
 
   it("redirects settings saves back to settings", async () => {

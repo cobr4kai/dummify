@@ -47,24 +47,38 @@ export async function runDailyRefreshAction(formData: FormData) {
     });
   }
 
-  const result = await runIngestionJob({
-    mode: "DAILY",
-    triggerSource: TriggerSource.MANUAL,
-    announcementDay: requestedAnnouncementDay,
-    recomputeScores: true,
-    recomputeBriefs,
-  });
+  try {
+    const result = await runIngestionJob({
+      mode: "DAILY",
+      triggerSource: TriggerSource.MANUAL,
+      announcementDay: requestedAnnouncementDay,
+      recomputeScores: true,
+      recomputeBriefs,
+    });
 
-  revalidateAll();
-  redirectToAdminPage("/admin/ingest", {
-    selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
-    notice: "daily-refresh",
-    fetched: result.fetchedCount,
-    upserted: result.upsertedCount,
-    generated: result.summaryCount,
-    sortKey,
-    sortDirection,
-  });
+    revalidateAll();
+    redirectToAdminPage("/admin/ingest", {
+      selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
+      notice: "daily-refresh",
+      fetched: result.fetchedCount,
+      upserted: result.upsertedCount,
+      generated: result.summaryCount,
+      sortKey,
+      sortDirection,
+    });
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    redirectToAdminPage("/admin/ingest", {
+      selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
+      notice: "daily-refresh-failed",
+      error: summarizeActionError(error),
+      sortKey,
+      sortDirection,
+    });
+  }
 }
 
 export async function runHistoricalRefreshAction(formData: FormData) {
@@ -84,25 +98,39 @@ export async function runHistoricalRefreshAction(formData: FormData) {
     });
   }
 
-  const result = await runIngestionJob({
-    mode: "HISTORICAL",
-    triggerSource: TriggerSource.MANUAL,
-    from,
-    to,
-    recomputeScores: true,
-    recomputeBriefs,
-  });
+  try {
+    const result = await runIngestionJob({
+      mode: "HISTORICAL",
+      triggerSource: TriggerSource.MANUAL,
+      from,
+      to,
+      recomputeScores: true,
+      recomputeBriefs,
+    });
 
-  revalidateAll();
-  redirectToAdminPage("/admin/ingest", {
-    selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
-    notice: "historical-refresh",
-    fetched: result.fetchedCount,
-    upserted: result.upsertedCount,
-    generated: result.summaryCount,
-    sortKey,
-    sortDirection,
-  });
+    revalidateAll();
+    redirectToAdminPage("/admin/ingest", {
+      selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
+      notice: "historical-refresh",
+      fetched: result.fetchedCount,
+      upserted: result.upsertedCount,
+      generated: result.summaryCount,
+      sortKey,
+      sortDirection,
+    });
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    redirectToAdminPage("/admin/ingest", {
+      selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
+      notice: "historical-refresh-failed",
+      error: summarizeActionError(error),
+      sortKey,
+      sortDirection,
+    });
+  }
 }
 
 export async function updateSettingsAction(formData: FormData) {
@@ -311,6 +339,7 @@ function redirectToAdminPage(path: string, input: {
   fetched?: number;
   upserted?: number;
   generated?: number;
+  error?: string;
   focusPaperId?: string;
   briefStatus?: "ready" | "missing" | "fallback";
   sortKey?: string;
@@ -338,6 +367,10 @@ function redirectToAdminPage(path: string, input: {
     search.set("generated", String(input.generated));
   }
 
+  if (input.error) {
+    search.set("error", input.error);
+  }
+
   if (input.focusPaperId) {
     search.set("focusPaper", input.focusPaperId);
   }
@@ -356,6 +389,19 @@ function redirectToAdminPage(path: string, input: {
 
   const query = search.toString();
   redirect(query ? `${path}?${query}` : path);
+}
+
+function summarizeActionError(error: unknown) {
+  if (error instanceof Error) {
+    const compact = error.message.replace(/\s+/g, " ").trim();
+    return compact.length > 180 ? `${compact.slice(0, 177)}...` : compact;
+  }
+
+  return "The ingest job failed before it could finish.";
+}
+
+function isRedirectError(error: unknown) {
+  return error instanceof Error && error.message.startsWith("REDIRECT:");
 }
 
 function readString(value: FormDataEntryValue | null) {
