@@ -16,7 +16,6 @@ type SearchParams = Promise<{
   fetched?: string;
   upserted?: string;
   generated?: string;
-  error?: string;
   week?: string;
   sort?: string;
   dir?: string;
@@ -39,7 +38,6 @@ export default async function AdminIngestPage({
     fetched: readCount(params.fetched),
     upserted: readCount(params.upserted),
     generated: readCount(params.generated),
-    error: readStringParam(params.error),
   });
 
   return (
@@ -93,7 +91,6 @@ function getIngestNotice(input: {
   fetched?: number;
   upserted?: number;
   generated?: number;
-  error?: string | null;
 }): AdminNotice {
   switch (input.notice) {
     case "missing-range":
@@ -119,6 +116,13 @@ function getIngestNotice(input: {
         ),
         variant: "success",
       };
+    case "daily-refresh-started":
+      return {
+        title: "Fetch today started",
+        description:
+          "The ingest job is now running in the background. The latest run card will update as progress is written.",
+        variant: "highlight",
+      };
     case "historical-refresh":
       return {
         title: "Backfill archive window finished",
@@ -128,21 +132,19 @@ function getIngestNotice(input: {
         ),
         variant: "success",
       };
-    case "daily-refresh-failed":
+    case "historical-refresh-started":
       return {
-        title: "Fetch today did not finish",
-        description: input.error
-          ? `The ingest request was stopped before completion. ${input.error}`
-          : "The ingest request was stopped before completion. The existing stored archive is unchanged.",
-        variant: "danger",
+        title: "Backfill archive window started",
+        description:
+          "The historical ingest is running in the background. Large windows may take a while, but the admin page should stay responsive while the run progresses.",
+        variant: "highlight",
       };
-    case "historical-refresh-failed":
+    case "ingest-already-running":
       return {
-        title: "Backfill archive window did not finish",
-        description: input.error
-          ? `The backfill request was stopped before completion. ${input.error}`
-          : "The backfill request was stopped before completion. The existing stored archive is unchanged.",
-        variant: "danger",
+        title: "An ingest run is already in progress",
+        description:
+          "Wait for the current run to finish before starting another one. This keeps the app from piling extra load onto arXiv and avoids overlapping manual jobs.",
+        variant: "highlight",
       };
     default:
       return null;
@@ -181,8 +183,4 @@ function readCount(value: string | undefined) {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function readStringParam(value: string | undefined) {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }

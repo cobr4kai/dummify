@@ -6,6 +6,7 @@ const {
   getAppSettingsMock,
   getCurrentTechnicalBriefMock,
   headersMock,
+  getActiveIngestionRunMock,
   redirectMock,
   reorderPublishedPaperForWeekMock,
   requireAdminMock,
@@ -21,6 +22,7 @@ const {
   getAppSettingsMock: vi.fn(),
   getCurrentTechnicalBriefMock: vi.fn(),
   headersMock: vi.fn(),
+  getActiveIngestionRunMock: vi.fn(),
   redirectMock: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
@@ -52,6 +54,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/ingestion/service", () => ({
+  getActiveIngestionRun: getActiveIngestionRunMock,
   runIngestionJob: runIngestionJobMock,
 }));
 
@@ -95,6 +98,7 @@ describe("admin actions", () => {
   beforeEach(() => {
     requireAdminMock.mockReset();
     runIngestionJobMock.mockReset();
+    getActiveIngestionRunMock.mockReset();
     updateAppSettingsMock.mockReset();
     resetAppSettingsMock.mockReset();
     getCategoryConfigsMock.mockReset();
@@ -109,6 +113,7 @@ describe("admin actions", () => {
 
     requireAdminMock.mockResolvedValue(undefined);
     headersMock.mockResolvedValue(new Headers());
+    getActiveIngestionRunMock.mockResolvedValue(null);
     runIngestionJobMock.mockResolvedValue({
       fetchedCount: 4,
       upsertedCount: 4,
@@ -125,19 +130,32 @@ describe("admin actions", () => {
     formData.set("announcementDay", "2026-03-20");
 
     await expect(runDailyRefreshAction(formData)).rejects.toThrow(
-      "REDIRECT:/admin/ingest?week=2026-03-16&notice=daily-refresh&fetched=4&upserted=4&generated=2",
+      "REDIRECT:/admin/ingest?week=2026-03-16&notice=daily-refresh-started",
     );
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/ingest");
+    expect(runIngestionJobMock).toHaveBeenCalledWith({
+      mode: "DAILY",
+      triggerSource: "MANUAL",
+      announcementDay: "2026-03-20",
+      recomputeScores: true,
+      recomputeBriefs: false,
+    });
   });
 
-  it("redirects daily refresh failures back to ingest with an error notice", async () => {
+  it("redirects to the running notice when another ingest is already active", async () => {
     const formData = new FormData();
     formData.set("announcementDay", "2026-03-20");
-    runIngestionJobMock.mockRejectedValueOnce(new Error("arXiv returned 429."));
+    getActiveIngestionRunMock.mockResolvedValueOnce({
+      id: "run-1",
+      mode: "HISTORICAL",
+      triggerSource: "MANUAL",
+      startedAt: new Date("2026-03-25T03:00:00.000Z"),
+    });
 
     await expect(runDailyRefreshAction(formData)).rejects.toThrow(
-      "REDIRECT:/admin/ingest?week=2026-03-16&notice=daily-refresh-failed&error=arXiv+returned+429.",
+      "REDIRECT:/admin/ingest?week=2026-03-16&notice=ingest-already-running",
     );
+    expect(runIngestionJobMock).not.toHaveBeenCalled();
   });
 
   it("redirects missing historical ranges back to ingest", async () => {
@@ -153,11 +171,18 @@ describe("admin actions", () => {
     const formData = new FormData();
     formData.set("from", "2026-03-01");
     formData.set("to", "2026-03-02");
-    runIngestionJobMock.mockRejectedValueOnce(new Error("OpenAI timed out."));
 
     await expect(runHistoricalRefreshAction(formData)).rejects.toThrow(
-      "REDIRECT:/admin/ingest?week=2026-03-09&notice=historical-refresh-failed&error=OpenAI+timed+out.",
+      "REDIRECT:/admin/ingest?week=2026-03-09&notice=historical-refresh-started",
     );
+    expect(runIngestionJobMock).toHaveBeenCalledWith({
+      mode: "HISTORICAL",
+      triggerSource: "MANUAL",
+      from: "2026-03-01",
+      to: "2026-03-02",
+      recomputeScores: true,
+      recomputeBriefs: false,
+    });
   });
 
   it("redirects settings saves back to settings", async () => {

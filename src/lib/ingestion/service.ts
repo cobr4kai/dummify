@@ -42,6 +42,8 @@ import { toJsonInput } from "@/lib/utils/prisma";
 
 export type DailyJobMode = "PRIMARY" | "RECONCILE";
 
+const ACTIVE_MANUAL_RUN_WINDOW_MS = 6 * 60 * 60 * 1000;
+
 type IngestionOptions = {
   mode: "DAILY" | "HISTORICAL";
   triggerSource: TriggerSource;
@@ -618,6 +620,31 @@ function appendEnrichmentWarnings(logLines: string[], warnings: string[]) {
       `Suppressed ${summaryLines.length - ENRICHMENT_WARNING_LOG_LIMIT} additional enrichment warning groups.`,
     );
   }
+}
+
+export async function getActiveIngestionRun(options?: { now?: Date }) {
+  const run = await prisma.ingestionRun.findFirst({
+    where: {
+      status: IngestionStatus.RUNNING,
+    },
+    orderBy: {
+      startedAt: "desc",
+    },
+    select: {
+      id: true,
+      mode: true,
+      triggerSource: true,
+      startedAt: true,
+    },
+  });
+
+  if (!run) {
+    return null;
+  }
+
+  const now = options?.now ?? new Date();
+  const ageMs = now.getTime() - run.startedAt.getTime();
+  return ageMs <= ACTIVE_MANUAL_RUN_WINDOW_MS ? run : null;
 }
 
 function appendHistoricalWarnings(

@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { getDefaultRankingWeightsForPreset } from "@/config/defaults";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
-import { runIngestionJob } from "@/lib/ingestion/service";
+import { getActiveIngestionRun, runIngestionJob } from "@/lib/ingestion/service";
 import {
   reorderPublishedPaperForWeek,
   setPublishedPaperState,
@@ -47,38 +47,30 @@ export async function runDailyRefreshAction(formData: FormData) {
     });
   }
 
-  try {
-    const result = await runIngestionJob({
-      mode: "DAILY",
-      triggerSource: TriggerSource.MANUAL,
-      announcementDay: requestedAnnouncementDay,
-      recomputeScores: true,
-      recomputeBriefs,
-    });
-
-    revalidateAll();
+  const activeRun = await getActiveIngestionRun();
+  if (activeRun) {
     redirectToAdminPage("/admin/ingest", {
       selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
-      notice: "daily-refresh",
-      fetched: result.fetchedCount,
-      upserted: result.upsertedCount,
-      generated: result.summaryCount,
-      sortKey,
-      sortDirection,
-    });
-  } catch (error) {
-    if (isRedirectError(error)) {
-      throw error;
-    }
-
-    redirectToAdminPage("/admin/ingest", {
-      selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
-      notice: "daily-refresh-failed",
-      error: summarizeActionError(error),
+      notice: "ingest-already-running",
       sortKey,
       sortDirection,
     });
   }
+
+  launchIngestionJob({
+    mode: "DAILY",
+    triggerSource: TriggerSource.MANUAL,
+    announcementDay: requestedAnnouncementDay,
+    recomputeScores: true,
+    recomputeBriefs,
+  });
+
+  redirectToAdminPage("/admin/ingest", {
+    selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
+    notice: "daily-refresh-started",
+    sortKey,
+    sortDirection,
+  });
 }
 
 export async function runHistoricalRefreshAction(formData: FormData) {
@@ -98,39 +90,31 @@ export async function runHistoricalRefreshAction(formData: FormData) {
     });
   }
 
-  try {
-    const result = await runIngestionJob({
-      mode: "HISTORICAL",
-      triggerSource: TriggerSource.MANUAL,
-      from,
-      to,
-      recomputeScores: true,
-      recomputeBriefs,
-    });
-
-    revalidateAll();
+  const activeRun = await getActiveIngestionRun();
+  if (activeRun) {
     redirectToAdminPage("/admin/ingest", {
       selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
-      notice: "historical-refresh",
-      fetched: result.fetchedCount,
-      upserted: result.upsertedCount,
-      generated: result.summaryCount,
-      sortKey,
-      sortDirection,
-    });
-  } catch (error) {
-    if (isRedirectError(error)) {
-      throw error;
-    }
-
-    redirectToAdminPage("/admin/ingest", {
-      selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
-      notice: "historical-refresh-failed",
-      error: summarizeActionError(error),
+      notice: "ingest-already-running",
       sortKey,
       sortDirection,
     });
   }
+
+  launchIngestionJob({
+    mode: "HISTORICAL",
+    triggerSource: TriggerSource.MANUAL,
+    from,
+    to,
+    recomputeScores: true,
+    recomputeBriefs,
+  });
+
+  redirectToAdminPage("/admin/ingest", {
+    selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
+    notice: "historical-refresh-started",
+    sortKey,
+    sortDirection,
+  });
 }
 
 export async function updateSettingsAction(formData: FormData) {
@@ -333,6 +317,17 @@ function revalidateAll() {
   revalidatePath("/admin/settings");
 }
 
+function launchIngestionJob(input: Parameters<typeof runIngestionJob>[0]) {
+  void runIngestionJob(input)
+    .then(() => {
+      revalidateAll();
+    })
+    .catch((error) => {
+      console.error("Manual ingest job failed", error);
+      revalidateAll();
+    });
+}
+
 function redirectToAdminPage(path: string, input: {
   selectedWeek?: string;
   notice?: string;
@@ -391,18 +386,6 @@ function redirectToAdminPage(path: string, input: {
   redirect(query ? `${path}?${query}` : path);
 }
 
-function summarizeActionError(error: unknown) {
-  if (error instanceof Error) {
-    const compact = error.message.replace(/\s+/g, " ").trim();
-    return compact.length > 180 ? `${compact.slice(0, 177)}...` : compact;
-  }
-
-  return "The ingest job failed before it could finish.";
-}
-
-function isRedirectError(error: unknown) {
-  return error instanceof Error && error.message.startsWith("REDIRECT:");
-}
 
 function readString(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
