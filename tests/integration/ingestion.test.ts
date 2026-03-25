@@ -244,6 +244,10 @@ describe("runIngestionJob", () => {
     getTechnicalBriefProviderMock.mockReset();
 
     fetchDailyMock.mockResolvedValue([demoPaperFixtures[0].paper]);
+    fetchHistoricalMock.mockResolvedValue({
+      records: [demoPaperFixtures[0].paper],
+      warnings: [],
+    });
     getAppSettingsMock.mockResolvedValue({
       featuredPaperCount: 10,
       genAiFeaturedCount: 10,
@@ -407,5 +411,33 @@ describe("runIngestionJob", () => {
         line.includes("Structured metadata model fallback:"),
       ),
     ).toHaveLength(0);
+  });
+
+  it("marks historical runs partial when some daily windows fail", async () => {
+    fetchHistoricalMock
+      .mockResolvedValueOnce({
+        records: [demoPaperFixtures[0].paper],
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        records: [],
+        warnings: [
+          "Historical metadata request for 2026-03-12 to 2026-03-12 stopped at offset 0: arXiv returned 429.",
+        ],
+      });
+
+    const result = await runIngestionJob({
+      mode: "HISTORICAL",
+      triggerSource: TriggerSource.MANUAL,
+      from: "2026-03-11",
+      to: "2026-03-12",
+    });
+
+    expect(result.status).toBe("PARTIAL");
+    expect(result.fetchedCount).toBe(1);
+    expect(dbState.runs[0]?.status).toBe("PARTIAL");
+    expect(dbState.runs[0]?.logLines).toContain(
+      "Historical ingestion completed with warnings. 1 of 2 daily windows hit arXiv rate limits or transient API failures.",
+    );
   });
 });

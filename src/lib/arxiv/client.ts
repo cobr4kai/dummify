@@ -45,6 +45,11 @@ type ResolvedArxivClientOptions = Omit<Required<ArxivClientOptions>, "cacheRoot"
   cacheRoot?: string;
 };
 
+export type HistoricalFetchResult = {
+  records: PaperSourceRecord[];
+  warnings: string[];
+};
+
 export class ArxivClient {
   private readonly options: ResolvedArxivClientOptions;
   private nextApiAllowedAt = 0;
@@ -163,20 +168,31 @@ export class ArxivClient {
   async fetchHistorical(categories: string[], from: string, to: string) {
     const query = buildHistoricalQuery(categories, from, to);
     const records: PaperSourceRecord[] = [];
+    const warnings: string[] = [];
     let start = 0;
     const maxResults = 100;
 
     while (true) {
-      const xml = await this.fetchXml(
-        `${this.options.apiBaseUrl}?${new URLSearchParams({
-          search_query: query,
-          sortBy: "submittedDate",
-          sortOrder: "descending",
-          start: start.toString(),
-          max_results: maxResults.toString(),
-        }).toString()}`,
-        "api",
-      );
+      let xml: string;
+      try {
+        xml = await this.fetchXml(
+          `${this.options.apiBaseUrl}?${new URLSearchParams({
+            search_query: query,
+            sortBy: "submittedDate",
+            sortOrder: "descending",
+            start: start.toString(),
+            max_results: maxResults.toString(),
+          }).toString()}`,
+          "api",
+        );
+      } catch (error) {
+        warnings.push(
+          error instanceof Error
+            ? `Historical metadata request for ${from} to ${to} stopped at offset ${start}: ${error.message}`
+            : `Historical metadata request for ${from} to ${to} stopped at offset ${start}.`,
+        );
+        break;
+      }
 
       const papers = parseAtomFeed(xml).map((paper) => ({
         ...paper,
@@ -200,7 +216,10 @@ export class ArxivClient {
       start += maxResults;
     }
 
-    return records;
+    return {
+      records,
+      warnings,
+    };
   }
 
   async fetchByArxivId(arxivId: string, options: FetchXmlOptions = {}) {

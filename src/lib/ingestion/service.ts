@@ -8,7 +8,10 @@ import {
 } from "@prisma/client";
 import path from "node:path";
 import { DEFAULT_SCORING_VERSION } from "@/config/defaults";
-import { fetchHistoricalRecords } from "@/lib/arxiv/backfill";
+import {
+  fetchHistoricalRecords,
+  type HistoricalRecordsResult,
+} from "@/lib/arxiv/backfill";
 import { ArxivClient } from "@/lib/arxiv/client";
 import { prisma } from "@/lib/db";
 import { getOpenAlexTopics, getStructuredMetadataPayload } from "@/lib/metadata/service";
@@ -124,15 +127,16 @@ export async function runIngestionJob(options: IngestionOptions) {
         : "Starting historical ingestion for the operator brief.",
     );
 
+    let historicalResult: HistoricalRecordsResult | null = null;
     const papers =
       options.mode === "DAILY"
         ? await arxivClient.fetchDaily(categories, announcementDay)
-        : await fetchHistoricalRecords({
+        : (historicalResult = await fetchHistoricalRecords({
             client: arxivClient,
             categories,
             from: options.from!,
             to: options.to!,
-          });
+          })).records;
 
     logLines.push(`Fetched ${papers.length} paper records from arXiv.`);
     if (
@@ -146,6 +150,9 @@ export async function runIngestionJob(options: IngestionOptions) {
     }
     if (options.mode === "HISTORICAL" && papers.length === 0) {
       logLines.push("No arXiv records were found in the requested historical window.");
+    }
+    if (historicalResult?.warnings.length) {
+      appendHistoricalWarnings(logLines, historicalResult);
     }
 
     const upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }> = [];
@@ -236,11 +243,13 @@ export async function runIngestionJob(options: IngestionOptions) {
     }
 
     const status =
-      options.mode === "DAILY" &&
-      papers.length === 0 &&
-      !isExpectedQuietAnnouncementDay(announcementDay)
+      historicalResult?.warnings.length
         ? IngestionStatus.PARTIAL
-        : IngestionStatus.COMPLETED;
+        : options.mode === "DAILY" &&
+            papers.length === 0 &&
+            !isExpectedQuietAnnouncementDay(announcementDay)
+          ? IngestionStatus.PARTIAL
+          : IngestionStatus.COMPLETED;
 
     await prisma.ingestionRun.update({
       where: { id: run.id },
@@ -609,6 +618,19 @@ function appendEnrichmentWarnings(logLines: string[], warnings: string[]) {
       `Suppressed ${summaryLines.length - ENRICHMENT_WARNING_LOG_LIMIT} additional enrichment warning groups.`,
     );
   }
+}
+
+function appendHistoricalWarnings(
+  logLines: string[],
+  result: HistoricalRecordsResult,
+) {
+  const summary =
+    result.failedWindows === result.attemptedWindows
+      ? `Historical ingestion completed with warnings. All ${result.attemptedWindows} daily windows hit arXiv rate limits or transient API failures, so no historical windows completed successfully.`
+      : `Historical ingestion completed with warnings. ${result.failedWindows} of ${result.attemptedWindows} daily windows hit arXiv rate limits or transient API failures.`;
+
+  logLines.push(summary);
+  appendEnrichmentWarnings(logLines, result.warnings);
 }
 
 async function mapWithConcurrency<T, TResult>(

@@ -137,13 +137,45 @@ describe("ArxivClient", () => {
       },
     });
 
-    await client.fetchHistorical(["cs.AI", "cs.LG"], "2026-03-01", "2026-03-02");
+    const result = await client.fetchHistorical(["cs.AI", "cs.LG"], "2026-03-01", "2026-03-02");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.records).toEqual([]);
+    expect(result.warnings).toEqual([]);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("https://example.test/api/query?");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       "search_query=%28cat%3Acs.AI+OR+cat%3Acs.LG%29+AND+submittedDate",
     );
+  });
+
+  it("returns historical warnings instead of throwing when repeated retries still fail", async () => {
+    let nowMs = 0;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("retry later", { status: 429 }));
+    const sleepMock = vi.fn(async (ms: number) => {
+      nowMs += ms;
+    });
+
+    const client = new ArxivClient({
+      fetchFn: fetchMock,
+      sleepFn: sleepMock,
+      nowFn: () => nowMs,
+      apiMinDelayMs: 0,
+      rssMinDelayMs: 0,
+      retryBaseDelayMs: 100,
+      requestGate: {
+        waitForTurn: vi.fn(async () => {}),
+        applyPenalty: vi.fn(async () => {}),
+      },
+    });
+
+    const result = await client.fetchHistorical(["cs.AI"], "2026-03-01", "2026-03-01");
+
+    expect(result.records).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("Historical metadata request for 2026-03-01 to 2026-03-01");
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("honors Retry-After when arXiv rate limits the client", async () => {
