@@ -13,6 +13,7 @@
     "start:render": "node scripts/render-start.mjs",
     "bootstrap:backfill": "tsx scripts/bootstrap-backfill.ts",
     "metadata:backfill": "tsx scripts/backfill-structured-metadata.ts",
+    "openalex:backfill:published": "tsx scripts/backfill-openalex-published.ts",
     "cron:primary": "node scripts/render-trigger-cron.mjs primary",
     "cron:reconcile": "node scripts/render-trigger-cron.mjs reconcile",
     "lint": "eslint .",

@@ -14,7 +14,12 @@ import {
 } from "@/lib/arxiv/backfill";
 import { ArxivClient } from "@/lib/arxiv/client";
 import { prisma } from "@/lib/db";
-import { getOpenAlexTopics, getStructuredMetadataPayload } from "@/lib/metadata/service";
+import {
+  buildOpenAlexSearchText,
+  getOpenAlexPayload,
+  getOpenAlexTopics,
+  getStructuredMetadataPayload,
+} from "@/lib/metadata/service";
 import {
   STRUCTURED_METADATA_PROVIDER,
   type StructuredMetadataEnrichment,
@@ -368,6 +373,51 @@ export async function backfillStructuredMetadata(options: {
   };
 }
 
+export async function backfillOpenAlexForPublishedPapers(options: {
+  paperIds?: string[];
+  fromAnnouncementDay?: string;
+  toAnnouncementDay?: string;
+  force?: boolean;
+} = {}) {
+  const papers = await prisma.paper.findMany({
+    where: {
+      isDemoData: false,
+      publishedItems: {
+        some: {},
+      },
+      ...(options.paperIds?.length ? { id: { in: options.paperIds } } : {}),
+      ...((options.fromAnnouncementDay || options.toAnnouncementDay)
+        ? {
+            announcementDay: {
+              ...(options.fromAnnouncementDay
+                ? { gte: options.fromAnnouncementDay }
+                : {}),
+              ...(options.toAnnouncementDay ? { lte: options.toAnnouncementDay } : {}),
+            },
+          }
+        : {}),
+    },
+  });
+
+  let updatedCount = 0;
+
+  await mapWithConcurrency(papers, Math.min(ENRICHMENT_CONCURRENCY, 2), async (paper) => {
+    const result = await hydratePaperEnrichments(paper.id, {
+      force: options.force ?? true,
+      providers: ["openalex"],
+    });
+
+    if (result.updatedProviders.includes("openalex")) {
+      updatedCount += 1;
+    }
+  });
+
+  return {
+    paperCount: papers.length,
+    updatedCount,
+  };
+}
+
 async function hydratePaperEnrichments(
   paperId: string,
   options: HydrateEnrichmentOptions = {},
@@ -402,6 +452,7 @@ async function hydratePaperEnrichments(
     );
     const shouldForceProvider =
       Boolean(options.force) ||
+      enrichmentNeedsRefresh(provider.provider, existing?.payload) ||
       (provider.provider === STRUCTURED_METADATA_PROVIDER &&
         updatedProviders.has("openalex"));
 
@@ -449,18 +500,18 @@ async function hydratePaperEnrichments(
       ];
       updatedProviders.add(result.provider);
 
-      if (result.provider === STRUCTURED_METADATA_PROVIDER) {
+      if (result.provider === STRUCTURED_METADATA_PROVIDER || result.provider === "openalex") {
         const structuredMetadata = getStructuredMetadataPayload(currentEnrichments);
-        if (structuredMetadata) {
-          await prisma.paper.update({
-            where: { id: paperId },
-            data: {
-              searchText: buildAugmentedPaperSearchText(paperRecord, [
-                structuredMetadata.searchText,
-              ]),
-            },
-          });
-        }
+        const openAlexSearchText = buildOpenAlexSearchText(currentEnrichments);
+        await prisma.paper.update({
+          where: { id: paperId },
+          data: {
+            searchText: buildAugmentedPaperSearchText(paperRecord, [
+              structuredMetadata?.searchText ?? "",
+              openAlexSearchText,
+            ]),
+          },
+        });
       }
 
       if (result.warnings?.length) {
@@ -509,6 +560,18 @@ function toRecordPayload(payload: unknown) {
   }
 
   return {};
+}
+
+function enrichmentNeedsRefresh(
+  provider: string,
+  payload: Record<string, unknown> | undefined,
+) {
+  if (!payload || provider !== "openalex") {
+    return false;
+  }
+
+  const parsed = getOpenAlexPayload([{ provider, payload }]);
+  return Boolean(parsed && (!parsed.matchedBy || !Array.isArray(parsed.institutions)));
 }
 
 async function upsertPaper(tx: Prisma.TransactionClient, paper: PaperSourceRecord) {

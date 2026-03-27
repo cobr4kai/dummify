@@ -16,6 +16,7 @@ import { ScoreBreakdownCard } from "@/components/score-breakdown";
 import { TechnicalBriefView } from "@/components/technical-brief-view";
 import { isAdminAuthenticated } from "@/lib/auth";
 import { ensurePaperEnrichment } from "@/lib/ingestion/service";
+import { getOpenAlexPayload } from "@/lib/metadata/service";
 import { getRelatedPapers } from "@/lib/related/service";
 import { getCurrentScore, getPaperDetail } from "@/lib/search/service";
 import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
@@ -37,6 +38,20 @@ const openAlexSchema = z.object({
   citedByCount: z.number().nullable().optional(),
   topics: z.array(z.string()).optional(),
   relatedWorks: z.array(z.string()).optional(),
+  matchedBy: z.enum(["doi", "arxiv_url", "title_author"]).nullable().optional(),
+  institutions: z
+    .array(
+      z.object({
+        id: z.string().nullable().optional(),
+        displayName: z.string(),
+        ror: z.string().nullable().optional(),
+        countryCode: z.string().nullable().optional(),
+        type: z.string().nullable().optional(),
+        authorCount: z.number().int().positive(),
+        isCorresponding: z.boolean().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export default async function PaperDetailPage({
@@ -72,9 +87,17 @@ export default async function PaperDetailPage({
     ? stripTechnicalBriefHeading(technicalBrief.oneLineVerdict)
     : "";
   const displayAuthorsText = formatDisplayAuthors(paper.authorsText);
-  const openAlex = paper.enrichments
-    .map((enrichment) => parseJsonValue(enrichment.payload, openAlexSchema, {}))
-    .find((value) => Object.keys(value).length > 0);
+  const openAlex = parseJsonValue(
+    getOpenAlexPayload(
+      paper.enrichments.map((enrichment) => ({
+        provider: enrichment.provider,
+        payload: enrichment.payload,
+      })),
+    ),
+    openAlexSchema,
+    {},
+  );
+  const hasOpenAlex = Object.keys(openAlex).length > 0;
   const pdfCache = paper.pdfCaches[0] ?? null;
 
   return (
@@ -341,7 +364,7 @@ export default async function PaperDetailPage({
                 </div>
               </div>
             ) : null}
-            {openAlex ? (
+            {hasOpenAlex ? (
               <>
                 <div className="stat-panel rounded-[22px] p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
@@ -361,6 +384,47 @@ export default async function PaperDetailPage({
                         <Badge key={topic} variant="default">
                           {topic}
                         </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {openAlex.institutions?.length ? (
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
+                        Author affiliations
+                      </p>
+                      {openAlex.matchedBy ? (
+                        <Badge variant="muted">{formatOpenAlexMatchLabel(openAlex.matchedBy)}</Badge>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3">
+                      {openAlex.institutions.map((institution) => (
+                        <div
+                          key={institution.id ?? institution.displayName}
+                          className="stat-panel rounded-[18px] p-3"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                {institution.displayName}
+                              </p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                                {[institution.countryCode, institution.type]
+                                  .filter(Boolean)
+                                  .join(" · ") || "OpenAlex institution"}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="muted">
+                                {institution.authorCount} author{institution.authorCount === 1 ? "" : "s"}
+                              </Badge>
+                              {institution.isCorresponding ? (
+                                <Badge variant="highlight">Corresponding</Badge>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -417,6 +481,17 @@ export default async function PaperDetailPage({
       </Card>
     </PageShell>
   );
+}
+
+function formatOpenAlexMatchLabel(matchedBy: "doi" | "arxiv_url" | "title_author") {
+  switch (matchedBy) {
+    case "doi":
+      return "Matched by DOI";
+    case "arxiv_url":
+      return "Matched by arXiv URL";
+    case "title_author":
+      return "Matched by title and authors";
+  }
 }
 
 type PaperDetailNotice = {

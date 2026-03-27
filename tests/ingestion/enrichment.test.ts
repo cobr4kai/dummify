@@ -95,7 +95,26 @@ describe("ensurePaperEnrichment", () => {
       enrichments: [
         {
           provider: "openalex",
-          payload: { topics: ["agents"] },
+          payload: {
+            topics: ["agents"],
+            matchedBy: "title_author",
+            institutions: [
+              {
+                displayName: "OpenAI",
+                countryCode: "US",
+                type: "company",
+                authorCount: 1,
+                isCorresponding: false,
+              },
+            ],
+            authorships: [
+              {
+                authorName: "Ada Lovelace",
+                institutionNames: ["OpenAI"],
+                isCorresponding: false,
+              },
+            ],
+          },
           isCurrent: true,
         },
       ],
@@ -153,6 +172,67 @@ describe("ensurePaperEnrichment", () => {
       where: { id: "paper-1" },
       data: {
         searchText: expect.stringContaining("demo thesis agent infrastructure builders"),
+      },
+    });
+  });
+
+  it("refreshes stale openalex enrichments that predate institution tracking", async () => {
+    const enrichMock = vi.fn().mockResolvedValue({
+      provider: "openalex",
+      providerRecordId: "https://openalex.org/W1",
+      payload: {
+        displayName: "Demo paper",
+        citedByCount: 4,
+        topics: ["agents"],
+        relatedWorks: [],
+        matchedBy: "arxiv_url",
+        institutions: [
+          {
+            displayName: "OpenAI",
+            countryCode: "US",
+            type: "company",
+            authorCount: 1,
+            isCorresponding: false,
+          },
+        ],
+        authorships: [
+          {
+            authorName: "Ada Lovelace",
+            institutionNames: ["OpenAI"],
+            isCorresponding: false,
+          },
+        ],
+      },
+    });
+    getEnrichmentProvidersMock.mockReturnValue([
+      {
+        provider: "openalex",
+        enrich: enrichMock,
+      },
+    ]);
+    findPaperMock.mockResolvedValue({
+      ...basePaper,
+      searchText: "demo abstract",
+      enrichments: [
+        {
+          provider: "openalex",
+          payload: { topics: ["agents"] },
+          isCurrent: true,
+        },
+      ],
+    });
+    updateManyMock.mockResolvedValue({ count: 1 });
+    createMock.mockResolvedValue({ id: "enrichment-3" });
+    paperUpdateMock.mockResolvedValue({ id: "paper-1" });
+
+    const result = await ensurePaperEnrichment("paper-1");
+
+    expect(result).toBe(true);
+    expect(enrichMock).toHaveBeenCalledTimes(1);
+    expect(paperUpdateMock).toHaveBeenCalledWith({
+      where: { id: "paper-1" },
+      data: {
+        searchText: expect.stringContaining("openai"),
       },
     });
   });

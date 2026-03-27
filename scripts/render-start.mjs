@@ -21,6 +21,10 @@ async function main() {
     require.resolve("tsx/cli"),
     path.resolve("scripts/bootstrap-backfill.ts"),
   ]);
+  await run(process.execPath, [
+    require.resolve("tsx/cli"),
+    path.resolve("scripts/bootstrap-openalex-published.ts"),
+  ]);
 
   await run(
     process.execPath,

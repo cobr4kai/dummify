@@ -67,9 +67,42 @@ export function getStructuredMetadataPayload(
 export function getOpenAlexTopics(
   enrichments: Array<{ provider: string; payload: unknown }> | undefined,
 ) {
+  const payload = getOpenAlexPayload(enrichments);
+  return payload?.topics ?? [];
+}
+
+export function getOpenAlexInstitutions(
+  enrichments: Array<{ provider: string; payload: unknown }> | undefined,
+) {
+  const payload = getOpenAlexPayload(enrichments);
+  return payload?.institutions?.map((institution) => institution.displayName) ?? [];
+}
+
+export function getOpenAlexPayload(
+  enrichments: Array<{ provider: string; payload: unknown }> | undefined,
+) {
   const record = enrichments?.find((enrichment) => enrichment.provider === "openalex");
   const parsed = openAlexEnrichmentPayloadSchema.safeParse(record?.payload);
-  return parsed.success ? parsed.data.topics ?? [] : [];
+  return parsed.success ? parsed.data : null;
+}
+
+export function buildOpenAlexSearchText(
+  enrichments: Array<{ provider: string; payload: unknown }> | undefined,
+) {
+  const payload = getOpenAlexPayload(enrichments);
+  if (!payload) {
+    return "";
+  }
+
+  return normalizeWhitespace(
+    [
+      payload.displayName ?? "",
+      ...(payload.topics ?? []),
+      ...(payload.institutions?.map((institution) => institution.displayName) ?? []),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 export function resolveStructuredMetadataSourceBasis(

@@ -36,6 +36,29 @@ export const openAlexEnrichmentPayloadSchema = z.object({
   citedByCount: z.number().int().nullable().optional(),
   topics: z.array(z.string()).optional(),
   relatedWorks: z.array(z.string()).optional(),
+  matchedBy: z.enum(["doi", "arxiv_url", "title_author"]).nullable().optional(),
+  institutions: z
+    .array(
+      z.object({
+        id: z.string().nullable().optional(),
+        displayName: z.string(),
+        ror: z.string().nullable().optional(),
+        countryCode: z.string().nullable().optional(),
+        type: z.string().nullable().optional(),
+        authorCount: z.number().int().positive(),
+        isCorresponding: z.boolean().optional(),
+      }),
+    )
+    .optional(),
+  authorships: z
+    .array(
+      z.object({
+        authorName: z.string(),
+        institutionNames: z.array(z.string()),
+        isCorresponding: z.boolean().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type StructuredMetadataModelFields = z.infer<
