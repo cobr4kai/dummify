@@ -164,6 +164,7 @@ model PaperTechnicalBrief {
   limitationsJson     Json
   confidenceNotesJson Json
   evidenceJson        Json
+  affiliationsJson    Json?
   provider            String
   model               String?
   sourceBasis         String

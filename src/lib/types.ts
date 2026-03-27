@@ -156,6 +156,11 @@ export type TechnicalBriefBullet = {
   citations: TechnicalCitation[];
 };
 
+export type TechnicalBriefAffiliation = {
+  displayName: string;
+  markers: string[];
+};
+
 export type ChunkEvidenceFinding = {
   claim: string;
   impactArea:
@@ -192,6 +197,7 @@ export type StructuredTechnicalBrief = {
   bullets: TechnicalBriefBullet[];
   confidenceNotes: string[];
   evidence: ChunkEvidenceFinding[];
+  affiliations?: TechnicalBriefAffiliation[];
   sourceBasis: "full-pdf" | "abstract-fallback";
   usedFallbackAbstract: boolean;
 };

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { technicalBriefAffiliationSchema } from "@repo-types/content";
 
 const citationSchema = z.object({
   page: z.number().int().min(1),
@@ -81,6 +82,7 @@ export const technicalBriefSchema = z.object({
     .min(3)
     .max(5),
   confidenceNotes: z.array(z.string().min(8).max(220)).min(1).max(6),
+  affiliations: z.array(technicalBriefAffiliationSchema).default([]),
   evidence: z
     .array(
       z.object({

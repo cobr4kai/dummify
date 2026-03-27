@@ -188,6 +188,10 @@ export async function saveManualTechnicalBriefEdits(input: {
         focusTagsJson: toJsonInput(current.focusTagsJson),
         whyItMatters: current.whyItMatters,
         whatToIgnore: current.whatToIgnore,
+        affiliationsJson:
+          current.affiliationsJson === null
+            ? Prisma.DbNull
+            : toJsonInput(current.affiliationsJson),
         executiveTakeaway: parsedInput.data.oneLineVerdict,
         bulletsJson: toJsonInput(
           parsedInput.data.bullets.map((text, index) => ({
@@ -309,6 +313,7 @@ async function createTechnicalBriefRecord(
       focusTagsJson: toJsonInput(technicalBrief.focusTags),
       whyItMatters: technicalBrief.whyItMatters,
       whatToIgnore: technicalBrief.whatToIgnore,
+      affiliationsJson: toJsonInput(technicalBrief.affiliations ?? []),
       executiveTakeaway: normalizedVerdict,
       bulletsJson: toJsonInput(technicalBrief.bullets),
       performanceImpact: technicalBrief.whyItMatters,

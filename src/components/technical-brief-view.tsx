@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { parseJsonValue } from "@/lib/utils/json";
+import { technicalBriefAffiliationSchema } from "@repo-types/content";
 
 const citationSchema = z.object({
   page: z.number(),
@@ -30,6 +31,8 @@ const evidenceSchema = z.array(
   }),
 );
 
+const affiliationSchema = z.array(technicalBriefAffiliationSchema);
+
 export function TechnicalBriefView({
   technicalBrief,
   score,
@@ -43,6 +46,7 @@ export function TechnicalBriefView({
     bulletsJson: Prisma.JsonValue;
     confidenceNotesJson: Prisma.JsonValue;
     evidenceJson: Prisma.JsonValue;
+    affiliationsJson?: Prisma.JsonValue;
     usedFallbackAbstract: boolean;
   };
   score?: {
@@ -56,6 +60,11 @@ export function TechnicalBriefView({
     [],
   );
   const evidence = parseJsonValue(technicalBrief.evidenceJson, evidenceSchema, []);
+  const affiliations = parseJsonValue(
+    technicalBrief.affiliationsJson ?? [],
+    affiliationSchema,
+    [],
+  );
   const verdict = stripTechnicalBriefHeading(technicalBrief.oneLineVerdict);
 
   return (
@@ -92,6 +101,34 @@ export function TechnicalBriefView({
           </ul>
         </CardContent>
       </Card>
+
+      {affiliations.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Affiliations</CardTitle>
+            <CardDescription>
+              Institution names extracted from the brief's PDF summary call.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {affiliations.map((affiliation) => (
+              <div key={`${affiliation.displayName}-${affiliation.markers.join(",")}`} className="stat-panel rounded-[22px] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{affiliation.displayName}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      {affiliation.markers.length > 0
+                        ? `Author marker${affiliation.markers.length === 1 ? "" : "s"} ${affiliation.markers.join(", ")}`
+                        : "No author markers parsed"}
+                    </p>
+                  </div>
+                  <Badge variant="muted">From PDF summary</Badge>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

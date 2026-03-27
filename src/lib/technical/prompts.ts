@@ -20,6 +20,8 @@ export function buildChunkEvidenceSystemPrompt() {
     "Use only the provided paper metadata and extracted PDF text pages.",
     "Do not invent numbers, benchmarks, tables, or citations.",
     "Every finding must cite the page where it appears.",
+    "Also extract institution affiliations from the title page when they are present, using the same extracted PDF text.",
+    "Return them as a structured affiliations array with displayName and author marker references.",
     "Prioritize explicit stats, capability shifts, training or inference economics, automation potential, workflow changes, stack implications, market-readiness signals, and caveats.",
     "If a claim is unclear or hedged, lower confidence instead of overstating it.",
   ].join(" ");
@@ -75,6 +77,7 @@ export function buildTechnicalBriefSystemPrompt() {
     "If the paper is conceptual, underpowered, weakly evidenced, or based on simulations rather than real-world tests, say so plainly without flattening the whole brief into generic uncertainty.",
     "Avoid unexplained technical jargon unless it is necessary. When technical terms are needed, immediately translate them into plain-English consequences.",
     "Prefer clear, confident, business-literate language. Do not be patronizing, snarky, promotional, or consultant-slick.",
+    "Also extract institution affiliations from the title page when they are clearly visible, and include them as a structured affiliations array with displayName and author marker references.",
     "If the analysis fell back to abstract-only input, say so clearly and avoid fake citations.",
   ].join(" ");
 }
@@ -104,11 +107,12 @@ ${JSON.stringify(mergedEvidence, null, 2)}
 Output requirements:
 - Produce:
   - oneLineVerdict: the 2-4 sentence 'Why this is worth your attention' section
-  - up to 4 keyStats using only explicit quantitative evidence
-  - up to 4 focusTags chosen from models, training, inference, infra, agents, data
-  - whyItMatters: one concise internal sentence that captures the core significance
-  - whatToIgnore: one concise internal sentence on the main reason not to overread the paper
-  - 3 to 5 ordered bullets that help a smart business reader interpret the paper, decide what to watch, what to ask, what assumption to revisit, or what operational implication follows
+- up to 4 keyStats using only explicit quantitative evidence
+- up to 4 focusTags chosen from models, training, inference, infra, agents, data
+- affiliations: optional structured institution affiliations from the title page, with displayName and author marker references if clearly present
+- whyItMatters: one concise internal sentence that captures the core significance
+- whatToIgnore: one concise internal sentence on the main reason not to overread the paper
+- 3 to 5 ordered bullets that help a smart business reader interpret the paper, decide what to watch, what to ask, what assumption to revisit, or what operational implication follows
 - Every bullet still needs label, text, impactArea, and citations in the JSON output.
 - The reader-facing structure must stay simple: oneLineVerdict followed by bullets. Do not invent extra sections or audience tabs.
 - oneLineVerdict should be 2-4 sentences, vivid, concrete, and business-literate. Do not paraphrase the abstract. Explain what changes, what becomes cheaper, faster, easier, or more realistic, what pressure or opportunity this creates, which teams should care, and how ready this looks.

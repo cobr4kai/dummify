@@ -59,6 +59,7 @@ const openAlexSchema = z.object({
     )
     .optional(),
 });
+
 export default async function PaperDetailPage({
   params,
   searchParams,

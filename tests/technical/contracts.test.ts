@@ -26,6 +26,21 @@ describe("technical brief contracts", () => {
     expect(parsed.keyStats[0]?.citations[0]?.page).toBeGreaterThan(0);
   });
 
+  it("accepts affiliations in the technical brief schema", () => {
+    const parsed = technicalBriefSchema.parse({
+      ...demoTechnicalBriefFixtures[0].brief,
+      affiliations: [
+        {
+          displayName: "Carnegie Mellon University",
+          markers: ["2"],
+        },
+      ],
+    });
+
+    expect(parsed.affiliations).toHaveLength(1);
+    expect(parsed.affiliations[0]?.displayName).toContain("Carnegie Mellon");
+  });
+
   it("accepts structured chunk evidence payloads", () => {
     const parsed = chunkEvidenceSchema.parse({
       summary:
@@ -81,9 +96,11 @@ describe("technical brief contracts", () => {
     expect(buildTechnicalBriefSystemPrompt()).toContain(
       "Produce only two reader-facing elements",
     );
+    expect(buildTechnicalBriefSystemPrompt()).toContain("affiliations");
     expect(buildTechnicalBriefSystemPrompt()).toContain("3-5 bullets");
     expect(prompt).toContain("2-4 sentence");
     expect(prompt).toContain("Do not invent extra sections or audience tabs");
+    expect(prompt).toContain("affiliations");
     expect(prompt).toContain("what to ask");
   });
 

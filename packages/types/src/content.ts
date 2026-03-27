@@ -235,6 +235,11 @@ export const briefEvidenceSchema = z.object({
   citations: z.array(briefCitationSchema),
 });
 
+export const technicalBriefAffiliationSchema = z.object({
+  displayName: z.string().min(1),
+  markers: z.array(z.string().min(1).max(40)).max(8),
+});
+
 export const articleRankingSchema = z.object({
   totalScore: z.number(),
   rationale: z.string().nullable(),
@@ -267,6 +272,7 @@ export const articleTechnicalBriefSchema = z.object({
   keyStats: z.array(briefKeyStatSchema),
   bullets: z.array(briefBulletSchema),
   evidence: z.array(briefEvidenceSchema),
+  affiliations: z.array(technicalBriefAffiliationSchema).default([]),
   sourceBasis: z.enum(["full-pdf", "abstract-fallback"]),
   usedFallbackAbstract: z.boolean(),
 });

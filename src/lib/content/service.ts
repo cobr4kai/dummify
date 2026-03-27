@@ -14,6 +14,7 @@ import {
   briefEvidenceSchema,
   briefKeyStatSchema,
   openArticleContentResponseSchema,
+  technicalBriefAffiliationSchema,
   type DiscoverArticlesInput,
   type BrowseArticlesInput,
   searchArticlesResponseSchema,
@@ -728,6 +729,11 @@ function buildTechnicalBrief(paper: PaperWithContent) {
     confidenceNotes: parseJsonValue(
       technicalBrief.confidenceNotesJson,
       stringArraySchema,
+      [],
+    ),
+    affiliations: parseJsonValue(
+      technicalBrief.affiliationsJson,
+      z.array(technicalBriefAffiliationSchema),
       [],
     ),
     keyStats: hydrateCitations(
