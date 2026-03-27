@@ -15,10 +15,16 @@ import { PageShell } from "@/components/page-shell";
 import { ScoreBreakdownCard } from "@/components/score-breakdown";
 import { TechnicalBriefView } from "@/components/technical-brief-view";
 import { isAdminAuthenticated } from "@/lib/auth";
-import { ensurePaperEnrichment } from "@/lib/ingestion/service";
-import { getOpenAlexPayload } from "@/lib/metadata/service";
+import {
+  ensurePaperEnrichment,
+  ensurePaperPdfAffiliations,
+} from "@/lib/ingestion/service";
+import {
+  getOpenAlexPayload,
+  getPdfAffiliationPayload,
+} from "@/lib/metadata/service";
 import { getRelatedPapers } from "@/lib/related/service";
-import { getCurrentScore, getPaperDetail } from "@/lib/search/service";
+import { getPaperDetail } from "@/lib/search/service";
 import { stripTechnicalBriefHeading } from "@/lib/technical/brief-text";
 import { isManualTechnicalBriefProvider } from "@/lib/technical/service";
 import { formatLongDateTime, formatShortDate } from "@/lib/utils/dates";
@@ -53,7 +59,6 @@ const openAlexSchema = z.object({
     )
     .optional(),
 });
-
 export default async function PaperDetailPage({
   params,
   searchParams,
@@ -65,6 +70,7 @@ export default async function PaperDetailPage({
   const query = await searchParams;
 
   await ensurePaperEnrichment(paperId);
+  await ensurePaperPdfAffiliations(paperId);
 
   const paper = await getPaperDetail(paperId);
   if (!paper) {
@@ -72,7 +78,7 @@ export default async function PaperDetailPage({
   }
 
   const related = await getRelatedPapers(paperId, 4);
-  const score = getCurrentScore(paper.scores);
+  const score = paper.scores[0] ?? null;
   const technicalBrief = paper.technicalBriefs[0] ?? null;
   const isAdmin = await isAdminAuthenticated();
   const detailNotice = getPaperDetailNotice(
@@ -87,17 +93,40 @@ export default async function PaperDetailPage({
     ? stripTechnicalBriefHeading(technicalBrief.oneLineVerdict)
     : "";
   const displayAuthorsText = formatDisplayAuthors(paper.authorsText);
+  const currentEnrichments = paper.enrichments.map((enrichment: (typeof paper.enrichments)[number]) => ({
+    provider: enrichment.provider,
+    payload: enrichment.payload,
+  }));
   const openAlex = parseJsonValue(
-    getOpenAlexPayload(
-      paper.enrichments.map((enrichment) => ({
-        provider: enrichment.provider,
-        payload: enrichment.payload,
-      })),
-    ),
+    getOpenAlexPayload(currentEnrichments),
     openAlexSchema,
     {},
   );
   const hasOpenAlex = Object.keys(openAlex).length > 0;
+  const pdfAffiliations = getPdfAffiliationPayload(currentEnrichments) ?? null;
+  const institutionEntries =
+    openAlex.institutions?.length
+      ? openAlex.institutions.map((institution) => ({
+          displayName: institution.displayName,
+          secondaryLabel:
+            [institution.countryCode, institution.type].filter(Boolean).join(" · ") ||
+            "OpenAlex institution",
+          badges: [
+            `${institution.authorCount} author${institution.authorCount === 1 ? "" : "s"}`,
+            ...(institution.isCorresponding ? ["Corresponding"] : []),
+          ],
+          sourceLabel: openAlex.matchedBy ? formatOpenAlexMatchLabel(openAlex.matchedBy) : null,
+        }))
+      : (pdfAffiliations?.institutions ?? []).map((institution) => ({
+          displayName: institution.displayName,
+          secondaryLabel:
+            institution.markers.length > 0
+              ? `Author marker${institution.markers.length === 1 ? "" : "s"} ${institution.markers.join(", ")}`
+              : "Parsed from cached PDF",
+          badges: [`PDF page ${pdfAffiliations?.extractedFromPage ?? 1}`],
+          sourceLabel: "Parsed from PDF first page",
+        }));
+  const hasAffiliations = institutionEntries.length > 0;
   const pdfCache = paper.pdfCaches[0] ?? null;
 
   return (
@@ -364,16 +393,18 @@ export default async function PaperDetailPage({
                 </div>
               </div>
             ) : null}
-            {hasOpenAlex ? (
+            {hasOpenAlex || hasAffiliations ? (
               <>
-                <div className="stat-panel rounded-[22px] p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    Citation count
-                  </p>
-                  <p className="metric-value mt-2 text-3xl text-foreground">
-                    {openAlex.citedByCount ?? "n/a"}
-                  </p>
-                </div>
+                {hasOpenAlex ? (
+                  <div className="stat-panel rounded-[22px] p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      Citation count
+                    </p>
+                    <p className="metric-value mt-2 text-3xl text-foreground">
+                      {openAlex.citedByCount ?? "n/a"}
+                    </p>
+                  </div>
+                ) : null}
                 {openAlex.topics?.length ? (
                   <div>
                     <p className="eyebrow mb-2 text-[11px] font-semibold text-muted-foreground">
@@ -388,20 +419,20 @@ export default async function PaperDetailPage({
                     </div>
                   </div>
                 ) : null}
-                {openAlex.institutions?.length ? (
+                {hasAffiliations ? (
                   <div>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
                         Author affiliations
                       </p>
-                      {openAlex.matchedBy ? (
-                        <Badge variant="muted">{formatOpenAlexMatchLabel(openAlex.matchedBy)}</Badge>
+                      {institutionEntries[0]?.sourceLabel ? (
+                        <Badge variant="muted">{institutionEntries[0].sourceLabel}</Badge>
                       ) : null}
                     </div>
                     <div className="grid gap-3">
-                      {openAlex.institutions.map((institution) => (
+                      {institutionEntries.map((institution) => (
                         <div
-                          key={institution.id ?? institution.displayName}
+                          key={`${institution.displayName}-${institution.secondaryLabel}`}
                           className="stat-panel rounded-[18px] p-3"
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -410,18 +441,15 @@ export default async function PaperDetailPage({
                                 {institution.displayName}
                               </p>
                               <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                                {[institution.countryCode, institution.type]
-                                  .filter(Boolean)
-                                  .join(" · ") || "OpenAlex institution"}
+                                {institution.secondaryLabel}
                               </p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="muted">
-                                {institution.authorCount} author{institution.authorCount === 1 ? "" : "s"}
-                              </Badge>
-                              {institution.isCorresponding ? (
-                                <Badge variant="highlight">Corresponding</Badge>
-                              ) : null}
+                              {institution.badges.map((badge) => (
+                                <Badge key={badge} variant="muted">
+                                  {badge}
+                                </Badge>
+                              ))}
                             </div>
                           </div>
                         </div>
@@ -452,7 +480,7 @@ export default async function PaperDetailPage({
           {related.length === 0 ? (
             <p className="text-sm text-muted-foreground">No related papers found yet.</p>
           ) : (
-            related.map((item) => (
+            related.map((item: (typeof related)[number]) => (
               <div
                 key={item.id}
                 className="stat-panel rounded-[24px] p-4"

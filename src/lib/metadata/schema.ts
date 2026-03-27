@@ -61,12 +61,28 @@ export const openAlexEnrichmentPayloadSchema = z.object({
     .optional(),
 });
 
+export const PDF_AFFILIATIONS_PROVIDER = "pdf_affiliations_v1";
+
+export const pdfAffiliationEnrichmentSchema = z.object({
+  version: z.literal(PDF_AFFILIATIONS_PROVIDER),
+  extractedFromPage: z.number().int().positive(),
+  institutions: z
+    .array(
+      z.object({
+        displayName: z.string(),
+        markers: z.array(z.string()).default([]),
+      }),
+    )
+    .min(1),
+});
+
 export type StructuredMetadataModelFields = z.infer<
   typeof structuredMetadataModelFieldsSchema
 >;
 export type StructuredMetadataEnrichment = z.infer<
   typeof structuredMetadataEnrichmentSchema
 >;
+export type PdfAffiliationEnrichment = z.infer<typeof pdfAffiliationEnrichmentSchema>;
 export type StructuredMetadataSourceBasis = z.infer<
   typeof analysisSourceBasisSchema
 >;

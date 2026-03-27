@@ -18,10 +18,13 @@ import {
   buildOpenAlexSearchText,
   getOpenAlexPayload,
   getOpenAlexTopics,
+  getPdfAffiliationPayload,
   getStructuredMetadataPayload,
 } from "@/lib/metadata/service";
 import {
+  PDF_AFFILIATIONS_PROVIDER,
   STRUCTURED_METADATA_PROVIDER,
+  type PdfAffiliationEnrichment,
   type StructuredMetadataEnrichment,
 } from "@/lib/metadata/schema";
 import {
@@ -29,6 +32,7 @@ import {
   buildPaperPersistenceData,
   paperToSourceRecord,
 } from "@/lib/papers/record";
+import { extractPdfAffiliationPayloadFromFile } from "@/lib/pdf/affiliations";
 import {
   getEnrichmentProviders,
   getTechnicalBriefProvider,
@@ -316,6 +320,54 @@ export async function ensurePaperEnrichment(
   return result.changed;
 }
 
+export async function ensurePaperPdfAffiliations(
+  paperId: string,
+  options: { force?: boolean } = {},
+) {
+  const paper = await prisma.paper.findUnique({
+    where: { id: paperId },
+    include: {
+      enrichments: {
+        where: { isCurrent: true },
+      },
+      pdfCaches: {
+        where: { isCurrent: true },
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  if (!paper) {
+    return false;
+  }
+
+  const existing = getPdfAffiliationPayload(
+    paper.enrichments.map((enrichment) => ({
+      provider: enrichment.provider,
+      payload: enrichment.payload,
+    })),
+  );
+  if (existing && !options.force) {
+    return false;
+  }
+
+  const pdfCache = paper.pdfCaches[0];
+  if (!pdfCache?.extractedJsonPath) {
+    return false;
+  }
+
+  const payload = await extractPdfAffiliationPayloadFromFile(pdfCache.extractedJsonPath).catch(
+    () => null,
+  );
+  if (!payload) {
+    return false;
+  }
+
+  await replaceCurrentPdfAffiliationEnrichment(paper.id, payload);
+  return true;
+}
+
 export async function backfillStructuredMetadata(options: {
   paperIds?: string[];
   fromAnnouncementDay?: string;
@@ -410,6 +462,85 @@ export async function backfillOpenAlexForPublishedPapers(options: {
     if (result.updatedProviders.includes("openalex")) {
       updatedCount += 1;
     }
+  });
+
+  return {
+    paperCount: papers.length,
+    updatedCount,
+  };
+}
+
+export async function backfillPdfAffiliationsForPublishedPapers(options: {
+  paperIds?: string[];
+  fromAnnouncementDay?: string;
+  toAnnouncementDay?: string;
+  force?: boolean;
+} = {}) {
+  const papers = await prisma.paper.findMany({
+    where: {
+      isDemoData: false,
+      publishedItems: {
+        some: {},
+      },
+      pdfCaches: {
+        some: {
+          isCurrent: true,
+          extractedJsonPath: {
+            not: null,
+          },
+        },
+      },
+      ...(options.paperIds?.length ? { id: { in: options.paperIds } } : {}),
+      ...((options.fromAnnouncementDay || options.toAnnouncementDay)
+        ? {
+            announcementDay: {
+              ...(options.fromAnnouncementDay
+                ? { gte: options.fromAnnouncementDay }
+                : {}),
+              ...(options.toAnnouncementDay ? { lte: options.toAnnouncementDay } : {}),
+            },
+          }
+        : {}),
+    },
+    include: {
+      enrichments: {
+        where: { isCurrent: true },
+      },
+      pdfCaches: {
+        where: { isCurrent: true },
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  let updatedCount = 0;
+
+  await mapWithConcurrency(papers, Math.min(ENRICHMENT_CONCURRENCY, 2), async (paper) => {
+    const existing = getPdfAffiliationPayload(
+      paper.enrichments.map((enrichment) => ({
+        provider: enrichment.provider,
+        payload: enrichment.payload,
+      })),
+    );
+    if (existing && !options.force) {
+      return;
+    }
+
+    const extractedJsonPath = paper.pdfCaches[0]?.extractedJsonPath;
+    if (!extractedJsonPath) {
+      return;
+    }
+
+    const payload = await extractPdfAffiliationPayloadFromFile(extractedJsonPath).catch(
+      () => null,
+    );
+    if (!payload) {
+      return;
+    }
+
+    await replaceCurrentPdfAffiliationEnrichment(paper.id, payload);
+    updatedCount += 1;
   });
 
   return {
@@ -560,6 +691,33 @@ function toRecordPayload(payload: unknown) {
   }
 
   return {};
+}
+
+async function replaceCurrentPdfAffiliationEnrichment(
+  paperId: string,
+  payload: PdfAffiliationEnrichment,
+) {
+  await prisma.$transaction(async (tx) => {
+    await tx.paperEnrichment.updateMany({
+      where: {
+        paperId,
+        provider: PDF_AFFILIATIONS_PROVIDER,
+        isCurrent: true,
+      },
+      data: {
+        isCurrent: false,
+      },
+    });
+
+    await tx.paperEnrichment.create({
+      data: {
+        paperId,
+        provider: PDF_AFFILIATIONS_PROVIDER,
+        providerRecordId: null,
+        payload: toJsonInput(payload),
+      },
+    });
+  });
 }
 
 function enrichmentNeedsRefresh(

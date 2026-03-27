@@ -5,8 +5,10 @@ import {
   normalizeWhitespace,
 } from "@/lib/utils/strings";
 import {
+  pdfAffiliationEnrichmentSchema,
   openAlexEnrichmentPayloadSchema,
   structuredMetadataEnrichmentSchema,
+  type PdfAffiliationEnrichment,
   type StructuredMetadataEnrichment,
   type StructuredMetadataModelFields,
   type StructuredMetadataSourceBasis,
@@ -83,6 +85,16 @@ export function getOpenAlexPayload(
 ) {
   const record = enrichments?.find((enrichment) => enrichment.provider === "openalex");
   const parsed = openAlexEnrichmentPayloadSchema.safeParse(record?.payload);
+  return parsed.success ? parsed.data : null;
+}
+
+export function getPdfAffiliationPayload(
+  enrichments: Array<{ provider: string; payload: unknown }> | undefined,
+): PdfAffiliationEnrichment | null {
+  const record = enrichments?.find(
+    (enrichment) => enrichment.provider === "pdf_affiliations_v1",
+  );
+  const parsed = pdfAffiliationEnrichmentSchema.safeParse(record?.payload);
   return parsed.success ? parsed.data : null;
 }
 
