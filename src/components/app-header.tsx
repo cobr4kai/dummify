@@ -32,8 +32,15 @@ export function AppHeader({
   return (
     <header className={cn(showReaderMasthead ? "mb-8" : "nav-glass sticky top-0 z-30")} data-tone={tone}>
       {showReaderMasthead ? (
-        <div className="mx-auto max-w-[1280px] px-4 pt-6 sm:px-6 lg:px-8">
-          <div className="mb-4 flex flex-col gap-4 rounded-[24px] px-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto max-w-[1280px] px-4 pt-3 sm:px-6 sm:pt-6 lg:px-8">
+          <div
+            className={cn(
+              "mb-4 rounded-[24px] px-1",
+              showUtilityBrandRow
+                ? "flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                : "hidden",
+            )}
+          >
             {showUtilityBrandRow ? (
               <Link href="/" className="min-w-0">
                 <span className="editorial-display block text-[1.9rem] text-foreground sm:text-[2.15rem]">
