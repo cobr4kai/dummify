@@ -7,7 +7,7 @@ import {
   getRenderablePhaseTimeline,
   type AdminIngestionRun,
   type IngestionPhaseProgress,
-} from "@/lib/ingestion/progress";
+} from "@/lib/ingestion/progress-shared";
 import { cn } from "@/lib/utils/cn";
 import { formatLongDateTime } from "@/lib/utils/dates";
 

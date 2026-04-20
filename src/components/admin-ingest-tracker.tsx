@@ -4,7 +4,10 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getRunBadgeVariant } from "@/lib/admin/ui";
-import { type AdminIngestionRun, getRenderablePhaseTimeline } from "@/lib/ingestion/progress";
+import {
+  type AdminIngestionRun,
+  getRenderablePhaseTimeline,
+} from "@/lib/ingestion/progress-shared";
 import { formatLongDateTime } from "@/lib/utils/dates";
 import { AdminRunsList, ProgressBar } from "@/components/admin-runs-list";
 
