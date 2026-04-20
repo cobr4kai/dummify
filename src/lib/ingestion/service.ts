@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import {
   createInitialIngestionProgress,
   IngestionProgressReporter,
+  parseIngestionProgress,
 } from "@/lib/ingestion/progress";
 import {
   buildOpenAlexSearchText,
@@ -1063,6 +1064,8 @@ function appendEnrichmentWarnings(logLines: string[], warnings: string[]) {
 }
 
 export async function getActiveIngestionRun(options?: { now?: Date }) {
+  await closeStaleIngestionRuns(options);
+
   const run = await prisma.ingestionRun.findFirst({
     where: {
       status: IngestionStatus.RUNNING,
@@ -1085,6 +1088,77 @@ export async function getActiveIngestionRun(options?: { now?: Date }) {
   const now = options?.now ?? new Date();
   const ageMs = now.getTime() - run.startedAt.getTime();
   return ageMs <= ACTIVE_MANUAL_RUN_WINDOW_MS ? run : null;
+}
+
+export async function closeStaleIngestionRuns(options?: { now?: Date }) {
+  const now = options?.now ?? new Date();
+  const staleBefore = new Date(now.getTime() - ACTIVE_MANUAL_RUN_WINDOW_MS);
+  const staleRuns = await prisma.ingestionRun.findMany({
+    where: {
+      status: IngestionStatus.RUNNING,
+      startedAt: {
+        lt: staleBefore,
+      },
+    },
+    select: {
+      id: true,
+      logLines: true,
+      progressJson: true,
+    },
+  });
+
+  if (staleRuns.length === 0) {
+    return 0;
+  }
+
+  const staleMessage =
+    "Marked failed automatically after exceeding the 6 hour ingest activity window.";
+  const completedAt = now;
+  const completedAtIso = completedAt.toISOString();
+
+  await prisma.$transaction(
+    staleRuns.map((run) => {
+      const logLines = Array.isArray(run.logLines)
+        ? run.logLines
+            .filter((line): line is string | number | boolean => line !== null)
+            .map((line) => String(line))
+        : [];
+      if (!logLines.includes(staleMessage)) {
+        logLines.push(staleMessage);
+      }
+
+      const progress = parseIngestionProgress(run.progressJson);
+      if (progress) {
+        const runningPhase =
+          progress.phases.find((phase) => phase.status === "running") ??
+          (progress.currentPhase
+            ? progress.phases.find((phase) => phase.key === progress.currentPhase) ?? null
+            : null);
+
+        if (runningPhase) {
+          runningPhase.status = "failed";
+          runningPhase.completedAt = completedAtIso;
+          runningPhase.message = staleMessage;
+        }
+
+        progress.currentMessage = staleMessage;
+        progress.lastHeartbeatAt = completedAtIso;
+      }
+
+      return prisma.ingestionRun.update({
+        where: { id: run.id },
+        data: {
+          status: IngestionStatus.FAILED,
+          completedAt,
+          errorMessage: staleMessage,
+          logLines: toJsonInput(logLines),
+          ...(progress ? { progressJson: toJsonInput(progress) } : {}),
+        },
+      });
+    }),
+  );
+
+  return staleRuns.length;
 }
 
 function appendHistoricalWarnings(

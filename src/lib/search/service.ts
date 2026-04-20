@@ -1,5 +1,6 @@
 import { BriefMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { closeStaleIngestionRuns } from "@/lib/ingestion/service";
 import { normalizeAdminIngestionRun } from "@/lib/ingestion/progress";
 import { getPublishedPaperIdsForWeek } from "@/lib/publishing/service";
 import { getAppSettings, getCategoryConfigs, type AppSettings } from "@/lib/settings/service";
@@ -447,6 +448,8 @@ export async function getPaperDetail(paperId: string) {
 }
 
 export async function getAdminIngestionStatus() {
+  await closeStaleIngestionRuns();
+
   const runs = await prisma.ingestionRun.findMany({
     orderBy: { startedAt: "desc" },
     take: 10,
