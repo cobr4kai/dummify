@@ -21,6 +21,27 @@ import { toAnnouncementDay } from "@/lib/utils/dates";
 const API_BASE_URL = "https://export.arxiv.org/api/query";
 const RSS_BASE_URL = "https://rss.arxiv.org/rss";
 
+export type ArxivProgressEvent =
+  | {
+      type: "discover-category";
+      category: string;
+      processedCategories: number;
+      totalCategories: number;
+      discoveredCount: number;
+    }
+  | {
+      type: "hydrate-batch";
+      processed: number;
+      total: number;
+      batchSize: number;
+    }
+  | {
+      type: "wait";
+      lane: ArxivLane;
+      delayMs: number;
+      reason: "min-delay" | "retry-backoff" | "retry-after";
+    };
+
 export type ArxivClientOptions = {
   apiBaseUrl?: string;
   rssBaseUrl?: string;
@@ -35,14 +56,16 @@ export type ArxivClientOptions = {
   sleepFn?: (ms: number) => Promise<void>;
   userAgent?: string;
   requestGate?: ArxivRequestGate;
+  onProgress?: (event: ArxivProgressEvent) => Promise<void> | void;
 };
 
 type FetchXmlOptions = {
   bypassCache?: boolean;
 };
 
-type ResolvedArxivClientOptions = Omit<Required<ArxivClientOptions>, "cacheRoot"> & {
+type ResolvedArxivClientOptions = Omit<Required<ArxivClientOptions>, "cacheRoot" | "onProgress"> & {
   cacheRoot?: string;
+  onProgress?: ArxivClientOptions["onProgress"];
 };
 
 export type HistoricalFetchResult = {
@@ -75,6 +98,7 @@ export class ArxivClient {
       sleepFn: options.sleepFn ?? sleep,
       userAgent: options.userAgent ?? "PaperBrief/0.1",
       requestGate: options.requestGate ?? getDefaultArxivRequestGate(),
+      onProgress: options.onProgress,
     };
   }
 
@@ -311,6 +335,15 @@ export class ArxivClient {
           error instanceof RetryableArxivError ? error : null,
         );
         await this.applyRetryPenalty(lane, backoff);
+        await this.emitProgress({
+          type: "wait",
+          lane,
+          delayMs: backoff,
+          reason:
+            error instanceof RetryableArxivError && error.retryAfterMs
+              ? "retry-after"
+              : "retry-backoff",
+        });
         await this.options.sleepFn(backoff);
       }
     }
@@ -321,13 +354,19 @@ export class ArxivClient {
   private async discoverDailyEntries(categories: string[], date: string) {
     const entries: DailyFeedEntry[] = [];
 
-    for (const category of categories) {
+    for (const [index, category] of categories.entries()) {
       const xml = await this.fetchXml(`${this.options.rssBaseUrl}/${category}`, "rss");
-      entries.push(
-        ...parseDailyFeed(xml, category).filter(
-          (entry) => entry.announcementDay === date && entry.announceType === "new",
-        ),
+      const discovered = parseDailyFeed(xml, category).filter(
+        (entry) => entry.announcementDay === date && entry.announceType === "new",
       );
+      entries.push(...discovered);
+      await this.emitProgress({
+        type: "discover-category",
+        category,
+        processedCategories: index + 1,
+        totalCategories: categories.length,
+        discoveredCount: discovered.length,
+      });
     }
 
     return entries;
@@ -335,9 +374,17 @@ export class ArxivClient {
 
   private async hydrateByIds(ids: string[]) {
     const hydratedById = new Map<string, PaperSourceRecord>();
+    let processed = 0;
 
     for (const batch of chunk(ids, 25)) {
       await this.hydrateBatch(batch, hydratedById);
+      processed += batch.length;
+      await this.emitProgress({
+        type: "hydrate-batch",
+        processed,
+        total: ids.length,
+        batchSize: batch.length,
+      });
     }
 
     return hydratedById;
@@ -351,6 +398,12 @@ export class ArxivClient {
     const delay = Math.max(0, nextAllowedAt - nowMs);
 
     if (delay > 0) {
+      await this.emitProgress({
+        type: "wait",
+        lane,
+        delayMs: delay,
+        reason: "min-delay",
+      });
       await this.options.sleepFn(delay);
     }
 
@@ -427,6 +480,10 @@ export class ArxivClient {
       await this.hydrateBatch(batch.slice(0, midpoint), hydratedById);
       await this.hydrateBatch(batch.slice(midpoint), hydratedById);
     }
+  }
+
+  private async emitProgress(event: ArxivProgressEvent) {
+    await this.options.onProgress?.(event);
   }
 }
 

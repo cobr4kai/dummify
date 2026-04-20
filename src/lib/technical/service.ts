@@ -188,10 +188,7 @@ export async function saveManualTechnicalBriefEdits(input: {
         focusTagsJson: toJsonInput(current.focusTagsJson),
         whyItMatters: current.whyItMatters,
         whatToIgnore: current.whatToIgnore,
-        affiliationsJson:
-          current.affiliationsJson === null
-            ? Prisma.DbNull
-            : toJsonInput(current.affiliationsJson),
+        affiliationsJson: toJsonInput(current.affiliationsJson ?? []),
         executiveTakeaway: parsedInput.data.oneLineVerdict,
         bulletsJson: toJsonInput(
           parsedInput.data.bullets.map((text, index) => ({

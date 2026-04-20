@@ -52,11 +52,6 @@ enum TriggerSource {
   SEED
 }
 
-enum FeedbackSentiment {
-  USEFUL
-  NOT_USEFUL
-}
-
 model Paper {
   id              String            @id @default(cuid())
   arxivId         String            @unique
@@ -153,6 +148,7 @@ model PaperTechnicalBrief {
   paperId             String
   oneLineVerdict      String
   keyStatsJson        Json
+  affiliationsJson    Json     @default("[]")
   focusTagsJson       Json
   whyItMatters        String
   whatToIgnore        String
@@ -164,7 +160,6 @@ model PaperTechnicalBrief {
   limitationsJson     Json
   confidenceNotesJson Json
   evidenceJson        Json
-  affiliationsJson    Json?
   provider            String
   model               String?
   sourceBasis         String
@@ -228,6 +223,7 @@ model IngestionRun {
   scoreCount         Int             @default(0)
   summaryCount       Int             @default(0)
   logLines           Json
+  progressJson       Json?
   errorMessage       String?
   startedAt          DateTime        @default(now())
   completedAt        DateTime?
@@ -278,19 +274,4 @@ model EmailSignup {
 
   @@index([createdAt])
   @@index([lastSubmittedAt])
-}
-
-model AppFeedback {
-  id              String            @id @default(cuid())
-  sentiment       FeedbackSentiment
-  message         String?
-  email           String?
-  normalizedEmail String?
-  sourcePath      String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
-  @@index([createdAt])
-  @@index([sentiment])
-  @@index([normalizedEmail])
 }

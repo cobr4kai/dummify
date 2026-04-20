@@ -8,7 +8,7 @@ type LatestRun = {
   status: string;
   mode: string;
   triggerSource: string;
-  startedAt: Date;
+  startedAt: Date | string;
   fetchedCount: number;
   upsertedCount: number;
   summaryCount: number;

@@ -18,12 +18,38 @@ export type HistoricalRecordsResult = {
   failedWindows: number;
 };
 
+export type HistoricalBackfillProgressEvent =
+  | {
+      type: "window-start";
+      index: number;
+      totalWindows: number;
+      from: string;
+      to: string;
+    }
+  | {
+      type: "window-complete";
+      index: number;
+      totalWindows: number;
+      from: string;
+      to: string;
+      fetchedCount: number;
+    }
+  | {
+      type: "window-warning";
+      index: number;
+      totalWindows: number;
+      from: string;
+      to: string;
+      warnings: string[];
+    };
+
 export async function fetchHistoricalRecords(input: {
   client: ArxivClient;
   categories: string[];
   from: string;
   to: string;
   provider?: ArxivBackfillProvider | null;
+  onProgress?: (event: HistoricalBackfillProgressEvent) => Promise<void> | void;
 }): Promise<HistoricalRecordsResult> {
   if (input.provider) {
     return {
@@ -43,7 +69,14 @@ export async function fetchHistoricalRecords(input: {
   const windows = buildDailyWindows(input.from, input.to);
   let failedWindows = 0;
 
-  for (const window of windows) {
+  for (const [index, window] of windows.entries()) {
+    await input.onProgress?.({
+      type: "window-start",
+      index: index + 1,
+      totalWindows: windows.length,
+      from: window.from,
+      to: window.to,
+    });
     const result: HistoricalFetchResult = await input.client.fetchHistorical(
       input.categories,
       window.from,
@@ -57,7 +90,24 @@ export async function fetchHistoricalRecords(input: {
     if (result.warnings.length > 0) {
       failedWindows += 1;
       warnings.push(...result.warnings);
+      await input.onProgress?.({
+        type: "window-warning",
+        index: index + 1,
+        totalWindows: windows.length,
+        from: window.from,
+        to: window.to,
+        warnings: result.warnings,
+      });
     }
+
+    await input.onProgress?.({
+      type: "window-complete",
+      index: index + 1,
+      totalWindows: windows.length,
+      from: window.from,
+      to: window.to,
+      fetchedCount: result.records.length,
+    });
   }
 
   return {

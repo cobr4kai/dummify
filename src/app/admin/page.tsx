@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   await requireAdmin("/admin");
   const snapshot = await getAdminSnapshot();
-  const latestRun = snapshot.runs[0] ?? null;
+  const latestRun = snapshot.activeRun ?? snapshot.runs[0] ?? null;
   const providerBadges = [
     {
       label: `OpenAI ${env.OPENAI_API_KEY ? "configured" : "not configured"}`,
@@ -205,7 +205,6 @@ export default async function AdminPage() {
                   <ul className="mt-3 space-y-1 text-sm leading-6 text-foreground/90">
                     {latestRun.logLines
                       .slice(-3)
-                      .filter((line): line is string | number | boolean => line !== null)
                       .map((line, index) => (
                         <li key={`${latestRun.id}-${index}-${String(line)}`}>- {String(line)}</li>
                       ))}

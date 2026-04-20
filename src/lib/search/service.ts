@@ -1,5 +1,6 @@
 import { BriefMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { normalizeAdminIngestionRun } from "@/lib/ingestion/progress";
 import { getPublishedPaperIdsForWeek } from "@/lib/publishing/service";
 import { getAppSettings, getCategoryConfigs, type AppSettings } from "@/lib/settings/service";
 import { hasPdfBackedBrief } from "@/lib/technical/brief-status";
@@ -445,6 +446,20 @@ export async function getPaperDetail(paperId: string) {
   });
 }
 
+export async function getAdminIngestionStatus() {
+  const runs = await prisma.ingestionRun.findMany({
+    orderBy: { startedAt: "desc" },
+    take: 10,
+  });
+  const normalizedRuns = runs.map(normalizeAdminIngestionRun);
+  const activeRun = normalizedRuns.find((run) => run.status === "RUNNING") ?? null;
+
+  return {
+    activeRun,
+    recentRuns: normalizedRuns.filter((run) => run.id !== activeRun?.id),
+  };
+}
+
 export async function getAdminSnapshot(options?: {
   weekStart?: string | null;
   announcementDay?: string | null;
@@ -452,13 +467,10 @@ export async function getAdminSnapshot(options?: {
   const requestedWeekStart =
     options?.weekStart ??
     (options?.announcementDay ? getWeekStart(options.announcementDay) : null);
-  const [settings, categories, runs, latestDay, latestCompletedDay, days] = await Promise.all([
+  const [settings, categories, ingestionStatus, latestDay, latestCompletedDay, days] = await Promise.all([
     getAppSettings(),
     getCategoryConfigs(),
-    prisma.ingestionRun.findMany({
-      orderBy: { startedAt: "desc" },
-      take: 10,
-    }),
+    getAdminIngestionStatus(),
     getLatestAnnouncementDay(),
     getLatestCompletedAnnouncementDay(),
     getAnnouncementDays(),
@@ -498,7 +510,8 @@ export async function getAdminSnapshot(options?: {
   return {
     settings,
     categories,
-    runs,
+    activeRun: ingestionStatus.activeRun,
+    runs: ingestionStatus.recentRuns,
     latestDay,
     latestCompletedWeekStart: latestCompletedDay ? getWeekStart(latestCompletedDay) : null,
     weeks,

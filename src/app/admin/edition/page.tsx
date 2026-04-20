@@ -104,7 +104,7 @@ export default async function AdminEditionPage({
           activeHomepagePaperIds={snapshot.activeHomepagePaperIds}
           activeHomepageWeekLabel={snapshot.activeHomepageWeekLabel}
           activeHomepageWeekStart={snapshot.activeHomepageWeekStart}
-          latestRun={snapshot.runs[0] ?? null}
+          latestRun={snapshot.activeRun ?? snapshot.runs[0] ?? null}
           selectedWeek={snapshot.selectedWeek}
           sortDirection={sortDirection}
           sortKey={sortKey}

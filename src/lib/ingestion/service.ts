@@ -12,8 +12,12 @@ import {
   fetchHistoricalRecords,
   type HistoricalRecordsResult,
 } from "@/lib/arxiv/backfill";
-import { ArxivClient } from "@/lib/arxiv/client";
+import { ArxivClient, type ArxivProgressEvent } from "@/lib/arxiv/client";
 import { prisma } from "@/lib/db";
+import {
+  createInitialIngestionProgress,
+  IngestionProgressReporter,
+} from "@/lib/ingestion/progress";
 import {
   buildOpenAlexSearchText,
   getOpenAlexPayload,
@@ -103,17 +107,10 @@ export async function runIngestionJob(options: IngestionOptions) {
   const categories = options.categories?.length
     ? options.categories
     : await getEnabledCategoryKeys();
-  const arxivClient = new ArxivClient({
-    apiMinDelayMs: appSettings.apiMinDelayMs,
-    rssMinDelayMs: appSettings.rssMinDelayMs,
-    retryBaseDelayMs: appSettings.retryBaseDelayMs,
-    apiCacheTtlMinutes: appSettings.apiCacheTtlMinutes,
-    feedCacheTtlMinutes: appSettings.feedCacheTtlMinutes,
-    cacheRoot: path.resolve(appSettings.pdfCacheDir),
-  });
   const announcementDay =
     options.announcementDay ?? getArxivAnnouncementDateString();
   const jobMode = options.jobMode ?? "PRIMARY";
+  const initialProgress = createInitialIngestionProgress(options.mode as IngestionMode);
 
   const run = await prisma.ingestionRun.create({
     data: {
@@ -126,12 +123,24 @@ export async function runIngestionJob(options: IngestionOptions) {
       recomputeScores: Boolean(options.recomputeScores),
       recomputeSummaries: Boolean(options.recomputeBriefs),
       logLines: toJsonInput([]),
+      progressJson: toJsonInput(initialProgress),
     },
   });
 
   const logLines: string[] = [];
+  const tracker = new IngestionProgressReporter(run.id, options.mode as IngestionMode);
+  const arxivClient = new ArxivClient({
+    apiMinDelayMs: appSettings.apiMinDelayMs,
+    rssMinDelayMs: appSettings.rssMinDelayMs,
+    retryBaseDelayMs: appSettings.retryBaseDelayMs,
+    apiCacheTtlMinutes: appSettings.apiCacheTtlMinutes,
+    feedCacheTtlMinutes: appSettings.feedCacheTtlMinutes,
+    cacheRoot: path.resolve(appSettings.pdfCacheDir),
+    onProgress: (event) => handleArxivProgressEvent(tracker, event, options.mode),
+  });
 
   try {
+    await tracker.initialize();
     logLines.push(
       options.mode === "DAILY"
         ? `Starting ${jobMode.toLowerCase()} daily ingestion for the operator brief.`
@@ -139,15 +148,72 @@ export async function runIngestionJob(options: IngestionOptions) {
     );
 
     let historicalResult: HistoricalRecordsResult | null = null;
-    const papers =
-      options.mode === "DAILY"
-        ? await arxivClient.fetchDaily(categories, announcementDay)
-        : (historicalResult = await fetchHistoricalRecords({
-            client: arxivClient,
-            categories,
-            from: options.from!,
-            to: options.to!,
-          })).records;
+    let papers: PaperSourceRecord[] = [];
+    if (options.mode === "DAILY") {
+      await tracker.startPhase("discover_feeds", {
+        message: `Scanning ${categories.length} arXiv feeds for ${announcementDay}.`,
+        total: categories.length,
+        processed: 0,
+      });
+      papers = await arxivClient.fetchDaily(categories, announcementDay);
+      await tracker.completePhase(
+        "discover_feeds",
+        `Discovered ${papers.length} papers from the daily arXiv feeds.`,
+      );
+      await tracker.completePhase(
+        "hydrate_arxiv_records",
+        papers.length > 0
+          ? `Hydrated ${papers.length} arXiv records.`
+          : "No arXiv ids required hydration after feed discovery.",
+      );
+    } else {
+      await tracker.startPhase("fetch_historical_window", {
+        message: `Fetching historical windows from ${options.from} to ${options.to}.`,
+      });
+      historicalResult = await fetchHistoricalRecords({
+        client: arxivClient,
+        categories,
+        from: options.from!,
+        to: options.to!,
+        onProgress: async (event) => {
+          if (event.type === "window-start") {
+            await tracker.updatePhase("fetch_historical_window", {
+              processed: event.index - 1,
+              total: event.totalWindows,
+              message: `Fetching historical window ${event.index} of ${event.totalWindows} (${event.from}).`,
+              force: true,
+            });
+            return;
+          }
+
+          if (event.type === "window-warning") {
+            await tracker.addWarnings(
+              1,
+              `Historical window ${event.index} of ${event.totalWindows} hit a warning and continued.`,
+            );
+            return;
+          }
+
+          await tracker.updatePhase("fetch_historical_window", {
+            processed: event.index,
+            total: event.totalWindows,
+            message: `Fetched historical window ${event.index} of ${event.totalWindows} (${event.fetchedCount} papers from ${event.from}).`,
+            force: event.index === event.totalWindows || event.index === 1,
+          });
+        },
+      });
+      papers = historicalResult.records;
+      await tracker.completePhase(
+        "fetch_historical_window",
+        `Fetched ${papers.length} papers across the requested historical windows.`,
+      );
+      await tracker.completePhase(
+        "hydrate_arxiv_records",
+        papers.length > 0
+          ? `Hydrated ${papers.length} historical arXiv records.`
+          : "No historical arXiv records were hydrated for the requested window.",
+      );
+    }
 
     logLines.push(`Fetched ${papers.length} paper records from arXiv.`);
     if (
@@ -164,16 +230,35 @@ export async function runIngestionJob(options: IngestionOptions) {
     }
     if (historicalResult?.warnings.length) {
       appendHistoricalWarnings(logLines, historicalResult);
+      await tracker.addWarnings(
+        historicalResult.warnings.length,
+        "Historical fetch completed with warnings.",
+      );
     }
 
     const upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }> = [];
-    for (const paper of papers) {
+    await tracker.startPhase("upsert_papers", {
+      message: papers.length > 0 ? "Saving papers into the archive." : "No papers to upsert.",
+      total: papers.length,
+      processed: 0,
+    });
+    for (const [index, paper] of papers.entries()) {
       const record = await prisma.$transaction(async (tx) => upsertPaper(tx, paper));
       upsertedRecords.push({
         id: record.id,
         sourceRecord: paper,
       });
+      await tracker.updatePhase("upsert_papers", {
+        processed: index + 1,
+        total: papers.length,
+        message: `Saved ${index + 1} of ${papers.length} papers.`,
+        force: index === 0 || index + 1 === papers.length || (index + 1) % 25 === 0,
+      });
     }
+    await tracker.completePhase(
+      "upsert_papers",
+      `Saved ${upsertedRecords.length} papers into the archive.`,
+    );
 
     const upsertedIds = upsertedRecords.map((record) => record.id);
     let briefCount = 0;
@@ -186,7 +271,15 @@ export async function runIngestionJob(options: IngestionOptions) {
       : [];
 
     if (briefProvider) {
-      for (const paperId of paperIdsForBriefs) {
+      await tracker.startPhase("generate_briefs", {
+        message:
+          paperIdsForBriefs.length > 0
+            ? `Generating homepage briefs for ${paperIdsForBriefs.length} curated papers.`
+            : "No curated papers needed brief generation for this run.",
+        total: paperIdsForBriefs.length,
+        processed: 0,
+      });
+      for (const [index, paperId] of paperIdsForBriefs.entries()) {
         const briefResult = await ensurePaperTechnicalBrief(paperId, {
           force: Boolean(options.recomputeBriefs),
           requirePdf: true,
@@ -199,19 +292,112 @@ export async function runIngestionJob(options: IngestionOptions) {
             `Skipped executive brief for homepage paper ${paperId} because full PDF extraction was unavailable.`,
           );
         }
+        await tracker.updatePhase("generate_briefs", {
+          processed: index + 1,
+          total: paperIdsForBriefs.length,
+          message: `Generated ${briefCount} of ${paperIdsForBriefs.length} homepage briefs.`,
+          force:
+            index === 0 ||
+            index + 1 === paperIdsForBriefs.length ||
+            (index + 1) % 10 === 0,
+        });
       }
+      await tracker.completePhase(
+        "generate_briefs",
+        paperIdsForBriefs.length > 0
+          ? `Generated ${briefCount} homepage briefs.`
+          : "No curated papers needed brief generation for this run.",
+      );
     } else {
       logLines.push("Skipped executive briefs because OPENAI_API_KEY is not configured.");
     }
 
+    await tracker.startPhase("enrich_openalex", {
+      message:
+        upsertedRecords.length > 0
+          ? `Refreshing OpenAlex enrichment for ${upsertedRecords.length} papers.`
+          : "No papers needed OpenAlex enrichment.",
+      total: upsertedRecords.length,
+      processed: 0,
+    });
+    let openAlexProcessed = 0;
+    const openAlexResults = await mapWithConcurrency(
+      upsertedRecords,
+      ENRICHMENT_CONCURRENCY,
+      async (record) => {
+        const result = await hydratePaperEnrichments(record.id, {
+          force: false,
+          providers: ["openalex"],
+        });
+        openAlexProcessed += 1;
+        await tracker.updatePhase("enrich_openalex", {
+          processed: openAlexProcessed,
+          total: upsertedRecords.length,
+          message: `Enriched OpenAlex for ${openAlexProcessed} of ${upsertedRecords.length} papers.`,
+          force:
+            openAlexProcessed === 1 ||
+            openAlexProcessed === upsertedRecords.length ||
+            openAlexProcessed % 25 === 0,
+        });
+        return {
+          paperId: record.id,
+          sourceRecord: record.sourceRecord,
+          result,
+        };
+      },
+    );
+    await tracker.completePhase(
+      "enrich_openalex",
+      upsertedRecords.length > 0
+        ? `Processed OpenAlex enrichment for ${upsertedRecords.length} papers.`
+        : "No papers needed OpenAlex enrichment.",
+    );
+
+    await tracker.startPhase("enrich_structured_metadata", {
+      message:
+        upsertedRecords.length > 0
+          ? `Generating structured metadata for ${upsertedRecords.length} papers.`
+          : "No papers needed structured metadata.",
+      total: upsertedRecords.length,
+      processed: 0,
+    });
+    let structuredProcessed = 0;
     const enrichmentResults = await mapWithConcurrency(
       upsertedRecords,
       ENRICHMENT_CONCURRENCY,
-      async (record) => ({
-        paperId: record.id,
-        sourceRecord: record.sourceRecord,
-        result: await hydratePaperEnrichments(record.id, { force: false }),
-      }),
+      async (record) => {
+        const openAlexUpdated =
+          openAlexResults.find((item) => item.paperId === record.id)?.result.updatedProviders.includes("openalex") ??
+          false;
+        const result = await hydratePaperEnrichments(record.id, {
+          force: openAlexUpdated,
+          providers: [STRUCTURED_METADATA_PROVIDER],
+        });
+        structuredProcessed += 1;
+        await tracker.updatePhase("enrich_structured_metadata", {
+          processed: structuredProcessed,
+          total: upsertedRecords.length,
+          message: `Generated structured metadata for ${structuredProcessed} of ${upsertedRecords.length} papers.`,
+          force:
+            structuredProcessed === 1 ||
+            structuredProcessed === upsertedRecords.length ||
+            structuredProcessed % 25 === 0,
+        });
+        return {
+          paperId: record.id,
+          sourceRecord: record.sourceRecord,
+          result: mergeHydrationResults(
+            openAlexResults.find((item) => item.paperId === record.id)?.result ?? null,
+            result,
+          ),
+        };
+      },
+    );
+    await tracker.completePhase(
+      "enrich_structured_metadata",
+      upsertedRecords.length > 0
+        ? `Processed structured metadata for ${upsertedRecords.length} papers.`
+        : "No papers needed structured metadata.",
     );
 
     const structuredMetadataCount = enrichmentResults.filter(({ result }) =>
@@ -228,9 +414,21 @@ export async function runIngestionJob(options: IngestionOptions) {
         result.warnings.map((warning) => `Paper ${paperId}: ${warning}`),
       ),
     );
+    await tracker.addWarnings(
+      enrichmentResults.reduce((count, item) => count + item.result.warnings.length, 0),
+    );
 
     let scoreCount = 0;
-    for (const record of upsertedRecords) {
+    await tracker.startPhase("score_papers", {
+      message:
+        upsertedRecords.length > 0
+          ? `Refreshing scores for ${upsertedRecords.length} papers.`
+          : "No papers needed score updates.",
+      total: upsertedRecords.length,
+      processed: 0,
+    });
+    let scoredProcessed = 0;
+    for (const [index, record] of upsertedRecords.entries()) {
       const hydration = enrichmentResults.find((item) => item.paperId === record.id)?.result;
       const shouldScore =
         Boolean(options.recomputeScores) ||
@@ -251,7 +449,20 @@ export async function runIngestionJob(options: IngestionOptions) {
         );
       });
       scoreCount += 1;
+      scoredProcessed += 1;
+      await tracker.updatePhase("score_papers", {
+        processed: index + 1,
+        total: upsertedRecords.length,
+        message: `Scored ${scoredProcessed} of ${upsertedRecords.length} papers.`,
+        force: index === 0 || index + 1 === upsertedRecords.length || (index + 1) % 25 === 0,
+      });
     }
+    await tracker.completePhase(
+      "score_papers",
+      upsertedRecords.length > 0
+        ? `Scored ${scoreCount} papers.`
+        : "No papers needed score updates.",
+    );
 
     const status =
       historicalResult?.warnings.length
@@ -262,6 +473,11 @@ export async function runIngestionJob(options: IngestionOptions) {
           ? IngestionStatus.PARTIAL
           : IngestionStatus.COMPLETED;
 
+    await tracker.finish(
+      status === IngestionStatus.PARTIAL
+        ? "Ingest completed with warnings."
+        : "Ingest completed successfully.",
+    );
     await prisma.ingestionRun.update({
       where: { id: run.id },
       data: {
@@ -286,6 +502,9 @@ export async function runIngestionJob(options: IngestionOptions) {
     };
   } catch (error) {
     logLines.push(error instanceof Error ? error.message : "Unknown ingestion failure.");
+    await tracker.markFailed(
+      error instanceof Error ? error.message : "Unknown ingestion failure.",
+    );
 
     await prisma.ingestionRun.update({
       where: { id: run.id },
@@ -879,6 +1098,83 @@ function appendHistoricalWarnings(
 
   logLines.push(summary);
   appendEnrichmentWarnings(logLines, result.warnings);
+}
+
+function mergeHydrationResults(
+  primary: HydrateEnrichmentResult | null,
+  secondary: HydrateEnrichmentResult,
+): HydrateEnrichmentResult {
+  if (!primary) {
+    return secondary;
+  }
+
+  return {
+    changed: primary.changed || secondary.changed,
+    updatedProviders: Array.from(
+      new Set([...primary.updatedProviders, ...secondary.updatedProviders]),
+    ),
+    warnings: [...primary.warnings, ...secondary.warnings],
+    structuredMetadata: secondary.structuredMetadata ?? primary.structuredMetadata,
+  };
+}
+
+async function handleArxivProgressEvent(
+  tracker: IngestionProgressReporter,
+  event: ArxivProgressEvent,
+  mode: IngestionOptions["mode"],
+) {
+  if (mode !== "DAILY") {
+    if (event.type === "wait") {
+      await tracker.setWaitingMessage(
+        "fetch_historical_window",
+        buildArxivWaitMessage(event),
+      );
+    }
+    return;
+  }
+
+  if (event.type === "discover-category") {
+    await tracker.updatePhase("discover_feeds", {
+      processed: event.processedCategories,
+      total: event.totalCategories,
+      message: `Scanned ${event.processedCategories} of ${event.totalCategories} feeds and found ${event.discoveredCount} candidate papers.`,
+      force:
+        event.processedCategories === 1 ||
+        event.processedCategories === event.totalCategories,
+    });
+    return;
+  }
+
+  if (event.type === "hydrate-batch") {
+    await tracker.startPhase("hydrate_arxiv_records", {
+      total: event.total,
+      processed: 0,
+      message: `Hydrating ${event.total} arXiv records.`,
+    });
+    await tracker.updatePhase("hydrate_arxiv_records", {
+      processed: event.processed,
+      total: event.total,
+      message: `Hydrated ${event.processed} of ${event.total} arXiv records.`,
+      force: event.processed === event.total || event.processed === event.batchSize,
+    });
+    return;
+  }
+
+  await tracker.setWaitingMessage("discover_feeds", buildArxivWaitMessage(event));
+}
+
+function buildArxivWaitMessage(
+  event: Extract<ArxivProgressEvent, { type: "wait" }>,
+) {
+  const seconds = Math.max(1, Math.ceil(event.delayMs / 1000));
+  const laneLabel = event.lane === "api" ? "arXiv API" : "arXiv RSS";
+  if (event.reason === "retry-after") {
+    return `Waiting on ${laneLabel} rate limit before retry (${seconds}s).`;
+  }
+  if (event.reason === "retry-backoff") {
+    return `Backing off ${laneLabel} after a retryable response (${seconds}s).`;
+  }
+  return `Respecting ${laneLabel} pacing window (${seconds}s).`;
 }
 
 async function mapWithConcurrency<T, TResult>(

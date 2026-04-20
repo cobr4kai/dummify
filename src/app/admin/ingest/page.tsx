@@ -1,8 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { AdminIngestPanel } from "@/components/admin-ingest-panel";
+import { AdminIngestTracker } from "@/components/admin-ingest-tracker";
 import { AdminNoticeBanner, type AdminNotice } from "@/components/admin-notice-banner";
 import { AdminPageHeader } from "@/components/admin-page-header";
-import { AdminRunsList } from "@/components/admin-runs-list";
 import { PageShell } from "@/components/page-shell";
 import { runDailyRefreshAction, runHistoricalRefreshAction } from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/auth";
@@ -13,9 +13,6 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   notice?: string;
-  fetched?: string;
-  upserted?: string;
-  generated?: string;
   week?: string;
   sort?: string;
   dir?: string;
@@ -35,9 +32,6 @@ export default async function AdminIngestPage({
   const notice = getIngestNotice({
     notice: typeof params.notice === "string" ? params.notice : null,
     currentArxivAnnouncementDay,
-    fetched: readCount(params.fetched),
-    upserted: readCount(params.upserted),
-    generated: readCount(params.generated),
   });
 
   return (
@@ -79,7 +73,10 @@ export default async function AdminIngestPage({
       </section>
 
       <section>
-        <AdminRunsList runs={snapshot.runs} />
+        <AdminIngestTracker
+          initialActiveRun={snapshot.activeRun}
+          initialRuns={snapshot.runs}
+        />
       </section>
     </PageShell>
   );
@@ -88,9 +85,6 @@ export default async function AdminIngestPage({
 function getIngestNotice(input: {
   notice: string | null;
   currentArxivAnnouncementDay: string;
-  fetched?: number;
-  upserted?: number;
-  generated?: number;
 }): AdminNotice {
   switch (input.notice) {
     case "missing-range":
@@ -107,80 +101,28 @@ function getIngestNotice(input: {
           `The daily fetch currently pulls only the active arXiv RSS announcement day (${formatShortDate(input.currentArxivAnnouncementDay)}). Use Backfill archive window for older stored days.`,
         variant: "highlight",
       };
-    case "daily-refresh":
-      return {
-        title: "Fetch today finished",
-        description: buildRunSummary(
-          input,
-          "The selected daily ingest run completed and the latest stored paper pool has been refreshed.",
-        ),
-        variant: "success",
-      };
     case "daily-refresh-started":
       return {
         title: "Fetch today started",
         description:
-          "The ingest job is now running in the background. The latest run card will update as progress is written.",
+          "The daily ingest was accepted and is now updating in the live tracker below.",
         variant: "highlight",
-      };
-    case "historical-refresh":
-      return {
-        title: "Backfill archive window finished",
-        description: buildRunSummary(
-          input,
-          "The historical ingestion window finished and the refreshed archive is now available in admin.",
-        ),
-        variant: "success",
       };
     case "historical-refresh-started":
       return {
         title: "Backfill archive window started",
         description:
-          "The historical ingest is running in the background. Large windows may take a while, but the admin page should stay responsive while the run progresses.",
+          "The historical backfill is running now. Follow the active run card below for live phase updates.",
         variant: "highlight",
       };
     case "ingest-already-running":
       return {
         title: "An ingest run is already in progress",
         description:
-          "Wait for the current run to finish before starting another one. This keeps the app from piling extra load onto arXiv and avoids overlapping manual jobs.",
+          "The active run tracker below is already updating. Let that run finish before starting another ingest.",
         variant: "highlight",
       };
     default:
       return null;
   }
-}
-
-function buildRunSummary(
-  input: {
-    fetched?: number;
-    upserted?: number;
-    generated?: number;
-  },
-  prefix: string,
-) {
-  const parts: string[] = [];
-
-  if (typeof input.fetched === "number") {
-    parts.push(`fetched ${input.fetched}`);
-  }
-
-  if (typeof input.upserted === "number") {
-    parts.push(`upserted ${input.upserted}`);
-  }
-
-  if (typeof input.generated === "number") {
-    parts.push(`generated ${input.generated} executive briefs`);
-  }
-
-  return parts.length > 0 ? `${prefix} This run ${parts.join(", ")}.` : prefix;
-}
-
-function readCount(value: string | undefined) {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
