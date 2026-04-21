@@ -275,3 +275,18 @@ model EmailSignup {
   @@index([createdAt])
   @@index([lastSubmittedAt])
 }
+
+model AppFeedback {
+  id              String   @id @default(cuid())
+  sentiment       String
+  message         String?
+  email           String?
+  normalizedEmail String?
+  sourcePath      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([sentiment])
+  @@index([normalizedEmail])
+}

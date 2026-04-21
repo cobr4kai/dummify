@@ -43,28 +43,7 @@ const feedbackSchema = z.object({
     }),
 });
 
-const appFeedback = (prisma as typeof prisma & {
-  appFeedback: {
-    create: (args: {
-      data: Omit<AppFeedbackRecord, "id" | "createdAt" | "updatedAt">;
-    }) => Promise<unknown>;
-    count: (args?: {
-      where?: {
-        sentiment?: "USEFUL" | "NOT_USEFUL";
-        normalizedEmail?: {
-          not: null;
-        };
-      };
-    }) => Promise<number>;
-    findMany: (args: {
-      orderBy: Array<{
-        createdAt?: "asc" | "desc";
-        updatedAt?: "asc" | "desc";
-      }>;
-      take: number;
-    }) => Promise<AppFeedbackRecord[]>;
-  };
-}).appFeedback;
+const appFeedback = prisma.appFeedback;
 
 export type CreateAppFeedbackResult =
   | {
