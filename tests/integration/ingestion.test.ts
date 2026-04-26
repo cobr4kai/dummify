@@ -137,6 +137,26 @@ vi.mock("@/lib/db", () => {
           return run;
         }),
         findMany: vi.fn(async () => dbState.runs),
+        findFirst: vi.fn(async () => {
+          return dbState.runs.find((run) => run.status === "RUNNING") ?? null;
+        }),
+        count: vi.fn(async ({ where }: Record<string, unknown>) => {
+          return dbState.runs.filter((run) => {
+            if (run.mode !== (where as { mode: string }).mode) {
+              return false;
+            }
+            if (run.status !== (where as { status: string }).status) {
+              return false;
+            }
+            if (run.requestedFrom !== (where as { requestedFrom: Date | null }).requestedFrom) {
+              return false;
+            }
+            if (run.requestedTo !== (where as { requestedTo: Date | null }).requestedTo) {
+              return false;
+            }
+            return String(run.errorMessage ?? "").includes("no ingest heartbeat");
+          }).length;
+        }),
         update: vi.fn(async ({ where, data }: Record<string, unknown>) => {
           const run = dbState.runs.find(
             (item) => item.id === (where as { id: string }).id,
@@ -226,7 +246,11 @@ vi.mock("@/lib/db", () => {
   };
 });
 
-import { closeStaleIngestionRuns, runIngestionJob } from "@/lib/ingestion/service";
+import {
+  closeStaleIngestionRuns,
+  recoverStaleIngestionRuns,
+  runIngestionJob,
+} from "@/lib/ingestion/service";
 
 describe("runIngestionJob", () => {
   beforeEach(() => {
@@ -499,5 +523,47 @@ describe("runIngestionJob", () => {
 
     expect(count).toBe(0);
     expect(dbState.runs[0]?.status).toBe(IngestionStatus.RUNNING);
+  });
+
+  it("auto-resumes a stale historical ingest with the same range", async () => {
+    const progress = createInitialIngestionProgress(IngestionMode.HISTORICAL);
+    progress.currentPhase = "upsert_papers";
+    progress.lastHeartbeatAt = "2026-04-19T07:20:00.000Z";
+    dbState.runs.push({
+      id: "stale-run",
+      mode: IngestionMode.HISTORICAL,
+      triggerSource: TriggerSource.MANUAL,
+      status: IngestionStatus.RUNNING,
+      startedAt: new Date("2026-04-19T07:20:00.000Z"),
+      categories: ["cs.AI"],
+      requestedFrom: new Date("2026-04-13T00:00:00.000Z"),
+      requestedTo: new Date("2026-04-19T23:59:59.999Z"),
+      recomputeScores: true,
+      recomputeSummaries: false,
+      logLines: [],
+      progressJson: progress,
+    });
+
+    const result = await recoverStaleIngestionRuns({
+      now: new Date("2026-04-19T07:51:00.000Z"),
+    });
+
+    expect(result).toEqual({
+      staleCount: 1,
+      resumedCount: 1,
+    });
+    expect(dbState.runs[0]).toMatchObject({
+      status: IngestionStatus.FAILED,
+    });
+    expect(dbState.runs[1]).toMatchObject({
+      mode: IngestionMode.HISTORICAL,
+      status: IngestionStatus.RUNNING,
+      triggerSource: TriggerSource.API,
+      categories: ["cs.AI"],
+      requestedFrom: new Date("2026-04-13T00:00:00.000Z"),
+      requestedTo: new Date("2026-04-19T23:59:59.999Z"),
+      recomputeScores: true,
+      recomputeSummaries: false,
+    });
   });
 });

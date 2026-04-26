@@ -58,6 +58,7 @@ export type DailyJobMode = "PRIMARY" | "RECONCILE";
 
 const ACTIVE_MANUAL_RUN_WINDOW_MS = 6 * 60 * 60 * 1000;
 const ACTIVE_HEARTBEAT_STALE_MS = 30 * 60 * 1000;
+const MAX_AUTO_RESUME_ATTEMPTS = 2;
 
 type IngestionOptions = {
   mode: "DAILY" | "HISTORICAL";
@@ -69,6 +70,17 @@ type IngestionOptions = {
   recomputeScores?: boolean;
   recomputeBriefs?: boolean;
   jobMode?: DailyJobMode;
+};
+
+type PreparedIngestionJob = {
+  appSettings: Awaited<ReturnType<typeof getAppSettings>>;
+  categories: string[];
+  announcementDay: string;
+  jobMode: DailyJobMode;
+  run: {
+    id: string;
+  };
+  startupLogLine?: string;
 };
 
 type HydrateEnrichmentOptions = {
@@ -104,7 +116,46 @@ type PaperWithEnrichmentContext = Prisma.PaperGetPayload<{
   include: typeof paperEnrichmentInclude;
 }>;
 
+export async function startIngestionJob(
+  options: IngestionOptions,
+  startOptions: {
+    skipStaleCheck?: boolean;
+    startupLogLine?: string;
+  } = {},
+) {
+  if (!startOptions.skipStaleCheck) {
+    await closeStaleIngestionRuns();
+  }
+
+  const activeRun = await findActiveIngestionRun();
+  if (activeRun) {
+    return {
+      status: "already-running" as const,
+      runId: activeRun.id,
+    };
+  }
+
+  const prepared = await prepareIngestionJob(options, startOptions.startupLogLine);
+  void executePreparedIngestionJob(prepared, options)
+    .catch((error) => {
+      console.error("Background ingest job failed", error);
+    });
+
+  return {
+    status: "started" as const,
+    runId: prepared.run.id,
+  };
+}
+
 export async function runIngestionJob(options: IngestionOptions) {
+  const prepared = await prepareIngestionJob(options);
+  return executePreparedIngestionJob(prepared, options);
+}
+
+async function prepareIngestionJob(
+  options: IngestionOptions,
+  startupLogLine?: string,
+): Promise<PreparedIngestionJob> {
   const appSettings = await getAppSettings();
   const categories = options.categories?.length
     ? options.categories
@@ -120,8 +171,8 @@ export async function runIngestionJob(options: IngestionOptions) {
       status: IngestionStatus.RUNNING,
       triggerSource: options.triggerSource,
       categories: toJsonInput(categories),
-      requestedFrom: options.from ? new Date(`${options.from}T00:00:00.000Z`) : null,
-      requestedTo: options.to ? new Date(`${options.to}T23:59:59.999Z`) : null,
+      requestedFrom: new Date(`${options.from ?? announcementDay}T00:00:00.000Z`),
+      requestedTo: new Date(`${options.to ?? announcementDay}T23:59:59.999Z`),
       recomputeScores: Boolean(options.recomputeScores),
       recomputeSummaries: Boolean(options.recomputeBriefs),
       logLines: toJsonInput([]),
@@ -129,6 +180,21 @@ export async function runIngestionJob(options: IngestionOptions) {
     },
   });
 
+  return {
+    appSettings,
+    categories,
+    announcementDay,
+    jobMode,
+    run,
+    startupLogLine,
+  };
+}
+
+async function executePreparedIngestionJob(
+  prepared: PreparedIngestionJob,
+  options: IngestionOptions,
+) {
+  const { appSettings, categories, announcementDay, jobMode, run, startupLogLine } = prepared;
   const logLines: string[] = [];
   const tracker = new IngestionProgressReporter(run.id, options.mode as IngestionMode);
   const arxivClient = new ArxivClient({
@@ -143,6 +209,9 @@ export async function runIngestionJob(options: IngestionOptions) {
 
   try {
     await tracker.initialize();
+    if (startupLogLine) {
+      logLines.push(startupLogLine);
+    }
     logLines.push(
       options.mode === "DAILY"
         ? `Starting ${jobMode.toLowerCase()} daily ingestion for the operator brief.`
@@ -1067,6 +1136,10 @@ function appendEnrichmentWarnings(logLines: string[], warnings: string[]) {
 export async function getActiveIngestionRun(options?: { now?: Date }) {
   await closeStaleIngestionRuns(options);
 
+  return findActiveIngestionRun();
+}
+
+async function findActiveIngestionRun() {
   return prisma.ingestionRun.findFirst({
     where: {
       status: IngestionStatus.RUNNING,
@@ -1084,6 +1157,44 @@ export async function getActiveIngestionRun(options?: { now?: Date }) {
 }
 
 export async function closeStaleIngestionRuns(options?: { now?: Date }) {
+  const staleRuns = await findStaleIngestionRuns(options);
+  await markStaleIngestionRunsFailed(staleRuns, options);
+  return staleRuns.length;
+}
+
+export async function recoverStaleIngestionRuns(options?: { now?: Date }) {
+  const staleRuns = await findStaleIngestionRuns(options);
+  await markStaleIngestionRunsFailed(staleRuns, options);
+
+  let resumedCount = 0;
+  for (const run of staleRuns) {
+    const resumeOptions = await buildResumeOptions(run);
+    if (!resumeOptions) {
+      continue;
+    }
+
+    const staleFailureCount = await countRecentStaleFailuresForRun(run);
+    if (staleFailureCount > MAX_AUTO_RESUME_ATTEMPTS) {
+      continue;
+    }
+
+    const result = await startIngestionJob(resumeOptions, {
+      skipStaleCheck: true,
+      startupLogLine: `Auto-resumed after stale ingestion run ${run.id} stopped without a heartbeat. Attempt ${staleFailureCount} of ${MAX_AUTO_RESUME_ATTEMPTS}.`,
+    });
+
+    if (result.status === "started") {
+      resumedCount += 1;
+    }
+  }
+
+  return {
+    staleCount: staleRuns.length,
+    resumedCount,
+  };
+}
+
+async function findStaleIngestionRuns(options?: { now?: Date }) {
   const now = options?.now ?? new Date();
   const runningRuns = await prisma.ingestionRun.findMany({
     where: {
@@ -1092,6 +1203,13 @@ export async function closeStaleIngestionRuns(options?: { now?: Date }) {
     select: {
       id: true,
       startedAt: true,
+      mode: true,
+      triggerSource: true,
+      categories: true,
+      requestedFrom: true,
+      requestedTo: true,
+      recomputeScores: true,
+      recomputeSummaries: true,
       logLines: true,
       progressJson: true,
     },
@@ -1131,12 +1249,18 @@ export async function closeStaleIngestionRuns(options?: { now?: Date }) {
 
     return [];
   });
+  return staleRuns;
+}
 
+async function markStaleIngestionRunsFailed(
+  staleRuns: Awaited<ReturnType<typeof findStaleIngestionRuns>>,
+  options?: { now?: Date },
+) {
   if (staleRuns.length === 0) {
-    return 0;
+    return;
   }
 
-  const completedAt = now;
+  const completedAt = options?.now ?? new Date();
   const completedAtIso = completedAt.toISOString();
 
   await prisma.$transaction(
@@ -1180,8 +1304,70 @@ export async function closeStaleIngestionRuns(options?: { now?: Date }) {
       });
     }),
   );
+}
 
-  return staleRuns.length;
+async function buildResumeOptions(
+  run: Awaited<ReturnType<typeof findStaleIngestionRuns>>[number],
+): Promise<IngestionOptions | null> {
+  const categories = parseCategoryList(run.categories);
+  const from = run.requestedFrom ? toDateOnly(run.requestedFrom) : null;
+  const to = run.requestedTo ? toDateOnly(run.requestedTo) : null;
+
+  if (run.mode === IngestionMode.HISTORICAL) {
+    if (!from || !to) {
+      return null;
+    }
+
+    return {
+      mode: "HISTORICAL",
+      triggerSource: TriggerSource.API,
+      categories,
+      from,
+      to,
+      recomputeScores: run.recomputeScores,
+      recomputeBriefs: run.recomputeSummaries,
+    };
+  }
+
+  return {
+    mode: "DAILY",
+    triggerSource: TriggerSource.API,
+    categories,
+    announcementDay: from ?? getArxivAnnouncementDateString(),
+    recomputeScores: run.recomputeScores,
+    recomputeBriefs: run.recomputeSummaries,
+  };
+}
+
+async function countRecentStaleFailuresForRun(
+  run: Awaited<ReturnType<typeof findStaleIngestionRuns>>[number],
+) {
+  const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  return prisma.ingestionRun.count({
+    where: {
+      mode: run.mode,
+      status: IngestionStatus.FAILED,
+      requestedFrom: run.requestedFrom,
+      requestedTo: run.requestedTo,
+      startedAt: {
+        gte: windowStart,
+      },
+      errorMessage: {
+        contains: "no ingest heartbeat",
+      },
+    },
+  });
+}
+
+function parseCategoryList(value: Prisma.JsonValue) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : undefined;
+}
+
+function toDateOnly(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function appendHistoricalWarnings(

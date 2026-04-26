@@ -6,13 +6,12 @@ const {
   getAppSettingsMock,
   getCurrentTechnicalBriefMock,
   headersMock,
-  getActiveIngestionRunMock,
+  startIngestionJobMock,
   redirectMock,
   reorderPublishedPaperForWeekMock,
   requireAdminMock,
   revalidatePathMock,
   resetAppSettingsMock,
-  runIngestionJobMock,
   setPublishedPaperStateMock,
   updateAppSettingsMock,
   updateCategoryConfigsMock,
@@ -22,7 +21,7 @@ const {
   getAppSettingsMock: vi.fn(),
   getCurrentTechnicalBriefMock: vi.fn(),
   headersMock: vi.fn(),
-  getActiveIngestionRunMock: vi.fn(),
+  startIngestionJobMock: vi.fn(),
   redirectMock: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
@@ -30,7 +29,6 @@ const {
   requireAdminMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   resetAppSettingsMock: vi.fn(),
-  runIngestionJobMock: vi.fn(),
   setPublishedPaperStateMock: vi.fn(),
   updateAppSettingsMock: vi.fn(),
   updateCategoryConfigsMock: vi.fn(),
@@ -54,8 +52,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/ingestion/service", () => ({
-  getActiveIngestionRun: getActiveIngestionRunMock,
-  runIngestionJob: runIngestionJobMock,
+  startIngestionJob: startIngestionJobMock,
 }));
 
 vi.mock("@/lib/publishing/service", () => ({
@@ -97,8 +94,7 @@ import {
 describe("admin actions", () => {
   beforeEach(() => {
     requireAdminMock.mockReset();
-    runIngestionJobMock.mockReset();
-    getActiveIngestionRunMock.mockReset();
+    startIngestionJobMock.mockReset();
     updateAppSettingsMock.mockReset();
     resetAppSettingsMock.mockReset();
     getCategoryConfigsMock.mockReset();
@@ -113,11 +109,9 @@ describe("admin actions", () => {
 
     requireAdminMock.mockResolvedValue(undefined);
     headersMock.mockResolvedValue(new Headers());
-    getActiveIngestionRunMock.mockResolvedValue(null);
-    runIngestionJobMock.mockResolvedValue({
-      fetchedCount: 4,
-      upsertedCount: 4,
-      summaryCount: 2,
+    startIngestionJobMock.mockResolvedValue({
+      status: "started",
+      runId: "run-1",
     });
     updateAppSettingsMock.mockResolvedValue(undefined);
     getAppSettingsMock.mockResolvedValue({
@@ -133,7 +127,7 @@ describe("admin actions", () => {
       "REDIRECT:/admin/ingest?week=2026-03-16&notice=daily-refresh-started",
     );
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/ingest");
-    expect(runIngestionJobMock).toHaveBeenCalledWith({
+    expect(startIngestionJobMock).toHaveBeenCalledWith({
       mode: "DAILY",
       triggerSource: "MANUAL",
       announcementDay: "2026-03-20",
@@ -145,17 +139,15 @@ describe("admin actions", () => {
   it("redirects to the running notice when another ingest is already active", async () => {
     const formData = new FormData();
     formData.set("announcementDay", "2026-03-20");
-    getActiveIngestionRunMock.mockResolvedValueOnce({
-      id: "run-1",
-      mode: "HISTORICAL",
-      triggerSource: "MANUAL",
-      startedAt: new Date("2026-03-25T03:00:00.000Z"),
+    startIngestionJobMock.mockResolvedValueOnce({
+      status: "already-running",
+      runId: "run-1",
     });
 
     await expect(runDailyRefreshAction(formData)).rejects.toThrow(
       "REDIRECT:/admin/ingest?week=2026-03-16&notice=ingest-already-running",
     );
-    expect(runIngestionJobMock).not.toHaveBeenCalled();
+    expect(startIngestionJobMock).toHaveBeenCalledTimes(1);
   });
 
   it("redirects missing historical ranges back to ingest", async () => {
@@ -175,7 +167,7 @@ describe("admin actions", () => {
     await expect(runHistoricalRefreshAction(formData)).rejects.toThrow(
       "REDIRECT:/admin/ingest?week=2026-03-09&notice=historical-refresh-started",
     );
-    expect(runIngestionJobMock).toHaveBeenCalledWith({
+    expect(startIngestionJobMock).toHaveBeenCalledWith({
       mode: "HISTORICAL",
       triggerSource: "MANUAL",
       from: "2026-03-01",

@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { getDefaultRankingWeightsForPreset } from "@/config/defaults";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
-import { getActiveIngestionRun, runIngestionJob } from "@/lib/ingestion/service";
+import { startIngestionJob } from "@/lib/ingestion/service";
 import {
   reorderPublishedPaperForWeek,
   setPublishedPaperState,
@@ -47,17 +47,7 @@ export async function runDailyRefreshAction(formData: FormData) {
     });
   }
 
-  const activeRun = await getActiveIngestionRun();
-  if (activeRun) {
-    redirectToAdminPage("/admin/ingest", {
-      selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
-      notice: "ingest-already-running",
-      sortKey,
-      sortDirection,
-    });
-  }
-
-  launchIngestionJob({
+  const result = await startIngestionJob({
     mode: "DAILY",
     triggerSource: TriggerSource.MANUAL,
     announcementDay: requestedAnnouncementDay,
@@ -65,9 +55,10 @@ export async function runDailyRefreshAction(formData: FormData) {
     recomputeBriefs,
   });
 
+  revalidateAll();
   redirectToAdminPage("/admin/ingest", {
     selectedWeek: selectedWeek ?? getWeekStart(requestedAnnouncementDay),
-    notice: "daily-refresh-started",
+    notice: result.status === "already-running" ? "ingest-already-running" : "daily-refresh-started",
     sortKey,
     sortDirection,
   });
@@ -90,17 +81,7 @@ export async function runHistoricalRefreshAction(formData: FormData) {
     });
   }
 
-  const activeRun = await getActiveIngestionRun();
-  if (activeRun) {
-    redirectToAdminPage("/admin/ingest", {
-      selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
-      notice: "ingest-already-running",
-      sortKey,
-      sortDirection,
-    });
-  }
-
-  launchIngestionJob({
+  const result = await startIngestionJob({
     mode: "HISTORICAL",
     triggerSource: TriggerSource.MANUAL,
     from,
@@ -109,9 +90,10 @@ export async function runHistoricalRefreshAction(formData: FormData) {
     recomputeBriefs,
   });
 
+  revalidateAll();
   redirectToAdminPage("/admin/ingest", {
     selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
-    notice: "historical-refresh-started",
+    notice: result.status === "already-running" ? "ingest-already-running" : "historical-refresh-started",
     sortKey,
     sortDirection,
   });
@@ -315,17 +297,6 @@ function revalidateAll() {
   revalidatePath("/admin/edition");
   revalidatePath("/admin/ingest");
   revalidatePath("/admin/settings");
-}
-
-function launchIngestionJob(input: Parameters<typeof runIngestionJob>[0]) {
-  void runIngestionJob(input)
-    .then(() => {
-      revalidateAll();
-    })
-    .catch((error) => {
-      console.error("Manual ingest job failed", error);
-      revalidateAll();
-    });
 }
 
 function redirectToAdminPage(path: string, input: {
