@@ -220,7 +220,7 @@ async function executePreparedIngestionJob(
 
     let historicalResult: Omit<HistoricalRecordsResult, "records"> | null = null;
     let fetchedCount = 0;
-    const upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }> = [];
+    const upsertedPaperIds: string[] = [];
 
     if (options.mode === "DAILY") {
       await tracker.startPhase("discover_feeds", {
@@ -249,7 +249,7 @@ async function executePreparedIngestionJob(
       await upsertPaperBatch({
         papers,
         total: papers.length,
-        upsertedRecords,
+        upsertedPaperIds,
         tracker,
       });
     } else {
@@ -296,7 +296,7 @@ async function executePreparedIngestionJob(
           await upsertPaperBatch({
             papers: event.records,
             total: fetchedCount,
-            upsertedRecords,
+            upsertedPaperIds,
             tracker,
           });
         },
@@ -315,7 +315,7 @@ async function executePreparedIngestionJob(
 
     await tracker.completePhase(
       "upsert_papers",
-      `Saved ${upsertedRecords.length} papers into the archive.`,
+      `Saved ${upsertedPaperIds.length} papers into the archive.`,
     );
 
     logLines.push(`Fetched ${fetchedCount} paper records from arXiv.`);
@@ -339,7 +339,6 @@ async function executePreparedIngestionJob(
       );
     }
 
-    const upsertedIds = upsertedRecords.map((record) => record.id);
     let briefCount = 0;
     const briefProvider = getTechnicalBriefProvider();
     const paperIdsForBriefs = briefProvider
@@ -393,90 +392,90 @@ async function executePreparedIngestionJob(
 
     await tracker.startPhase("enrich_openalex", {
       message:
-        upsertedRecords.length > 0
-          ? `Refreshing OpenAlex enrichment for ${upsertedRecords.length} papers.`
+        upsertedPaperIds.length > 0
+          ? `Refreshing OpenAlex enrichment for ${upsertedPaperIds.length} papers.`
           : "No papers needed OpenAlex enrichment.",
-      total: upsertedRecords.length,
+      total: upsertedPaperIds.length,
       processed: 0,
     });
     let openAlexProcessed = 0;
     const openAlexUpdatedPaperIds = new Set<string>();
     const enrichmentWarnings: string[] = [];
     await forEachWithConcurrency(
-      upsertedRecords,
+      upsertedPaperIds,
       ENRICHMENT_CONCURRENCY,
-      async (record) => {
-        const result = await hydratePaperEnrichments(record.id, {
+      async (paperId) => {
+        const result = await hydratePaperEnrichments(paperId, {
           force: false,
           providers: ["openalex"],
         });
         if (result.updatedProviders.includes("openalex")) {
-          openAlexUpdatedPaperIds.add(record.id);
+          openAlexUpdatedPaperIds.add(paperId);
         }
         for (const warning of result.warnings) {
-          enrichmentWarnings.push(`Paper ${record.id}: ${warning}`);
+          enrichmentWarnings.push(`Paper ${paperId}: ${warning}`);
         }
         openAlexProcessed += 1;
         await tracker.updatePhase("enrich_openalex", {
           processed: openAlexProcessed,
-          total: upsertedRecords.length,
-          message: `Enriched OpenAlex for ${openAlexProcessed} of ${upsertedRecords.length} papers.`,
+          total: upsertedPaperIds.length,
+          message: `Enriched OpenAlex for ${openAlexProcessed} of ${upsertedPaperIds.length} papers.`,
           force:
             openAlexProcessed === 1 ||
-            openAlexProcessed === upsertedRecords.length ||
+            openAlexProcessed === upsertedPaperIds.length ||
             openAlexProcessed % 25 === 0,
         });
       },
     );
     await tracker.completePhase(
       "enrich_openalex",
-      upsertedRecords.length > 0
-        ? `Processed OpenAlex enrichment for ${upsertedRecords.length} papers.`
+      upsertedPaperIds.length > 0
+        ? `Processed OpenAlex enrichment for ${upsertedPaperIds.length} papers.`
         : "No papers needed OpenAlex enrichment.",
     );
 
     await tracker.startPhase("enrich_structured_metadata", {
       message:
-        upsertedRecords.length > 0
-          ? `Generating structured metadata for ${upsertedRecords.length} papers.`
+        upsertedPaperIds.length > 0
+          ? `Generating structured metadata for ${upsertedPaperIds.length} papers.`
           : "No papers needed structured metadata.",
-      total: upsertedRecords.length,
+      total: upsertedPaperIds.length,
       processed: 0,
     });
     let structuredProcessed = 0;
     let structuredMetadataCount = 0;
     const structuredMetadataUpdatedPaperIds = new Set<string>();
     await forEachWithConcurrency(
-      upsertedRecords,
+      upsertedPaperIds,
       ENRICHMENT_CONCURRENCY,
-      async (record) => {
-        const result = await hydratePaperEnrichments(record.id, {
-          force: openAlexUpdatedPaperIds.has(record.id),
+      async (paperId) => {
+        const result = await hydratePaperEnrichments(paperId, {
+          force: openAlexUpdatedPaperIds.has(paperId),
           providers: [STRUCTURED_METADATA_PROVIDER],
         });
         if (result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER)) {
           structuredMetadataCount += 1;
-          structuredMetadataUpdatedPaperIds.add(record.id);
+          structuredMetadataUpdatedPaperIds.add(paperId);
         }
         for (const warning of result.warnings) {
-          enrichmentWarnings.push(`Paper ${record.id}: ${warning}`);
+          enrichmentWarnings.push(`Paper ${paperId}: ${warning}`);
         }
         structuredProcessed += 1;
         await tracker.updatePhase("enrich_structured_metadata", {
           processed: structuredProcessed,
-          total: upsertedRecords.length,
-          message: `Generated structured metadata for ${structuredProcessed} of ${upsertedRecords.length} papers.`,
+          total: upsertedPaperIds.length,
+          message: `Generated structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`,
           force:
             structuredProcessed === 1 ||
-            structuredProcessed === upsertedRecords.length ||
+            structuredProcessed === upsertedPaperIds.length ||
             structuredProcessed % 25 === 0,
         });
       },
     );
     await tracker.completePhase(
       "enrich_structured_metadata",
-      upsertedRecords.length > 0
-        ? `Processed structured metadata for ${upsertedRecords.length} papers.`
+      upsertedPaperIds.length > 0
+        ? `Processed structured metadata for ${upsertedPaperIds.length} papers.`
         : "No papers needed structured metadata.",
     );
 
@@ -491,30 +490,36 @@ async function executePreparedIngestionJob(
     let scoreCount = 0;
     await tracker.startPhase("score_papers", {
       message:
-        upsertedRecords.length > 0
-          ? `Refreshing scores for ${upsertedRecords.length} papers.`
+        upsertedPaperIds.length > 0
+          ? `Refreshing scores for ${upsertedPaperIds.length} papers.`
           : "No papers needed score updates.",
-      total: upsertedRecords.length,
+      total: upsertedPaperIds.length,
       processed: 0,
     });
     let scoredProcessed = 0;
-    for (const [index, record] of upsertedRecords.entries()) {
+    for (const [index, paperId] of upsertedPaperIds.entries()) {
       const shouldScore =
         Boolean(options.recomputeScores) ||
-        structuredMetadataUpdatedPaperIds.has(record.id) ||
-        !(await hasCurrentScore(record.id));
+        structuredMetadataUpdatedPaperIds.has(paperId) ||
+        !(await hasCurrentScore(paperId));
 
       if (!shouldScore) {
         continue;
       }
 
-      const structuredMetadata = await getCurrentStructuredMetadata(record.id);
+      const [sourceRecord, structuredMetadata] = await Promise.all([
+        getPaperSourceRecordById(paperId),
+        getCurrentStructuredMetadata(paperId),
+      ]);
+      if (!sourceRecord) {
+        continue;
+      }
 
       await prisma.$transaction(async (tx) => {
         await replaceCurrentScore(
           tx,
-          record.id,
-          record.sourceRecord,
+          paperId,
+          sourceRecord,
           appSettings.genAiRankingWeights,
           structuredMetadata,
         );
@@ -523,14 +528,14 @@ async function executePreparedIngestionJob(
       scoredProcessed += 1;
       await tracker.updatePhase("score_papers", {
         processed: index + 1,
-        total: upsertedRecords.length,
-        message: `Scored ${scoredProcessed} of ${upsertedRecords.length} papers.`,
-        force: index === 0 || index + 1 === upsertedRecords.length || (index + 1) % 25 === 0,
+        total: upsertedPaperIds.length,
+        message: `Scored ${scoredProcessed} of ${upsertedPaperIds.length} papers.`,
+        force: index === 0 || index + 1 === upsertedPaperIds.length || (index + 1) % 25 === 0,
       });
     }
     await tracker.completePhase(
       "score_papers",
-      upsertedRecords.length > 0
+      upsertedPaperIds.length > 0
         ? `Scored ${scoreCount} papers.`
         : "No papers needed score updates.",
     );
@@ -554,7 +559,7 @@ async function executePreparedIngestionJob(
       data: {
         status,
         fetchedCount,
-        upsertedCount: upsertedIds.length,
+        upsertedCount: upsertedPaperIds.length,
         scoreCount,
         summaryCount: briefCount,
         completedAt: new Date(),
@@ -566,7 +571,7 @@ async function executePreparedIngestionJob(
       runId: run.id,
       status,
       fetchedCount,
-      upsertedCount: upsertedIds.length,
+      upsertedCount: upsertedPaperIds.length,
       scoreCount,
       summaryCount: briefCount,
       briefCount,
@@ -1041,16 +1046,13 @@ async function upsertPaper(tx: Prisma.TransactionClient, paper: PaperSourceRecor
 async function upsertPaperBatch(input: {
   papers: PaperSourceRecord[];
   total: number;
-  upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }>;
+  upsertedPaperIds: string[];
   tracker: IngestionProgressReporter;
 }) {
   for (const paper of input.papers) {
     const record = await prisma.$transaction(async (tx) => upsertPaper(tx, paper));
-    input.upsertedRecords.push({
-      id: record.id,
-      sourceRecord: stripLargeSourcePayload(paper),
-    });
-    const processed = input.upsertedRecords.length;
+    input.upsertedPaperIds.push(record.id);
+    const processed = input.upsertedPaperIds.length;
     await input.tracker.updatePhase("upsert_papers", {
       processed,
       total: input.total,
@@ -1058,13 +1060,6 @@ async function upsertPaperBatch(input: {
       force: processed === 1 || processed === input.total || processed % 25 === 0,
     });
   }
-}
-
-function stripLargeSourcePayload(paper: PaperSourceRecord): PaperSourceRecord {
-  return {
-    ...paper,
-    sourcePayload: {},
-  };
 }
 
 async function hasCurrentScore(paperId: string) {
@@ -1101,6 +1096,14 @@ async function getCurrentStructuredMetadata(paperId: string) {
       payload: toRecordPayload(enrichment.payload),
     },
   ]);
+}
+
+async function getPaperSourceRecordById(paperId: string) {
+  const paper = await prisma.paper.findUnique({
+    where: { id: paperId },
+  });
+
+  return paper ? paperToSourceRecord(paper) : null;
 }
 
 async function replaceCurrentScore(
