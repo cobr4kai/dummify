@@ -102,7 +102,7 @@ export const DEFAULT_PDF_FALLBACK_RETRY_COOLDOWN_MINUTES = 180;
 export const DEFAULT_CRON_SCHEDULE = DEFAULT_PRIMARY_CRON_SCHEDULE;
 export const DEFAULT_OPENAI_MODEL = "gpt-5-mini";
 export const DEFAULT_OPENAI_EXTRACTION_MODEL = "gpt-5-mini";
-export const DEFAULT_OPENAI_SYNTHESIS_MODEL = "gpt-5.4";
+export const DEFAULT_OPENAI_SYNTHESIS_MODEL = "gpt-5.5";
 export const DEFAULT_ENABLE_PREMIUM_SYNTHESIS = true;
 export const DEFAULT_PDF_CACHE_DIR =
   process.env.PAPERBRIEF_CACHE_DIR?.trim() || ".paperbrief-cache";

@@ -23,7 +23,7 @@ services:
       - key: OPENAI_EXTRACTION_MODEL
         value: gpt-5-mini
       - key: OPENAI_SYNTHESIS_MODEL
-        value: gpt-5.4
+        value: gpt-5.5
       - key: OPENAI_ENABLE_PREMIUM_SYNTHESIS
         value: "true"
       - key: OPENAI_API_KEY
