@@ -49,6 +49,10 @@ type AdminEditionTableProps = {
   focusPaperId?: string | null;
   sortKey?: string | null;
   sortDirection?: string | null;
+  paperLimit: number;
+  paperOffset: number;
+  paperQuery: string;
+  paperTotal: number;
   papers: Array<{
     id: string;
     announcementDay: string;
@@ -93,6 +97,10 @@ export function AdminEditionTable({
   activeHomepageWeekStart,
   publishedPaperIds,
   focusPaperId,
+  paperLimit,
+  paperOffset,
+  paperQuery,
+  paperTotal,
   sortKey,
   sortDirection,
   papers,
@@ -135,6 +143,11 @@ export function AdminEditionTable({
   );
   const activeSortLabel = getSortLabel(currentSortKey);
   const statusColumnLabel = isActiveHomepageWeek ? "Live status" : "Edition status";
+  const currentPage = Math.floor(paperOffset / Math.max(paperLimit, 1)) + 1;
+  const hasPreviousPage = paperOffset > 0;
+  const hasNextPage = paperOffset + paperLimit < paperTotal;
+  const visibleStart = paperTotal === 0 ? 0 : paperOffset + 1;
+  const visibleEnd = Math.min(paperOffset + paperLimit, paperTotal);
 
   function handleSort(requestedSortKey: AdminEditionSortKey) {
     const nextSortDirection = getNextSortDirection(
@@ -216,6 +229,17 @@ export function AdminEditionTable({
               ))}
             </select>
           </label>
+          <label className="space-y-2 text-sm font-medium">
+            Find a paper
+            <input
+              className="field-control h-11 min-w-[260px] rounded-2xl px-4 text-sm"
+              defaultValue={paperQuery}
+              name="q"
+              placeholder="Title, author, topic, arXiv hint..."
+              type="search"
+            />
+          </label>
+          <input name="page" type="hidden" value="1" />
           <Button type="submit">Load score table</Button>
         </form>
       </CardHeader>
@@ -260,9 +284,60 @@ export function AdminEditionTable({
                 </p>
               ) : null}
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                Click any column heading to sort. Active sort: {activeSortLabel} ({formatSortDirectionLabel(currentSortKey, currentSortDirection)}).
+                Showing scored papers {visibleStart}-{visibleEnd} of {paperTotal}
+                {paperQuery ? ` matching "${paperQuery}"` : ""}. Curated papers outside this
+                slice stay visible so you can remove or reorder them. Click any column heading to
+                sort the loaded slice. Active sort: {activeSortLabel} ({formatSortDirectionLabel(currentSortKey, currentSortDirection)}).
               </p>
             </div>
+            {(hasPreviousPage || hasNextPage || paperQuery) ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-border/80 bg-white/60 p-4">
+                <p className="text-sm text-muted-foreground">
+                  Page {currentPage}. Use search to jump to a specific paper without loading the
+                  whole week at once.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {hasPreviousPage ? (
+                    <Button asChild size="sm" variant="secondary">
+                      <Link
+                        href={buildEditionPageHref({
+                          page: currentPage - 1,
+                          query: paperQuery,
+                          selectedWeek,
+                          sortDirection: currentSortDirection,
+                          sortKey: currentSortKey,
+                        })}
+                      >
+                        Previous slice
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button disabled size="sm" variant="secondary">
+                      Previous slice
+                    </Button>
+                  )}
+                  {hasNextPage ? (
+                    <Button asChild size="sm" variant="secondary">
+                      <Link
+                        href={buildEditionPageHref({
+                          page: currentPage + 1,
+                          query: paperQuery,
+                          selectedWeek,
+                          sortDirection: currentSortDirection,
+                          sortKey: currentSortKey,
+                        })}
+                      >
+                        Next slice
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button disabled size="sm" variant="secondary">
+                      Next slice
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : null}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1500px] border-separate border-spacing-y-2 text-sm">
                 <thead>
@@ -526,6 +601,29 @@ function replaceAdminSortUrl(input: {
   const query = params.toString();
   const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
   window.history.replaceState(window.history.state, "", nextUrl);
+}
+
+function buildEditionPageHref(input: {
+  page: number;
+  query: string;
+  selectedWeek: string | null;
+  sortKey: AdminEditionSortKey;
+  sortDirection: AdminEditionSortDirection;
+}) {
+  const params = new URLSearchParams();
+  if (input.selectedWeek) {
+    params.set("week", input.selectedWeek);
+  }
+  if (input.query.trim()) {
+    params.set("q", input.query.trim());
+  }
+  if (input.page > 1) {
+    params.set("page", String(input.page));
+  }
+  params.set("sort", input.sortKey);
+  params.set("dir", input.sortDirection);
+  const query = params.toString();
+  return query ? `/admin/edition?${query}` : "/admin/edition";
 }
 
 function buildRow(input: {

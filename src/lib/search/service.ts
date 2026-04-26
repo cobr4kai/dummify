@@ -15,6 +15,7 @@ import {
 import { normalizeSearchText } from "@/lib/utils/strings";
 
 export type SortMode = "score" | "date";
+const ADMIN_EDITION_TABLE_LIMIT = 350;
 
 type EditionWeek = {
   weekStart: string;
@@ -176,39 +177,163 @@ function buildHomepageSnapshot<
   };
 }
 
-async function getEditionDataForWeek(weekStart: string) {
+const leanEditionPaperSelect = {
+  id: true,
+  announcementDay: true,
+  title: true,
+  authorsText: true,
+  abstractUrl: true,
+  primaryCategory: true,
+  technicalBriefs: {
+    where: { isCurrent: true },
+    orderBy: { updatedAt: "desc" },
+    take: 1,
+    select: {
+      oneLineVerdict: true,
+      usedFallbackAbstract: true,
+    },
+  },
+} as const;
+
+async function getEditionDataForWeek(
+  weekStart: string,
+  options: {
+    offset?: number;
+    query?: string | null;
+  } = {},
+) {
   const weekEnd = getWeekEnd(weekStart);
-  const [publishedPaperIds, editionPapers] = await Promise.all([
+  const offset = Math.max(0, options.offset ?? 0);
+  const rawQuery = options.query?.trim() ?? "";
+  const normalizedQuery = normalizeSearchText(rawQuery);
+  const paperWhere = {
+    announcementDay: {
+      gte: weekStart,
+      lte: weekEnd,
+    },
+    isDemoData: false,
+    ...(normalizedQuery
+      ? {
+          OR: [
+            { title: { contains: rawQuery } },
+            { authorsText: { contains: rawQuery } },
+            { searchText: { contains: normalizedQuery } },
+          ],
+        }
+      : {}),
+  };
+  const [publishedPaperIds, scoredRows, totalScoredCount] = await Promise.all([
     getPublishedPaperIdsForWeek(weekStart),
-    prisma.paper.findMany({
+    prisma.paperScore.findMany({
       where: {
-        announcementDay: {
-          gte: weekStart,
-          lte: weekEnd,
-        },
+        isCurrent: true,
+        mode: BriefMode.GENAI,
+        paper: paperWhere,
       },
-      include: {
-        scores: {
-          where: {
-            isCurrent: true,
-            mode: BriefMode.GENAI,
-          },
-          take: 1,
-        },
-        technicalBriefs: {
-          where: { isCurrent: true },
-          orderBy: { updatedAt: "desc" },
-          take: 1,
+      orderBy: {
+        totalScore: "desc",
+      },
+      skip: offset,
+      take: ADMIN_EDITION_TABLE_LIMIT,
+      select: {
+        totalScore: true,
+        rationale: true,
+        breakdown: true,
+        paper: {
+          select: leanEditionPaperSelect,
         },
       },
     }),
+    prisma.paperScore.count({
+      where: {
+        isCurrent: true,
+        mode: BriefMode.GENAI,
+        paper: paperWhere,
+      },
+    }),
   ]);
+  const scoredPaperIds = new Set(scoredRows.map((row) => row.paper.id));
+  const missingPublishedPaperIds = publishedPaperIds.filter(
+    (paperId) => !scoredPaperIds.has(paperId),
+  );
+  const publishedPapers = missingPublishedPaperIds.length
+    ? await prisma.paper.findMany({
+        where: {
+          id: { in: missingPublishedPaperIds },
+        },
+        select: {
+          ...leanEditionPaperSelect,
+          scores: {
+            where: {
+              isCurrent: true,
+              mode: BriefMode.GENAI,
+            },
+            orderBy: {
+              totalScore: "desc",
+            },
+            take: 1,
+            select: {
+              totalScore: true,
+              rationale: true,
+              breakdown: true,
+            },
+          },
+        },
+      })
+    : [];
+  const editionPapers = [
+    ...scoredRows.map((row) => ({
+      ...row.paper,
+      scores: [
+        {
+          totalScore: row.totalScore,
+          rationale: row.rationale,
+          breakdown: row.breakdown,
+        },
+      ],
+    })),
+    ...publishedPapers,
+  ];
 
   return {
     publishedPaperIds,
     editionPapers: sortEditionPapers(editionPapers),
+    totalScoredCount,
+    offset,
+    query: rawQuery,
     weekEnd,
   };
+}
+
+async function getHomepageSnapshotForWeek(weekStart: string) {
+  const publishedPaperIds = await getPublishedPaperIdsForWeek(weekStart);
+  if (publishedPaperIds.length === 0) {
+    return {
+      homepagePaperIds: [],
+      homepageBriefReadyCount: 0,
+      homepageMissingBriefCount: 0,
+      isCurated: false,
+    };
+  }
+
+  const papers = await prisma.paper.findMany({
+    where: {
+      id: { in: publishedPaperIds },
+    },
+    select: {
+      id: true,
+      technicalBriefs: {
+        where: { isCurrent: true },
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+        select: {
+          usedFallbackAbstract: true,
+        },
+      },
+    },
+  });
+
+  return buildHomepageSnapshot(papers, publishedPaperIds);
 }
 
 export async function getWeeklyBrief(options: {
@@ -466,6 +591,9 @@ export async function getAdminIngestionStatus() {
 export async function getAdminSnapshot(options?: {
   weekStart?: string | null;
   announcementDay?: string | null;
+  includeEditionData?: boolean;
+  editionOffset?: number;
+  editionQuery?: string | null;
 }) {
   const requestedWeekStart =
     options?.weekStart ??
@@ -493,16 +621,15 @@ export async function getAdminSnapshot(options?: {
   const pdfCacheCount = await prisma.paperPdfCache.count({
     where: { isCurrent: true },
   });
-  const selectedEdition = selectedWeek ? await getEditionDataForWeek(selectedWeek) : null;
-  const activeEdition =
-    activeHomepageWeekStart && activeHomepageWeekStart !== selectedWeek
-      ? await getEditionDataForWeek(activeHomepageWeekStart)
-      : selectedEdition;
-  const activeHomepageSnapshot = activeEdition
-    ? buildHomepageSnapshot(
-        activeEdition.editionPapers,
-        activeEdition.publishedPaperIds,
-      )
+  const selectedEdition =
+    options?.includeEditionData && selectedWeek
+      ? await getEditionDataForWeek(selectedWeek, {
+          offset: options.editionOffset,
+          query: options.editionQuery,
+        })
+      : null;
+  const activeHomepageSnapshot = activeHomepageWeekStart
+    ? await getHomepageSnapshotForWeek(activeHomepageWeekStart)
     : {
         homepagePaperIds: [],
         homepageBriefReadyCount: 0,
@@ -527,6 +654,10 @@ export async function getAdminSnapshot(options?: {
     publishedPaperIds: selectedEdition?.publishedPaperIds ?? [],
     publishedCount: selectedEdition?.publishedPaperIds.length ?? 0,
     editionPapers: selectedEdition?.editionPapers ?? [],
+    editionPaperTotal: selectedEdition?.totalScoredCount ?? 0,
+    editionPaperLimit: ADMIN_EDITION_TABLE_LIMIT,
+    editionPaperOffset: selectedEdition?.offset ?? 0,
+    editionQuery: selectedEdition?.query ?? "",
     activeHomepagePaperIds: activeHomepageSnapshot.homepagePaperIds,
     activeHomepageBriefReadyCount: activeHomepageSnapshot.homepageBriefReadyCount,
     activeHomepageMissingBriefCount: activeHomepageSnapshot.homepageMissingBriefCount,

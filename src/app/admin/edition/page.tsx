@@ -11,6 +11,7 @@ import { getAdminSnapshot } from "@/lib/search/service";
 import { getWeekStart } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
+const EDITION_PAGE_SIZE = 350;
 
 type SearchParams = Promise<{
   week?: string;
@@ -20,6 +21,8 @@ type SearchParams = Promise<{
   focusPaper?: string;
   sort?: string;
   dir?: string;
+  q?: string;
+  page?: string;
 }>;
 
 export default async function AdminEditionPage({
@@ -40,8 +43,16 @@ export default async function AdminEditionPage({
   const focusPaperId = typeof params.focusPaper === "string" && params.focusPaper
     ? params.focusPaper
     : null;
+  const editionQuery = typeof params.q === "string" ? params.q.trim() : "";
+  const editionPage = Math.max(
+    1,
+    Number.parseInt(typeof params.page === "string" ? params.page : "1", 10) || 1,
+  );
   const snapshot = await getAdminSnapshot({
     weekStart: selectedWeek,
+    includeEditionData: true,
+    editionOffset: (editionPage - 1) * EDITION_PAGE_SIZE,
+    editionQuery,
   });
   const notice = getEditionNotice({
     notice: typeof params.notice === "string" ? params.notice : null,
@@ -123,6 +134,10 @@ export default async function AdminEditionPage({
             focusPaperId ?? "no-focus",
           ].join(":")}
           papers={snapshot.editionPapers}
+          paperLimit={snapshot.editionPaperLimit}
+          paperOffset={snapshot.editionPaperOffset}
+          paperQuery={snapshot.editionQuery}
+          paperTotal={snapshot.editionPaperTotal}
           publishedPaperIds={snapshot.publishedPaperIds}
           selectedWeek={snapshot.selectedWeek}
           sortDirection={sortDirection}

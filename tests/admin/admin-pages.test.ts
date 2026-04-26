@@ -84,6 +84,10 @@ const baseSnapshot = {
   publishedPaperIds: ["paper-1"],
   publishedCount: 1,
   editionPapers: [],
+  editionPaperLimit: 350,
+  editionPaperOffset: 0,
+  editionPaperTotal: 0,
+  editionQuery: "",
   activeHomepagePaperIds: ["paper-1"],
   activeHomepageBriefReadyCount: 1,
   activeHomepageMissingBriefCount: 0,
@@ -115,7 +119,12 @@ describe("admin route pages", () => {
     });
 
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/edition");
-    expect(getAdminSnapshotMock).toHaveBeenCalledWith({ weekStart: "2026-03-16" });
+    expect(getAdminSnapshotMock).toHaveBeenCalledWith({
+      editionOffset: 0,
+      editionQuery: "",
+      includeEditionData: true,
+      weekStart: "2026-03-16",
+    });
   });
 
   it("requires admin access for ingest", async () => {
