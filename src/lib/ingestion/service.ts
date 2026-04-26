@@ -62,6 +62,7 @@ export type DailyJobMode = "PRIMARY" | "RECONCILE";
 const ACTIVE_MANUAL_RUN_WINDOW_MS = 6 * 60 * 60 * 1000;
 const ACTIVE_HEARTBEAT_STALE_MS = 5 * 60 * 1000;
 const MAX_AUTO_RESUME_ATTEMPTS = 2;
+const RESUME_SCORE_CHUNK_SIZE = 125;
 
 type IngestionOptions = {
   mode: "DAILY" | "HISTORICAL";
@@ -102,6 +103,7 @@ type HydrateEnrichmentResult = {
 type IngestionResumeContext = {
   runId: string;
   startedAt: Date;
+  scoreFreshSince: Date;
   completedPhases: Set<IngestionPhaseKey>;
   lastPhase: IngestionPhaseKey | null;
 };
@@ -556,6 +558,7 @@ async function executePreparedIngestionJob(
     let scoreCount = 0;
     let scoredProcessed = 0;
     let scoreSkippedFromResume = 0;
+    let resumeScoreBudgetRemaining = resumeContext ? RESUME_SCORE_CHUNK_SIZE : null;
 
     if (resumeContext?.completedPhases.has("score_papers")) {
       await tracker.completePhase(
@@ -574,7 +577,7 @@ async function executePreparedIngestionJob(
 
       for (const [index, paperId] of upsertedPaperIds.entries()) {
         const alreadyScoredInInterruptedRun = resumeContext
-          ? await hasCurrentScoreSince(paperId, resumeContext.startedAt)
+          ? await hasCurrentScoreSince(paperId, resumeContext.scoreFreshSince)
           : false;
         if (alreadyScoredInInterruptedRun) {
           scoreSkippedFromResume += 1;
@@ -627,6 +630,44 @@ async function executePreparedIngestionJob(
             index + 1 === upsertedPaperIds.length ||
             (index + 1) % 25 === 0,
         });
+
+        if (resumeScoreBudgetRemaining !== null) {
+          resumeScoreBudgetRemaining -= 1;
+          if (resumeScoreBudgetRemaining <= 0 && index + 1 < upsertedPaperIds.length) {
+            const pauseMessage = `Paused checkpoint resume after scoring ${scoreCount} papers in this pass. Use Resume from checkpoint to continue without repeating completed work.`;
+            logLines.push(pauseMessage);
+            await tracker.updatePhase("score_papers", {
+              processed: index + 1,
+              total: upsertedPaperIds.length,
+              message: pauseMessage,
+              force: true,
+            });
+            await tracker.markFailed(pauseMessage);
+            await prisma.ingestionRun.update({
+              where: { id: run.id },
+              data: {
+                status: IngestionStatus.FAILED,
+                fetchedCount,
+                upsertedCount: upsertedPaperIds.length,
+                scoreCount,
+                summaryCount: briefCount,
+                completedAt: new Date(),
+                errorMessage: pauseMessage,
+                logLines: toJsonInput(logLines),
+              },
+            });
+
+            return {
+              runId: run.id,
+              status: IngestionStatus.FAILED,
+              fetchedCount,
+              upsertedCount: upsertedPaperIds.length,
+              scoreCount,
+              summaryCount: briefCount,
+              briefCount,
+            };
+          }
+        }
       }
       await tracker.completePhase(
         "score_papers",
@@ -1390,6 +1431,12 @@ async function getIngestionResumeContext(
     select: {
       id: true,
       startedAt: true,
+      mode: true,
+      categories: true,
+      requestedFrom: true,
+      requestedTo: true,
+      recomputeScores: true,
+      recomputeSummaries: true,
       progressJson: true,
     },
   });
@@ -1399,9 +1446,12 @@ async function getIngestionResumeContext(
     return null;
   }
 
+  const scoreFreshSince = await getResumeScoreFreshSince(run);
+
   return {
     runId: run.id,
     startedAt: run.startedAt,
+    scoreFreshSince,
     completedPhases: new Set(
       progress.phases
         .filter((phase) => phase.status === "completed")
@@ -1412,6 +1462,53 @@ async function getIngestionResumeContext(
       progress.phases.findLast((phase) => phase.status !== "pending")?.key ??
       null,
   };
+}
+
+async function getResumeScoreFreshSince(run: {
+  id: string;
+  startedAt: Date;
+  mode: IngestionMode;
+  categories: Prisma.JsonValue;
+  requestedFrom: Date | null;
+  requestedTo: Date | null;
+  recomputeScores: boolean;
+  recomputeSummaries: boolean;
+}) {
+  const relatedFailedRuns = await prisma.ingestionRun.findMany({
+    where: {
+      mode: run.mode,
+      status: IngestionStatus.FAILED,
+      requestedFrom: run.requestedFrom,
+      requestedTo: run.requestedTo,
+      recomputeScores: run.recomputeScores,
+      recomputeSummaries: run.recomputeSummaries,
+    },
+    orderBy: {
+      startedAt: "asc",
+    },
+    select: {
+      startedAt: true,
+      categories: true,
+      progressJson: true,
+      errorMessage: true,
+    },
+  });
+
+  const runCategories = parseCategoryList(run.categories) ?? [];
+  const earliestRelatedRun = relatedFailedRuns.find((candidate) => {
+    const progress = parseIngestionProgress(candidate.progressJson);
+    const candidateCategories = parseCategoryList(candidate.categories) ?? [];
+    const errorMessage = String(candidate.errorMessage ?? "");
+
+    return (
+      progress &&
+      sameStringSet(candidateCategories, runCategories) &&
+      (errorMessage.includes("no ingest heartbeat") ||
+        errorMessage.includes("Paused checkpoint resume"))
+    );
+  });
+
+  return earliestRelatedRun?.startedAt ?? run.startedAt;
 }
 
 async function findMatchingResumeCandidateRunId(input: {

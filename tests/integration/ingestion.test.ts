@@ -729,4 +729,101 @@ describe("runIngestionJob", () => {
       "Resuming from checkpointed ingest run interrupted-scoring-run at score_papers.",
     );
   });
+
+  it("pauses checkpoint resume after a bounded scoring chunk", async () => {
+    const papers = Array.from({ length: 130 }, (_, index) => ({
+      ...demoPaperFixtures[0].paper,
+      arxivId: `2603.${String(index).padStart(5, "0")}`,
+      versionedId: `2603.${String(index).padStart(5, "0")}v1`,
+      title: `Resume stress paper ${index}`,
+    }));
+    fetchDailyMock.mockResolvedValue(papers);
+
+    await runIngestionJob({
+      mode: "DAILY",
+      triggerSource: TriggerSource.MANUAL,
+      announcementDay: "2026-03-11",
+    });
+
+    dbState.scores.length = 0;
+    fetchHistoricalMock.mockClear();
+
+    const interruptedProgress = createInitialIngestionProgressForScoringResume();
+    dbState.runs.push({
+      id: "large-interrupted-scoring-run",
+      mode: IngestionMode.HISTORICAL,
+      triggerSource: TriggerSource.MANUAL,
+      status: IngestionStatus.FAILED,
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      categories: ["cs.AI"],
+      requestedFrom: new Date("2026-03-11T00:00:00.000Z"),
+      requestedTo: new Date("2026-03-11T23:59:59.999Z"),
+      recomputeScores: true,
+      recomputeSummaries: false,
+      errorMessage:
+        "Marked failed automatically after no ingest heartbeat for 5 minutes. The worker may have stopped during a deploy or restart.",
+      logLines: [],
+      progressJson: interruptedProgress,
+    });
+
+    const result = await runIngestionJob({
+      mode: "HISTORICAL",
+      triggerSource: TriggerSource.API,
+      from: "2026-03-11",
+      to: "2026-03-11",
+      recomputeScores: true,
+      resumeFromRunId: "large-interrupted-scoring-run",
+    });
+
+    expect(fetchHistoricalMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: IngestionStatus.FAILED,
+      fetchedCount: 130,
+      upsertedCount: 130,
+      scoreCount: 125,
+    });
+    expect(dbState.scores).toHaveLength(125);
+    expect(dbState.runs.at(-1)).toMatchObject({
+      status: IngestionStatus.FAILED,
+      errorMessage:
+        "Paused checkpoint resume after scoring 125 papers in this pass. Use Resume from checkpoint to continue without repeating completed work.",
+    });
+  });
 });
+
+function createInitialIngestionProgressForScoringResume() {
+  const progress = createInitialIngestionProgress(IngestionMode.HISTORICAL);
+  progress.currentPhase = "score_papers";
+  progress.lastHeartbeatAt = "2026-04-19T07:20:00.000Z";
+  progress.phases = progress.phases.map((phase) => {
+    if (
+      [
+        "fetch_historical_window",
+        "hydrate_arxiv_records",
+        "upsert_papers",
+        "enrich_openalex",
+        "enrich_structured_metadata",
+      ].includes(phase.key)
+    ) {
+      return {
+        ...phase,
+        status: "completed",
+        startedAt: "2026-04-19T07:20:00.000Z",
+        completedAt: "2026-04-19T07:30:00.000Z",
+      };
+    }
+
+    if (phase.key === "score_papers") {
+      return {
+        ...phase,
+        status: "running",
+        startedAt: "2026-04-19T07:30:00.000Z",
+        processed: 1,
+        total: 130,
+      };
+    }
+
+    return phase;
+  });
+  return progress;
+}
