@@ -20,6 +20,9 @@ import {
   parseIngestionProgress,
 } from "@/lib/ingestion/progress";
 import {
+  type IngestionPhaseKey,
+} from "@/lib/ingestion/progress-shared";
+import {
   buildOpenAlexSearchText,
   getOpenAlexPayload,
   getOpenAlexTopics,
@@ -57,7 +60,7 @@ import { toJsonInput } from "@/lib/utils/prisma";
 export type DailyJobMode = "PRIMARY" | "RECONCILE";
 
 const ACTIVE_MANUAL_RUN_WINDOW_MS = 6 * 60 * 60 * 1000;
-const ACTIVE_HEARTBEAT_STALE_MS = 30 * 60 * 1000;
+const ACTIVE_HEARTBEAT_STALE_MS = 5 * 60 * 1000;
 const MAX_AUTO_RESUME_ATTEMPTS = 2;
 
 type IngestionOptions = {
@@ -70,6 +73,7 @@ type IngestionOptions = {
   recomputeScores?: boolean;
   recomputeBriefs?: boolean;
   jobMode?: DailyJobMode;
+  resumeFromRunId?: string;
 };
 
 type PreparedIngestionJob = {
@@ -93,6 +97,13 @@ type HydrateEnrichmentResult = {
   updatedProviders: string[];
   warnings: string[];
   structuredMetadata: StructuredMetadataEnrichment | null;
+};
+
+type IngestionResumeContext = {
+  runId: string;
+  startedAt: Date;
+  completedPhases: Set<IngestionPhaseKey>;
+  lastPhase: IngestionPhaseKey | null;
 };
 
 const ENRICHMENT_CONCURRENCY = 4;
@@ -197,6 +208,16 @@ async function executePreparedIngestionJob(
   const { appSettings, categories, announcementDay, jobMode, run, startupLogLine } = prepared;
   const logLines: string[] = [];
   const tracker = new IngestionProgressReporter(run.id, options.mode as IngestionMode);
+  const resumeFromRunId =
+    options.resumeFromRunId ??
+    (await findMatchingResumeCandidateRunId({
+      options,
+      categories,
+      announcementDay,
+    }));
+  const resumeContext = resumeFromRunId
+    ? await getIngestionResumeContext(resumeFromRunId)
+    : null;
   const arxivClient = new ArxivClient({
     apiMinDelayMs: appSettings.apiMinDelayMs,
     rssMinDelayMs: appSettings.rssMinDelayMs,
@@ -212,6 +233,11 @@ async function executePreparedIngestionJob(
     if (startupLogLine) {
       logLines.push(startupLogLine);
     }
+    if (resumeContext) {
+      logLines.push(
+        `Resuming from checkpointed ingest run ${resumeContext.runId} at ${resumeContext.lastPhase ?? "the last recorded phase"}.`,
+      );
+    }
     logLines.push(
       options.mode === "DAILY"
         ? `Starting ${jobMode.toLowerCase()} daily ingestion for the operator brief.`
@@ -221,8 +247,25 @@ async function executePreparedIngestionJob(
     let historicalResult: Omit<HistoricalRecordsResult, "records"> | null = null;
     let fetchedCount = 0;
     const upsertedPaperIds: string[] = [];
+    const canResumeAfterUpsert = Boolean(
+      resumeContext?.completedPhases.has("upsert_papers"),
+    );
 
-    if (options.mode === "DAILY") {
+    if (canResumeAfterUpsert) {
+      const resumedPaperIds = await getPaperIdsForIngestWindow({
+        from: options.from ?? announcementDay,
+        to: options.to ?? announcementDay,
+        categories,
+      });
+      upsertedPaperIds.push(...resumedPaperIds);
+      fetchedCount = resumedPaperIds.length;
+
+      await markSourcePhasesResumed({
+        tracker,
+        mode: options.mode,
+        count: resumedPaperIds.length,
+      });
+    } else if (options.mode === "DAILY") {
       await tracker.startPhase("discover_feeds", {
         message: `Scanning ${categories.length} arXiv feeds for ${announcementDay}.`,
         total: categories.length,
@@ -348,7 +391,12 @@ async function executePreparedIngestionJob(
         })
       : [];
 
-    if (briefProvider) {
+    if (resumeContext?.completedPhases.has("generate_briefs")) {
+      await tracker.completePhase(
+        "generate_briefs",
+        "Skipped brief generation because the interrupted run already completed this phase.",
+      );
+    } else if (briefProvider) {
       await tracker.startPhase("generate_briefs", {
         message:
           paperIdsForBriefs.length > 0
@@ -390,94 +438,112 @@ async function executePreparedIngestionJob(
       logLines.push("Skipped executive briefs because OPENAI_API_KEY is not configured.");
     }
 
-    await tracker.startPhase("enrich_openalex", {
-      message:
-        upsertedPaperIds.length > 0
-          ? `Refreshing OpenAlex enrichment for ${upsertedPaperIds.length} papers.`
-          : "No papers needed OpenAlex enrichment.",
-      total: upsertedPaperIds.length,
-      processed: 0,
-    });
     let openAlexProcessed = 0;
     const openAlexUpdatedPaperIds = new Set<string>();
     const enrichmentWarnings: string[] = [];
-    await forEachWithConcurrency(
-      upsertedPaperIds,
-      ENRICHMENT_CONCURRENCY,
-      async (paperId) => {
-        const result = await hydratePaperEnrichments(paperId, {
-          force: false,
-          providers: ["openalex"],
-        });
-        if (result.updatedProviders.includes("openalex")) {
-          openAlexUpdatedPaperIds.add(paperId);
-        }
-        for (const warning of result.warnings) {
-          enrichmentWarnings.push(`Paper ${paperId}: ${warning}`);
-        }
-        openAlexProcessed += 1;
-        await tracker.updatePhase("enrich_openalex", {
-          processed: openAlexProcessed,
-          total: upsertedPaperIds.length,
-          message: `Enriched OpenAlex for ${openAlexProcessed} of ${upsertedPaperIds.length} papers.`,
-          force:
-            openAlexProcessed === 1 ||
-            openAlexProcessed === upsertedPaperIds.length ||
-            openAlexProcessed % 25 === 0,
-        });
-      },
-    );
-    await tracker.completePhase(
-      "enrich_openalex",
-      upsertedPaperIds.length > 0
-        ? `Processed OpenAlex enrichment for ${upsertedPaperIds.length} papers.`
-        : "No papers needed OpenAlex enrichment.",
-    );
 
-    await tracker.startPhase("enrich_structured_metadata", {
-      message:
+    if (resumeContext?.completedPhases.has("enrich_openalex")) {
+      openAlexProcessed = upsertedPaperIds.length;
+      await tracker.completePhase(
+        "enrich_openalex",
+        "Skipped OpenAlex enrichment because the interrupted run already completed this phase.",
+      );
+    } else {
+      await tracker.startPhase("enrich_openalex", {
+        message:
+          upsertedPaperIds.length > 0
+            ? `Refreshing OpenAlex enrichment for ${upsertedPaperIds.length} papers.`
+            : "No papers needed OpenAlex enrichment.",
+        total: upsertedPaperIds.length,
+        processed: 0,
+      });
+      await forEachWithConcurrency(
+        upsertedPaperIds,
+        ENRICHMENT_CONCURRENCY,
+        async (paperId) => {
+          const result = await hydratePaperEnrichments(paperId, {
+            force: false,
+            providers: ["openalex"],
+          });
+          if (result.updatedProviders.includes("openalex")) {
+            openAlexUpdatedPaperIds.add(paperId);
+          }
+          for (const warning of result.warnings) {
+            enrichmentWarnings.push(`Paper ${paperId}: ${warning}`);
+          }
+          openAlexProcessed += 1;
+          await tracker.updatePhase("enrich_openalex", {
+            processed: openAlexProcessed,
+            total: upsertedPaperIds.length,
+            message: `Enriched OpenAlex for ${openAlexProcessed} of ${upsertedPaperIds.length} papers.`,
+            force:
+              openAlexProcessed === 1 ||
+              openAlexProcessed === upsertedPaperIds.length ||
+              openAlexProcessed % 25 === 0,
+          });
+        },
+      );
+      await tracker.completePhase(
+        "enrich_openalex",
         upsertedPaperIds.length > 0
-          ? `Generating structured metadata for ${upsertedPaperIds.length} papers.`
-          : "No papers needed structured metadata.",
-      total: upsertedPaperIds.length,
-      processed: 0,
-    });
+          ? `Processed OpenAlex enrichment for ${upsertedPaperIds.length} papers.`
+          : "No papers needed OpenAlex enrichment.",
+      );
+    }
+
     let structuredProcessed = 0;
     let structuredMetadataCount = 0;
     const structuredMetadataUpdatedPaperIds = new Set<string>();
-    await forEachWithConcurrency(
-      upsertedPaperIds,
-      ENRICHMENT_CONCURRENCY,
-      async (paperId) => {
-        const result = await hydratePaperEnrichments(paperId, {
-          force: openAlexUpdatedPaperIds.has(paperId),
-          providers: [STRUCTURED_METADATA_PROVIDER],
-        });
-        if (result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER)) {
-          structuredMetadataCount += 1;
-          structuredMetadataUpdatedPaperIds.add(paperId);
-        }
-        for (const warning of result.warnings) {
-          enrichmentWarnings.push(`Paper ${paperId}: ${warning}`);
-        }
-        structuredProcessed += 1;
-        await tracker.updatePhase("enrich_structured_metadata", {
-          processed: structuredProcessed,
-          total: upsertedPaperIds.length,
-          message: `Generated structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`,
-          force:
-            structuredProcessed === 1 ||
-            structuredProcessed === upsertedPaperIds.length ||
-            structuredProcessed % 25 === 0,
-        });
-      },
-    );
-    await tracker.completePhase(
-      "enrich_structured_metadata",
-      upsertedPaperIds.length > 0
-        ? `Processed structured metadata for ${upsertedPaperIds.length} papers.`
-        : "No papers needed structured metadata.",
-    );
+
+    if (resumeContext?.completedPhases.has("enrich_structured_metadata")) {
+      structuredProcessed = upsertedPaperIds.length;
+      await tracker.completePhase(
+        "enrich_structured_metadata",
+        "Skipped structured metadata because the interrupted run already completed this phase.",
+      );
+    } else {
+      await tracker.startPhase("enrich_structured_metadata", {
+        message:
+          upsertedPaperIds.length > 0
+            ? `Generating structured metadata for ${upsertedPaperIds.length} papers.`
+            : "No papers needed structured metadata.",
+        total: upsertedPaperIds.length,
+        processed: 0,
+      });
+      await forEachWithConcurrency(
+        upsertedPaperIds,
+        ENRICHMENT_CONCURRENCY,
+        async (paperId) => {
+          const result = await hydratePaperEnrichments(paperId, {
+            force: openAlexUpdatedPaperIds.has(paperId),
+            providers: [STRUCTURED_METADATA_PROVIDER],
+          });
+          if (result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER)) {
+            structuredMetadataCount += 1;
+            structuredMetadataUpdatedPaperIds.add(paperId);
+          }
+          for (const warning of result.warnings) {
+            enrichmentWarnings.push(`Paper ${paperId}: ${warning}`);
+          }
+          structuredProcessed += 1;
+          await tracker.updatePhase("enrich_structured_metadata", {
+            processed: structuredProcessed,
+            total: upsertedPaperIds.length,
+            message: `Generated structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`,
+            force:
+              structuredProcessed === 1 ||
+              structuredProcessed === upsertedPaperIds.length ||
+              structuredProcessed % 25 === 0,
+          });
+        },
+      );
+      await tracker.completePhase(
+        "enrich_structured_metadata",
+        upsertedPaperIds.length > 0
+          ? `Processed structured metadata for ${upsertedPaperIds.length} papers.`
+          : "No papers needed structured metadata.",
+      );
+    }
 
     if (structuredMetadataCount > 0) {
       logLines.push(
@@ -488,57 +554,87 @@ async function executePreparedIngestionJob(
     await tracker.addWarnings(enrichmentWarnings.length);
 
     let scoreCount = 0;
-    await tracker.startPhase("score_papers", {
-      message:
-        upsertedPaperIds.length > 0
-          ? `Refreshing scores for ${upsertedPaperIds.length} papers.`
-          : "No papers needed score updates.",
-      total: upsertedPaperIds.length,
-      processed: 0,
-    });
     let scoredProcessed = 0;
-    for (const [index, paperId] of upsertedPaperIds.entries()) {
-      const shouldScore =
-        Boolean(options.recomputeScores) ||
-        structuredMetadataUpdatedPaperIds.has(paperId) ||
-        !(await hasCurrentScore(paperId));
+    let scoreSkippedFromResume = 0;
 
-      if (!shouldScore) {
-        continue;
-      }
-
-      const [sourceRecord, structuredMetadata] = await Promise.all([
-        getPaperSourceRecordById(paperId),
-        getCurrentStructuredMetadata(paperId),
-      ]);
-      if (!sourceRecord) {
-        continue;
-      }
-
-      await prisma.$transaction(async (tx) => {
-        await replaceCurrentScore(
-          tx,
-          paperId,
-          sourceRecord,
-          appSettings.genAiRankingWeights,
-          structuredMetadata,
-        );
-      });
-      scoreCount += 1;
-      scoredProcessed += 1;
-      await tracker.updatePhase("score_papers", {
-        processed: index + 1,
+    if (resumeContext?.completedPhases.has("score_papers")) {
+      await tracker.completePhase(
+        "score_papers",
+        "Skipped scoring because the interrupted run already completed this phase.",
+      );
+    } else {
+      await tracker.startPhase("score_papers", {
+        message:
+          upsertedPaperIds.length > 0
+            ? `Refreshing scores for ${upsertedPaperIds.length} papers.`
+            : "No papers needed score updates.",
         total: upsertedPaperIds.length,
-        message: `Scored ${scoredProcessed} of ${upsertedPaperIds.length} papers.`,
-        force: index === 0 || index + 1 === upsertedPaperIds.length || (index + 1) % 25 === 0,
+        processed: 0,
       });
+
+      for (const [index, paperId] of upsertedPaperIds.entries()) {
+        const alreadyScoredInInterruptedRun = resumeContext
+          ? await hasCurrentScoreSince(paperId, resumeContext.startedAt)
+          : false;
+        if (alreadyScoredInInterruptedRun) {
+          scoreSkippedFromResume += 1;
+          await tracker.updatePhase("score_papers", {
+            processed: index + 1,
+            total: upsertedPaperIds.length,
+            message: `Resumed scoring; ${scoreSkippedFromResume} papers already had fresh scores from the interrupted run.`,
+            force:
+              index === 0 ||
+              index + 1 === upsertedPaperIds.length ||
+              (index + 1) % 25 === 0,
+          });
+          continue;
+        }
+
+        const shouldScore =
+          Boolean(options.recomputeScores) ||
+          structuredMetadataUpdatedPaperIds.has(paperId) ||
+          !(await hasCurrentScore(paperId));
+
+        if (!shouldScore) {
+          continue;
+        }
+
+        const [sourceRecord, structuredMetadata] = await Promise.all([
+          getPaperSourceRecordById(paperId),
+          getCurrentStructuredMetadata(paperId),
+        ]);
+        if (!sourceRecord) {
+          continue;
+        }
+
+        await prisma.$transaction(async (tx) => {
+          await replaceCurrentScore(
+            tx,
+            paperId,
+            sourceRecord,
+            appSettings.genAiRankingWeights,
+            structuredMetadata,
+          );
+        });
+        scoreCount += 1;
+        scoredProcessed += 1;
+        await tracker.updatePhase("score_papers", {
+          processed: index + 1,
+          total: upsertedPaperIds.length,
+          message: `Scored ${scoredProcessed} of ${upsertedPaperIds.length} papers.`,
+          force:
+            index === 0 ||
+            index + 1 === upsertedPaperIds.length ||
+            (index + 1) % 25 === 0,
+        });
+      }
+      await tracker.completePhase(
+        "score_papers",
+        upsertedPaperIds.length > 0
+          ? `Scored ${scoreCount} papers${scoreSkippedFromResume > 0 ? ` and reused ${scoreSkippedFromResume} fresh scores from the interrupted run` : ""}.`
+          : "No papers needed score updates.",
+      );
     }
-    await tracker.completePhase(
-      "score_papers",
-      upsertedPaperIds.length > 0
-        ? `Scored ${scoreCount} papers.`
-        : "No papers needed score updates.",
-    );
 
     const status =
       historicalResult?.warnings.length
@@ -1062,12 +1158,103 @@ async function upsertPaperBatch(input: {
   }
 }
 
+async function markSourcePhasesResumed(input: {
+  tracker: IngestionProgressReporter;
+  mode: IngestionOptions["mode"];
+  count: number;
+}) {
+  if (input.mode === "DAILY") {
+    await input.tracker.completePhase(
+      "discover_feeds",
+      `Resumed after feed discovery; ${input.count} papers are already stored for this day.`,
+    );
+  } else {
+    await input.tracker.completePhase(
+      "fetch_historical_window",
+      `Resumed after historical fetch; ${input.count} papers are already stored for this window.`,
+    );
+  }
+
+  await input.tracker.completePhase(
+    "hydrate_arxiv_records",
+    `Resumed after arXiv hydration; ${input.count} records are already available locally.`,
+  );
+  await input.tracker.completePhase(
+    "upsert_papers",
+    `Resumed after upsert; ${input.count} papers are already saved in the archive.`,
+  );
+}
+
+async function getPaperIdsForIngestWindow(input: {
+  from: string;
+  to: string;
+  categories: string[];
+}) {
+  const papers = await prisma.paper.findMany({
+    where: {
+      isDemoData: false,
+      announcementDay: {
+        gte: input.from,
+        lte: input.to,
+      },
+    },
+    select: {
+      id: true,
+      primaryCategory: true,
+      categoriesJson: true,
+      sourceFeedCategoriesJson: true,
+    },
+    orderBy: [
+      {
+        announcementDay: "asc",
+      },
+      {
+        publishedAt: "asc",
+      },
+      {
+        id: "asc",
+      },
+    ],
+  });
+
+  const categorySet = new Set(input.categories);
+  return papers
+    .filter((paper) => {
+      if (categorySet.size === 0) {
+        return true;
+      }
+
+      const categories = new Set([
+        paper.primaryCategory ?? "",
+        ...parseJsonStringList(paper.categoriesJson),
+        ...parseJsonStringList(paper.sourceFeedCategoriesJson),
+      ]);
+      return Array.from(categorySet).some((category) => categories.has(category));
+    })
+    .map((paper) => paper.id);
+}
+
 async function hasCurrentScore(paperId: string) {
   const count = await prisma.paperScore.count({
     where: {
       paperId,
       mode: BriefMode.GENAI,
       isCurrent: true,
+    },
+  });
+
+  return count > 0;
+}
+
+async function hasCurrentScoreSince(paperId: string, since: Date) {
+  const count = await prisma.paperScore.count({
+    where: {
+      paperId,
+      mode: BriefMode.GENAI,
+      isCurrent: true,
+      createdAt: {
+        gte: since,
+      },
     },
   });
 
@@ -1195,6 +1382,79 @@ export async function getActiveIngestionRun(options?: { now?: Date }) {
   return findActiveIngestionRun();
 }
 
+async function getIngestionResumeContext(
+  runId: string,
+): Promise<IngestionResumeContext | null> {
+  const run = await prisma.ingestionRun.findUnique({
+    where: { id: runId },
+    select: {
+      id: true,
+      startedAt: true,
+      progressJson: true,
+    },
+  });
+
+  const progress = parseIngestionProgress(run?.progressJson);
+  if (!run || !progress) {
+    return null;
+  }
+
+  return {
+    runId: run.id,
+    startedAt: run.startedAt,
+    completedPhases: new Set(
+      progress.phases
+        .filter((phase) => phase.status === "completed")
+        .map((phase) => phase.key),
+    ),
+    lastPhase:
+      progress.currentPhase ??
+      progress.phases.findLast((phase) => phase.status !== "pending")?.key ??
+      null,
+  };
+}
+
+async function findMatchingResumeCandidateRunId(input: {
+  options: IngestionOptions;
+  categories: string[];
+  announcementDay: string;
+}) {
+  const from = input.options.from ?? input.announcementDay;
+  const to = input.options.to ?? input.announcementDay;
+  const run = await prisma.ingestionRun.findFirst({
+    where: {
+      mode: input.options.mode as IngestionMode,
+      status: IngestionStatus.FAILED,
+      requestedFrom: new Date(`${from}T00:00:00.000Z`),
+      requestedTo: new Date(`${to}T23:59:59.999Z`),
+      recomputeScores: Boolean(input.options.recomputeScores),
+      recomputeSummaries: Boolean(input.options.recomputeBriefs),
+      errorMessage: {
+        contains: "no ingest heartbeat",
+      },
+    },
+    orderBy: {
+      startedAt: "desc",
+    },
+    select: {
+      id: true,
+      categories: true,
+      progressJson: true,
+    },
+  });
+
+  if (!run || !parseIngestionProgress(run.progressJson)) {
+    return null;
+  }
+
+  const runCategories = parseCategoryList(run.categories) ?? [];
+  if (!sameStringSet(runCategories, input.categories)) {
+    return null;
+  }
+
+  return run.id;
+}
+
 async function findActiveIngestionRun() {
   return prisma.ingestionRun.findFirst({
     where: {
@@ -1287,7 +1547,7 @@ async function findStaleIngestionRuns(options?: { now?: Date }) {
           ...run,
           progress,
           staleMessage:
-            "Marked failed automatically after no ingest heartbeat for 30 minutes. The worker may have stopped during a deploy or restart.",
+            "Marked failed automatically after no ingest heartbeat for 5 minutes. The worker may have stopped during a deploy or restart.",
         },
       ];
     }
@@ -1382,6 +1642,7 @@ async function buildResumeOptions(
       to,
       recomputeScores: run.recomputeScores,
       recomputeBriefs: run.recomputeSummaries,
+      resumeFromRunId: run.id,
     };
   }
 
@@ -1392,6 +1653,7 @@ async function buildResumeOptions(
     announcementDay: from ?? getArxivAnnouncementDateString(),
     recomputeScores: run.recomputeScores,
     recomputeBriefs: run.recomputeSummaries,
+    resumeFromRunId: run.id,
   };
 }
 
@@ -1420,6 +1682,21 @@ function parseCategoryList(value: Prisma.JsonValue) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : undefined;
+}
+
+function parseJsonStringList(value: Prisma.JsonValue | null | undefined) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function sameStringSet(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const rightSet = new Set(right);
+  return left.every((item) => rightSet.has(item));
 }
 
 function toDateOnly(date: Date) {

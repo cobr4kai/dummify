@@ -116,6 +116,7 @@ vi.mock("@/lib/db", () => {
         const scoreRecord = {
           id: `score-${dbState.nextScoreId++}`,
           isCurrent: true,
+          createdAt: new Date(),
           ...(data as Record<string, unknown>),
         };
         dbState.scores.push(scoreRecord);
@@ -139,6 +140,13 @@ vi.mock("@/lib/db", () => {
         findMany: vi.fn(async () => dbState.runs),
         findFirst: vi.fn(async () => {
           return dbState.runs.find((run) => run.status === "RUNNING") ?? null;
+        }),
+        findUnique: vi.fn(async ({ where }: Record<string, unknown>) => {
+          return (
+            dbState.runs.find(
+              (run) => run.id === (where as { id: string }).id,
+            ) ?? null
+          );
         }),
         count: vi.fn(async ({ where }: Record<string, unknown>) => {
           return dbState.runs.filter((run) => {
@@ -228,10 +236,22 @@ vi.mock("@/lib/db", () => {
       paperScore: {
         count: vi.fn(async ({ where }: Record<string, unknown>) => {
           return dbState.scores.filter(
-            (score) =>
-              score.paperId === (where as { paperId: string }).paperId &&
-              score.mode === (where as { mode: string }).mode &&
-              score.isCurrent === true,
+            (score) => {
+              if (score.paperId !== (where as { paperId: string }).paperId) {
+                return false;
+              }
+              if (score.mode !== (where as { mode: string }).mode) {
+                return false;
+              }
+              if (score.isCurrent !== true) {
+                return false;
+              }
+              const createdAtFilter = (where as { createdAt?: { gte?: Date } }).createdAt;
+              if (createdAtFilter?.gte) {
+                return new Date(String(score.createdAt)).getTime() >= createdAtFilter.gte.getTime();
+              }
+              return true;
+            },
           ).length;
         }),
       },
@@ -507,7 +527,7 @@ describe("runIngestionJob", () => {
     expect(dbState.runs[0]).toMatchObject({
       status: IngestionStatus.FAILED,
       errorMessage:
-        "Marked failed automatically after no ingest heartbeat for 30 minutes. The worker may have stopped during a deploy or restart.",
+        "Marked failed automatically after no ingest heartbeat for 5 minutes. The worker may have stopped during a deploy or restart.",
     });
     expect((dbState.runs[0]?.progressJson as typeof progress).currentMessage).toContain(
       "no ingest heartbeat",
@@ -577,5 +597,85 @@ describe("runIngestionJob", () => {
       recomputeScores: true,
       recomputeSummaries: false,
     });
+    await vi.waitFor(() => {
+      expect(dbState.runs[1]?.status).not.toBe(IngestionStatus.RUNNING);
+    });
+  });
+
+  it("resumes after completed upsert/enrichment without re-fetching or re-scoring fresh papers", async () => {
+    await runIngestionJob({
+      mode: "DAILY",
+      triggerSource: TriggerSource.MANUAL,
+      announcementDay: "2026-03-11",
+    });
+
+    fetchHistoricalMock.mockClear();
+    const interruptedProgress = createInitialIngestionProgress(IngestionMode.HISTORICAL);
+    interruptedProgress.currentPhase = "score_papers";
+    interruptedProgress.lastHeartbeatAt = "2026-04-19T07:20:00.000Z";
+    interruptedProgress.phases = interruptedProgress.phases.map((phase) => {
+      if (
+        [
+          "fetch_historical_window",
+          "hydrate_arxiv_records",
+          "upsert_papers",
+          "enrich_openalex",
+          "enrich_structured_metadata",
+        ].includes(phase.key)
+      ) {
+        return {
+          ...phase,
+          status: "completed",
+          startedAt: "2026-04-19T07:20:00.000Z",
+          completedAt: "2026-04-19T07:30:00.000Z",
+        };
+      }
+
+      if (phase.key === "score_papers") {
+        return {
+          ...phase,
+          status: "running",
+          startedAt: "2026-04-19T07:30:00.000Z",
+          processed: 1,
+          total: 1,
+        };
+      }
+
+      return phase;
+    });
+    dbState.runs.push({
+      id: "interrupted-scoring-run",
+      mode: IngestionMode.HISTORICAL,
+      triggerSource: TriggerSource.MANUAL,
+      status: IngestionStatus.FAILED,
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      categories: ["cs.AI"],
+      requestedFrom: new Date("2026-03-11T00:00:00.000Z"),
+      requestedTo: new Date("2026-03-11T23:59:59.999Z"),
+      recomputeScores: true,
+      recomputeSummaries: false,
+      logLines: [],
+      progressJson: interruptedProgress,
+    });
+
+    const result = await runIngestionJob({
+      mode: "HISTORICAL",
+      triggerSource: TriggerSource.API,
+      from: "2026-03-11",
+      to: "2026-03-11",
+      recomputeScores: true,
+      resumeFromRunId: "interrupted-scoring-run",
+    });
+
+    expect(fetchHistoricalMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      fetchedCount: 1,
+      upsertedCount: 1,
+      scoreCount: 0,
+    });
+    expect(dbState.scores).toHaveLength(1);
+    expect(dbState.runs.at(-1)?.logLines).toContain(
+      "Resuming from checkpointed ingest run interrupted-scoring-run at score_papers.",
+    );
   });
 });
