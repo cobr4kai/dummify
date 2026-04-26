@@ -400,7 +400,9 @@ async function executePreparedIngestionJob(
       processed: 0,
     });
     let openAlexProcessed = 0;
-    const openAlexResults = await mapWithConcurrency(
+    const openAlexUpdatedPaperIds = new Set<string>();
+    const enrichmentWarnings: string[] = [];
+    await forEachWithConcurrency(
       upsertedRecords,
       ENRICHMENT_CONCURRENCY,
       async (record) => {
@@ -408,6 +410,12 @@ async function executePreparedIngestionJob(
           force: false,
           providers: ["openalex"],
         });
+        if (result.updatedProviders.includes("openalex")) {
+          openAlexUpdatedPaperIds.add(record.id);
+        }
+        for (const warning of result.warnings) {
+          enrichmentWarnings.push(`Paper ${record.id}: ${warning}`);
+        }
         openAlexProcessed += 1;
         await tracker.updatePhase("enrich_openalex", {
           processed: openAlexProcessed,
@@ -418,11 +426,6 @@ async function executePreparedIngestionJob(
             openAlexProcessed === upsertedRecords.length ||
             openAlexProcessed % 25 === 0,
         });
-        return {
-          paperId: record.id,
-          sourceRecord: record.sourceRecord,
-          result,
-        };
       },
     );
     await tracker.completePhase(
@@ -441,17 +444,23 @@ async function executePreparedIngestionJob(
       processed: 0,
     });
     let structuredProcessed = 0;
-    const enrichmentResults = await mapWithConcurrency(
+    let structuredMetadataCount = 0;
+    const structuredMetadataUpdatedPaperIds = new Set<string>();
+    await forEachWithConcurrency(
       upsertedRecords,
       ENRICHMENT_CONCURRENCY,
       async (record) => {
-        const openAlexUpdated =
-          openAlexResults.find((item) => item.paperId === record.id)?.result.updatedProviders.includes("openalex") ??
-          false;
         const result = await hydratePaperEnrichments(record.id, {
-          force: openAlexUpdated,
+          force: openAlexUpdatedPaperIds.has(record.id),
           providers: [STRUCTURED_METADATA_PROVIDER],
         });
+        if (result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER)) {
+          structuredMetadataCount += 1;
+          structuredMetadataUpdatedPaperIds.add(record.id);
+        }
+        for (const warning of result.warnings) {
+          enrichmentWarnings.push(`Paper ${record.id}: ${warning}`);
+        }
         structuredProcessed += 1;
         await tracker.updatePhase("enrich_structured_metadata", {
           processed: structuredProcessed,
@@ -462,14 +471,6 @@ async function executePreparedIngestionJob(
             structuredProcessed === upsertedRecords.length ||
             structuredProcessed % 25 === 0,
         });
-        return {
-          paperId: record.id,
-          sourceRecord: record.sourceRecord,
-          result: mergeHydrationResults(
-            openAlexResults.find((item) => item.paperId === record.id)?.result ?? null,
-            result,
-          ),
-        };
       },
     );
     await tracker.completePhase(
@@ -479,23 +480,13 @@ async function executePreparedIngestionJob(
         : "No papers needed structured metadata.",
     );
 
-    const structuredMetadataCount = enrichmentResults.filter(({ result }) =>
-      result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER),
-    ).length;
     if (structuredMetadataCount > 0) {
       logLines.push(
         `Hydrated structured metadata for ${structuredMetadataCount} papers during ingestion.`,
       );
     }
-    appendEnrichmentWarnings(
-      logLines,
-      enrichmentResults.flatMap(({ paperId, result }) =>
-        result.warnings.map((warning) => `Paper ${paperId}: ${warning}`),
-      ),
-    );
-    await tracker.addWarnings(
-      enrichmentResults.reduce((count, item) => count + item.result.warnings.length, 0),
-    );
+    appendEnrichmentWarnings(logLines, enrichmentWarnings);
+    await tracker.addWarnings(enrichmentWarnings.length);
 
     let scoreCount = 0;
     await tracker.startPhase("score_papers", {
@@ -508,15 +499,16 @@ async function executePreparedIngestionJob(
     });
     let scoredProcessed = 0;
     for (const [index, record] of upsertedRecords.entries()) {
-      const hydration = enrichmentResults.find((item) => item.paperId === record.id)?.result;
       const shouldScore =
         Boolean(options.recomputeScores) ||
-        hydration?.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER) ||
+        structuredMetadataUpdatedPaperIds.has(record.id) ||
         !(await hasCurrentScore(record.id));
 
       if (!shouldScore) {
         continue;
       }
+
+      const structuredMetadata = await getCurrentStructuredMetadata(record.id);
 
       await prisma.$transaction(async (tx) => {
         await replaceCurrentScore(
@@ -524,7 +516,7 @@ async function executePreparedIngestionJob(
           record.id,
           record.sourceRecord,
           appSettings.genAiRankingWeights,
-          hydration?.structuredMetadata ?? null,
+          structuredMetadata,
         );
       });
       scoreCount += 1;
@@ -1087,6 +1079,30 @@ async function hasCurrentScore(paperId: string) {
   return count > 0;
 }
 
+async function getCurrentStructuredMetadata(paperId: string) {
+  const enrichment = await prisma.paperEnrichment.findFirst({
+    where: {
+      paperId,
+      provider: STRUCTURED_METADATA_PROVIDER,
+      isCurrent: true,
+    },
+    select: {
+      payload: true,
+    },
+  });
+
+  if (!enrichment) {
+    return null;
+  }
+
+  return getStructuredMetadataPayload([
+    {
+      provider: STRUCTURED_METADATA_PROVIDER,
+      payload: toRecordPayload(enrichment.payload),
+    },
+  ]);
+}
+
 async function replaceCurrentScore(
   tx: Prisma.TransactionClient,
   paperId: string,
@@ -1420,24 +1436,6 @@ function appendHistoricalWarnings(
   appendEnrichmentWarnings(logLines, result.warnings);
 }
 
-function mergeHydrationResults(
-  primary: HydrateEnrichmentResult | null,
-  secondary: HydrateEnrichmentResult,
-): HydrateEnrichmentResult {
-  if (!primary) {
-    return secondary;
-  }
-
-  return {
-    changed: primary.changed || secondary.changed,
-    updatedProviders: Array.from(
-      new Set([...primary.updatedProviders, ...secondary.updatedProviders]),
-    ),
-    warnings: [...primary.warnings, ...secondary.warnings],
-    structuredMetadata: secondary.structuredMetadata ?? primary.structuredMetadata,
-  };
-}
-
 async function handleArxivProgressEvent(
   tracker: IngestionProgressReporter,
   event: ArxivProgressEvent,
@@ -1516,6 +1514,24 @@ async function mapWithConcurrency<T, TResult>(
   );
 
   return results;
+}
+
+async function forEachWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<void>,
+) {
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        await mapper(items[currentIndex]!, currentIndex);
+      }
+    }),
+  );
 }
 
 export function toPaperSourceRecord(paper: Paper) {

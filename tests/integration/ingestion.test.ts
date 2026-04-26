@@ -235,6 +235,18 @@ vi.mock("@/lib/db", () => {
           ).length;
         }),
       },
+      paperEnrichment: {
+        findFirst: vi.fn(async ({ where }: Record<string, unknown>) => {
+          return (
+            dbState.enrichments.find(
+              (enrichment) =>
+                enrichment.paperId === (where as { paperId: string }).paperId &&
+                enrichment.provider === (where as { provider: string }).provider &&
+                enrichment.isCurrent !== false,
+            ) ?? null
+          );
+        }),
+      },
       $transaction: vi.fn(async (input: unknown) => {
         if (typeof input === "function") {
           return input(transactionClient);
