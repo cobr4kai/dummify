@@ -43,6 +43,14 @@ export type HistoricalBackfillProgressEvent =
       warnings: string[];
     };
 
+export type HistoricalBackfillWindowRecordsEvent = {
+  index: number;
+  totalWindows: number;
+  from: string;
+  to: string;
+  records: PaperSourceRecord[];
+};
+
 export async function fetchHistoricalRecords(input: {
   client: ArxivClient;
   categories: string[];
@@ -51,20 +59,51 @@ export async function fetchHistoricalRecords(input: {
   provider?: ArxivBackfillProvider | null;
   onProgress?: (event: HistoricalBackfillProgressEvent) => Promise<void> | void;
 }): Promise<HistoricalRecordsResult> {
+  const records: PaperSourceRecord[] = [];
+  const result = await fetchHistoricalRecordsByWindow({
+    ...input,
+    onWindowRecords: async (event) => {
+      records.push(...event.records);
+    },
+  });
+
+  return {
+    ...result,
+    records,
+  };
+}
+
+export async function fetchHistoricalRecordsByWindow(input: {
+  client: ArxivClient;
+  categories: string[];
+  from: string;
+  to: string;
+  provider?: ArxivBackfillProvider | null;
+  onProgress?: (event: HistoricalBackfillProgressEvent) => Promise<void> | void;
+  onWindowRecords?: (event: HistoricalBackfillWindowRecordsEvent) => Promise<void> | void;
+}): Promise<Omit<HistoricalRecordsResult, "records">> {
   if (input.provider) {
+    const records = await input.provider.fetchRange({
+      categories: input.categories,
+      from: input.from,
+      to: input.to,
+    });
+    await input.onWindowRecords?.({
+      index: 1,
+      totalWindows: 1,
+      from: input.from,
+      to: input.to,
+      records,
+    });
+
     return {
-      records: await input.provider.fetchRange({
-        categories: input.categories,
-        from: input.from,
-        to: input.to,
-      }),
       warnings: [],
       attemptedWindows: 1,
       failedWindows: 0,
     };
   }
 
-  const byId = new Map<string, PaperSourceRecord>();
+  const seenIds = new Set<string>();
   const warnings: string[] = [];
   const windows = buildDailyWindows(input.from, input.to);
   let failedWindows = 0;
@@ -83,9 +122,13 @@ export async function fetchHistoricalRecords(input: {
       window.to,
     );
 
-    for (const record of result.records) {
-      byId.set(record.arxivId, record);
-    }
+    const uniqueRecords = result.records.filter((record) => {
+      if (seenIds.has(record.arxivId)) {
+        return false;
+      }
+      seenIds.add(record.arxivId);
+      return true;
+    });
 
     if (result.warnings.length > 0) {
       failedWindows += 1;
@@ -100,18 +143,25 @@ export async function fetchHistoricalRecords(input: {
       });
     }
 
+    await input.onWindowRecords?.({
+      index: index + 1,
+      totalWindows: windows.length,
+      from: window.from,
+      to: window.to,
+      records: uniqueRecords,
+    });
+
     await input.onProgress?.({
       type: "window-complete",
       index: index + 1,
       totalWindows: windows.length,
       from: window.from,
       to: window.to,
-      fetchedCount: result.records.length,
+      fetchedCount: uniqueRecords.length,
     });
   }
 
   return {
-    records: Array.from(byId.values()),
     warnings,
     attemptedWindows: windows.length,
     failedWindows,

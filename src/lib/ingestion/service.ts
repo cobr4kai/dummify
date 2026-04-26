@@ -9,7 +9,7 @@ import {
 import path from "node:path";
 import { DEFAULT_SCORING_VERSION } from "@/config/defaults";
 import {
-  fetchHistoricalRecords,
+  fetchHistoricalRecordsByWindow,
   type HistoricalRecordsResult,
 } from "@/lib/arxiv/backfill";
 import { ArxivClient, type ArxivProgressEvent } from "@/lib/arxiv/client";
@@ -218,15 +218,18 @@ async function executePreparedIngestionJob(
         : "Starting historical ingestion for the operator brief.",
     );
 
-    let historicalResult: HistoricalRecordsResult | null = null;
-    let papers: PaperSourceRecord[] = [];
+    let historicalResult: Omit<HistoricalRecordsResult, "records"> | null = null;
+    let fetchedCount = 0;
+    const upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }> = [];
+
     if (options.mode === "DAILY") {
       await tracker.startPhase("discover_feeds", {
         message: `Scanning ${categories.length} arXiv feeds for ${announcementDay}.`,
         total: categories.length,
         processed: 0,
       });
-      papers = await arxivClient.fetchDaily(categories, announcementDay);
+      const papers = await arxivClient.fetchDaily(categories, announcementDay);
+      fetchedCount = papers.length;
       await tracker.completePhase(
         "discover_feeds",
         `Discovered ${papers.length} papers from the daily arXiv feeds.`,
@@ -237,11 +240,27 @@ async function executePreparedIngestionJob(
           ? `Hydrated ${papers.length} arXiv records.`
           : "No arXiv ids required hydration after feed discovery.",
       );
+
+      await tracker.startPhase("upsert_papers", {
+        message: papers.length > 0 ? "Saving papers into the archive." : "No papers to upsert.",
+        total: papers.length,
+        processed: 0,
+      });
+      await upsertPaperBatch({
+        papers,
+        total: papers.length,
+        upsertedRecords,
+        tracker,
+      });
     } else {
       await tracker.startPhase("fetch_historical_window", {
         message: `Fetching historical windows from ${options.from} to ${options.to}.`,
       });
-      historicalResult = await fetchHistoricalRecords({
+      await tracker.startPhase("upsert_papers", {
+        message: "Saving historical papers as each window completes.",
+        processed: 0,
+      });
+      historicalResult = await fetchHistoricalRecordsByWindow({
         client: arxivClient,
         categories,
         from: options.from!,
@@ -268,35 +287,48 @@ async function executePreparedIngestionJob(
           await tracker.updatePhase("fetch_historical_window", {
             processed: event.index,
             total: event.totalWindows,
-            message: `Fetched historical window ${event.index} of ${event.totalWindows} (${event.fetchedCount} papers from ${event.from}).`,
+            message: `Fetched historical window ${event.index} of ${event.totalWindows} (${event.fetchedCount} new papers from ${event.from}).`,
             force: event.index === event.totalWindows || event.index === 1,
           });
         },
+        onWindowRecords: async (event) => {
+          fetchedCount += event.records.length;
+          await upsertPaperBatch({
+            papers: event.records,
+            total: fetchedCount,
+            upsertedRecords,
+            tracker,
+          });
+        },
       });
-      papers = historicalResult.records;
       await tracker.completePhase(
         "fetch_historical_window",
-        `Fetched ${papers.length} papers across the requested historical windows.`,
+        `Fetched ${fetchedCount} papers across the requested historical windows.`,
       );
       await tracker.completePhase(
         "hydrate_arxiv_records",
-        papers.length > 0
-          ? `Hydrated ${papers.length} historical arXiv records.`
+        fetchedCount > 0
+          ? `Hydrated ${fetchedCount} historical arXiv records.`
           : "No historical arXiv records were hydrated for the requested window.",
       );
     }
 
-    logLines.push(`Fetched ${papers.length} paper records from arXiv.`);
+    await tracker.completePhase(
+      "upsert_papers",
+      `Saved ${upsertedRecords.length} papers into the archive.`,
+    );
+
+    logLines.push(`Fetched ${fetchedCount} paper records from arXiv.`);
     if (
       options.mode === "DAILY" &&
-      papers.length === 0 &&
+      fetchedCount === 0 &&
       isExpectedQuietAnnouncementDay(announcementDay)
     ) {
       logLines.push(
         "No new announcements were expected for this Friday/Saturday arXiv quiet day.",
       );
     }
-    if (options.mode === "HISTORICAL" && papers.length === 0) {
+    if (options.mode === "HISTORICAL" && fetchedCount === 0) {
       logLines.push("No arXiv records were found in the requested historical window.");
     }
     if (historicalResult?.warnings.length) {
@@ -306,30 +338,6 @@ async function executePreparedIngestionJob(
         "Historical fetch completed with warnings.",
       );
     }
-
-    const upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }> = [];
-    await tracker.startPhase("upsert_papers", {
-      message: papers.length > 0 ? "Saving papers into the archive." : "No papers to upsert.",
-      total: papers.length,
-      processed: 0,
-    });
-    for (const [index, paper] of papers.entries()) {
-      const record = await prisma.$transaction(async (tx) => upsertPaper(tx, paper));
-      upsertedRecords.push({
-        id: record.id,
-        sourceRecord: paper,
-      });
-      await tracker.updatePhase("upsert_papers", {
-        processed: index + 1,
-        total: papers.length,
-        message: `Saved ${index + 1} of ${papers.length} papers.`,
-        force: index === 0 || index + 1 === papers.length || (index + 1) % 25 === 0,
-      });
-    }
-    await tracker.completePhase(
-      "upsert_papers",
-      `Saved ${upsertedRecords.length} papers into the archive.`,
-    );
 
     const upsertedIds = upsertedRecords.map((record) => record.id);
     let briefCount = 0;
@@ -539,7 +547,7 @@ async function executePreparedIngestionJob(
       historicalResult?.warnings.length
         ? IngestionStatus.PARTIAL
         : options.mode === "DAILY" &&
-            papers.length === 0 &&
+            fetchedCount === 0 &&
             !isExpectedQuietAnnouncementDay(announcementDay)
           ? IngestionStatus.PARTIAL
           : IngestionStatus.COMPLETED;
@@ -553,7 +561,7 @@ async function executePreparedIngestionJob(
       where: { id: run.id },
       data: {
         status,
-        fetchedCount: papers.length,
+        fetchedCount,
         upsertedCount: upsertedIds.length,
         scoreCount,
         summaryCount: briefCount,
@@ -565,7 +573,7 @@ async function executePreparedIngestionJob(
     return {
       runId: run.id,
       status,
-      fetchedCount: papers.length,
+      fetchedCount,
       upsertedCount: upsertedIds.length,
       scoreCount,
       summaryCount: briefCount,
@@ -1038,6 +1046,35 @@ async function upsertPaper(tx: Prisma.TransactionClient, paper: PaperSourceRecor
   });
 }
 
+async function upsertPaperBatch(input: {
+  papers: PaperSourceRecord[];
+  total: number;
+  upsertedRecords: Array<{ id: string; sourceRecord: PaperSourceRecord }>;
+  tracker: IngestionProgressReporter;
+}) {
+  for (const paper of input.papers) {
+    const record = await prisma.$transaction(async (tx) => upsertPaper(tx, paper));
+    input.upsertedRecords.push({
+      id: record.id,
+      sourceRecord: stripLargeSourcePayload(paper),
+    });
+    const processed = input.upsertedRecords.length;
+    await input.tracker.updatePhase("upsert_papers", {
+      processed,
+      total: input.total,
+      message: `Saved ${processed} of ${input.total} papers.`,
+      force: processed === 1 || processed === input.total || processed % 25 === 0,
+    });
+  }
+}
+
+function stripLargeSourcePayload(paper: PaperSourceRecord): PaperSourceRecord {
+  return {
+    ...paper,
+    sourcePayload: {},
+  };
+}
+
 async function hasCurrentScore(paperId: string) {
   const count = await prisma.paperScore.count({
     where: {
@@ -1372,7 +1409,7 @@ function toDateOnly(date: Date) {
 
 function appendHistoricalWarnings(
   logLines: string[],
-  result: HistoricalRecordsResult,
+  result: Omit<HistoricalRecordsResult, "records">,
 ) {
   const summary =
     result.failedWindows === result.attemptedWindows
