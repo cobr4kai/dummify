@@ -138,8 +138,59 @@ vi.mock("@/lib/db", () => {
           return run;
         }),
         findMany: vi.fn(async () => dbState.runs),
-        findFirst: vi.fn(async () => {
-          return dbState.runs.find((run) => run.status === "RUNNING") ?? null;
+        findFirst: vi.fn(async (args?: Record<string, unknown>) => {
+          const where = (args?.where ?? {}) as Record<string, unknown>;
+          const candidates = [...dbState.runs].sort((left, right) => {
+            const leftStartedAt = new Date(String(left.startedAt)).getTime();
+            const rightStartedAt = new Date(String(right.startedAt)).getTime();
+            return rightStartedAt - leftStartedAt;
+          });
+          return (
+            candidates.find((run) => {
+              if (where.status && run.status !== where.status) {
+                return false;
+              }
+              if (where.mode && run.mode !== where.mode) {
+                return false;
+              }
+              if (
+                where.requestedFrom instanceof Date &&
+                run.requestedFrom instanceof Date &&
+                run.requestedFrom.getTime() !== where.requestedFrom.getTime()
+              ) {
+                return false;
+              }
+              if (
+                where.requestedTo instanceof Date &&
+                run.requestedTo instanceof Date &&
+                run.requestedTo.getTime() !== where.requestedTo.getTime()
+              ) {
+                return false;
+              }
+              if (
+                typeof where.recomputeScores === "boolean" &&
+                run.recomputeScores !== where.recomputeScores
+              ) {
+                return false;
+              }
+              if (
+                typeof where.recomputeSummaries === "boolean" &&
+                run.recomputeSummaries !== where.recomputeSummaries
+              ) {
+                return false;
+              }
+              const errorContains = (
+                where.errorMessage as { contains?: string } | undefined
+              )?.contains;
+              if (
+                errorContains &&
+                !String(run.errorMessage ?? "").includes(errorContains)
+              ) {
+                return false;
+              }
+              return true;
+            }) ?? null
+          );
         }),
         findUnique: vi.fn(async ({ where }: Record<string, unknown>) => {
           return (

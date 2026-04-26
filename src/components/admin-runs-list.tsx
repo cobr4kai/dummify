@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminSubmitButton } from "@/components/admin-submit-button";
+import { AdminSortStateInputs } from "@/components/admin-sort-state-inputs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getRunBadgeVariant } from "@/lib/admin/ui";
@@ -15,10 +17,18 @@ export function AdminRunsList({
   runs,
   title = "Recent ingestion runs",
   description = "Inspect fetch counts, failures, and timestamps from the latest jobs.",
+  resumeIngestionRunAction,
+  selectedWeek,
+  sortDirection,
+  sortKey,
 }: {
   runs: AdminIngestionRun[];
   title?: string;
   description?: string;
+  resumeIngestionRunAction?: (formData: FormData) => Promise<void>;
+  selectedWeek?: string | null;
+  sortDirection?: string | null;
+  sortKey?: string | null;
 }) {
   return (
     <Card>
@@ -70,8 +80,34 @@ export function AdminRunsList({
                     .slice(-4)
                     .map((line, index) => (
                       <li key={`${run.id}-${index}-${line}`}>- {line}</li>
-                    ))}
+                  ))}
                 </ul>
+              ) : null}
+              {resumeIngestionRunAction && run.status === "FAILED" ? (
+                <form
+                  action={resumeIngestionRunAction}
+                  className="mt-4 flex flex-wrap items-center gap-3 rounded-[20px] border border-border/80 bg-white/70 p-3"
+                >
+                  <input name="runId" type="hidden" value={run.id} />
+                  <input name="selectedWeek" type="hidden" value={selectedWeek ?? ""} />
+                  <AdminSortStateInputs sortDirection={sortDirection} sortKey={sortKey} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground">
+                      Resume this failed run
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Restarts from the saved checkpoint and skips completed phases when
+                      possible.
+                    </p>
+                  </div>
+                  <AdminSubmitButton
+                    className="min-w-0"
+                    idleLabel="Resume from checkpoint"
+                    pendingLabel="Starting resume..."
+                    type="submit"
+                    variant="secondary"
+                  />
+                </form>
               ) : null}
             </div>
           ))

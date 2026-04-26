@@ -1510,6 +1510,46 @@ export async function recoverStaleIngestionRuns(options?: { now?: Date }) {
   };
 }
 
+export async function resumeIngestionRun(runId: string) {
+  const run = await prisma.ingestionRun.findUnique({
+    where: { id: runId },
+    select: {
+      id: true,
+      mode: true,
+      status: true,
+      categories: true,
+      requestedFrom: true,
+      requestedTo: true,
+      recomputeScores: true,
+      recomputeSummaries: true,
+      progressJson: true,
+    },
+  });
+
+  if (
+    !run ||
+    run.status !== IngestionStatus.FAILED ||
+    !parseIngestionProgress(run.progressJson)
+  ) {
+    return {
+      status: "not-resumable" as const,
+      runId,
+    };
+  }
+
+  const resumeOptions = await buildResumeOptions(run, TriggerSource.MANUAL);
+  if (!resumeOptions) {
+    return {
+      status: "not-resumable" as const,
+      runId,
+    };
+  }
+
+  return startIngestionJob(resumeOptions, {
+    startupLogLine: `Manually resumed failed ingestion run ${run.id} from its checkpoint.`,
+  });
+}
+
 async function findStaleIngestionRuns(options?: { now?: Date }) {
   const now = options?.now ?? new Date();
   const runningRuns = await prisma.ingestionRun.findMany({
@@ -1622,8 +1662,19 @@ async function markStaleIngestionRunsFailed(
   );
 }
 
+type ResumeSourceRun = {
+  id: string;
+  mode: IngestionMode;
+  categories: Prisma.JsonValue;
+  requestedFrom: Date | null;
+  requestedTo: Date | null;
+  recomputeScores: boolean;
+  recomputeSummaries: boolean;
+};
+
 async function buildResumeOptions(
-  run: Awaited<ReturnType<typeof findStaleIngestionRuns>>[number],
+  run: ResumeSourceRun,
+  triggerSource: TriggerSource = TriggerSource.API,
 ): Promise<IngestionOptions | null> {
   const categories = parseCategoryList(run.categories);
   const from = run.requestedFrom ? toDateOnly(run.requestedFrom) : null;
@@ -1636,7 +1687,7 @@ async function buildResumeOptions(
 
     return {
       mode: "HISTORICAL",
-      triggerSource: TriggerSource.API,
+      triggerSource,
       categories,
       from,
       to,
@@ -1648,7 +1699,7 @@ async function buildResumeOptions(
 
   return {
     mode: "DAILY",
-    triggerSource: TriggerSource.API,
+    triggerSource,
     categories,
     announcementDay: from ?? getArxivAnnouncementDateString(),
     recomputeScores: run.recomputeScores,

@@ -16,9 +16,17 @@ const POLL_INTERVAL_MS = 4000;
 export function AdminIngestTracker({
   initialActiveRun,
   initialRuns,
+  resumeIngestionRunAction,
+  selectedWeek,
+  sortDirection,
+  sortKey,
 }: {
   initialActiveRun: AdminIngestionRun | null;
   initialRuns: AdminIngestionRun[];
+  resumeIngestionRunAction: (formData: FormData) => Promise<void>;
+  selectedWeek?: string | null;
+  sortDirection?: string | null;
+  sortKey?: string | null;
 }) {
   const [activeRun, setActiveRun] = useState(initialActiveRun);
   const [recentRuns, setRecentRuns] = useState(initialRuns);
@@ -79,7 +87,11 @@ export function AdminIngestTracker({
       {activeRun ? <ActiveIngestRunCard run={activeRun} /> : null}
       <AdminRunsList
         description={recentRunsDescription}
+        resumeIngestionRunAction={resumeIngestionRunAction}
         runs={recentRuns}
+        selectedWeek={selectedWeek}
+        sortDirection={sortDirection}
+        sortKey={sortKey}
         title={activeRun ? "Recent completed runs" : "Recent ingestion runs"}
       />
     </div>

@@ -4,7 +4,11 @@ import { AdminIngestTracker } from "@/components/admin-ingest-tracker";
 import { AdminNoticeBanner, type AdminNotice } from "@/components/admin-notice-banner";
 import { AdminPageHeader } from "@/components/admin-page-header";
 import { PageShell } from "@/components/page-shell";
-import { runDailyRefreshAction, runHistoricalRefreshAction } from "@/app/admin/actions";
+import {
+  resumeIngestionRunAction,
+  runDailyRefreshAction,
+  runHistoricalRefreshAction,
+} from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminSnapshot } from "@/lib/search/service";
 import { formatShortDate, getArxivAnnouncementDateString } from "@/lib/utils/dates";
@@ -76,6 +80,10 @@ export default async function AdminIngestPage({
         <AdminIngestTracker
           initialActiveRun={snapshot.activeRun}
           initialRuns={snapshot.runs}
+          resumeIngestionRunAction={resumeIngestionRunAction}
+          selectedWeek={snapshot.selectedWeek}
+          sortDirection={sortDirection}
+          sortKey={sortKey}
         />
       </section>
     </PageShell>
@@ -113,6 +121,20 @@ function getIngestNotice(input: {
         title: "Backfill archive window started",
         description:
           "The historical backfill is running now. Follow the active run card below for live phase updates.",
+        variant: "highlight",
+      };
+    case "ingest-resume-started":
+      return {
+        title: "Resume started",
+        description:
+          "The failed run is restarting from its saved checkpoint. Completed phases will be skipped where possible.",
+        variant: "highlight",
+      };
+    case "ingest-resume-unavailable":
+      return {
+        title: "That run cannot be resumed",
+        description:
+          "The run is missing a usable checkpoint or is no longer in a failed state. Start a fresh ingest for that same window if needed.",
         variant: "highlight",
       };
     case "ingest-already-running":

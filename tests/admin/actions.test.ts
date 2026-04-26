@@ -6,6 +6,7 @@ const {
   getAppSettingsMock,
   getCurrentTechnicalBriefMock,
   headersMock,
+  resumeIngestionRunMock,
   startIngestionJobMock,
   redirectMock,
   reorderPublishedPaperForWeekMock,
@@ -21,6 +22,7 @@ const {
   getAppSettingsMock: vi.fn(),
   getCurrentTechnicalBriefMock: vi.fn(),
   headersMock: vi.fn(),
+  resumeIngestionRunMock: vi.fn(),
   startIngestionJobMock: vi.fn(),
   redirectMock: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
@@ -52,6 +54,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/ingestion/service", () => ({
+  resumeIngestionRun: resumeIngestionRunMock,
   startIngestionJob: startIngestionJobMock,
 }));
 
@@ -86,6 +89,7 @@ vi.mock("@/lib/utils/dates", async () => {
 import {
   runDailyRefreshAction,
   runHistoricalRefreshAction,
+  resumeIngestionRunAction,
   setActiveHomepageDayAction,
   togglePublishedPaperAction,
   updateSettingsAction,
@@ -94,6 +98,7 @@ import {
 describe("admin actions", () => {
   beforeEach(() => {
     requireAdminMock.mockReset();
+    resumeIngestionRunMock.mockReset();
     startIngestionJobMock.mockReset();
     updateAppSettingsMock.mockReset();
     resetAppSettingsMock.mockReset();
@@ -112,6 +117,10 @@ describe("admin actions", () => {
     startIngestionJobMock.mockResolvedValue({
       status: "started",
       runId: "run-1",
+    });
+    resumeIngestionRunMock.mockResolvedValue({
+      status: "started",
+      runId: "run-2",
     });
     updateAppSettingsMock.mockResolvedValue(undefined);
     getAppSettingsMock.mockResolvedValue({
@@ -175,6 +184,31 @@ describe("admin actions", () => {
       recomputeScores: true,
       recomputeBriefs: false,
     });
+  });
+
+  it("resumes failed ingest runs from the ingest page", async () => {
+    const formData = new FormData();
+    formData.set("runId", "failed-run-1");
+    formData.set("selectedWeek", "2026-03-16");
+
+    await expect(resumeIngestionRunAction(formData)).rejects.toThrow(
+      "REDIRECT:/admin/ingest?week=2026-03-16&notice=ingest-resume-started",
+    );
+    expect(requireAdminMock).toHaveBeenCalledWith("/admin/ingest");
+    expect(resumeIngestionRunMock).toHaveBeenCalledWith("failed-run-1");
+  });
+
+  it("redirects to a clear notice when a failed ingest run cannot resume", async () => {
+    const formData = new FormData();
+    formData.set("runId", "failed-run-1");
+    resumeIngestionRunMock.mockResolvedValueOnce({
+      status: "not-resumable",
+      runId: "failed-run-1",
+    });
+
+    await expect(resumeIngestionRunAction(formData)).rejects.toThrow(
+      "REDIRECT:/admin/ingest?notice=ingest-resume-unavailable",
+    );
   });
 
   it("redirects settings saves back to settings", async () => {

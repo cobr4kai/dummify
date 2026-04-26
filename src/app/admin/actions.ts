@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { TriggerSource } from "@prisma/client";
 import { getDefaultRankingWeightsForPreset } from "@/config/defaults";
 import { clearAdminSession, requireAdmin } from "@/lib/auth";
-import { startIngestionJob } from "@/lib/ingestion/service";
+import { resumeIngestionRun, startIngestionJob } from "@/lib/ingestion/service";
 import {
   reorderPublishedPaperForWeek,
   setPublishedPaperState,
@@ -94,6 +94,37 @@ export async function runHistoricalRefreshAction(formData: FormData) {
   redirectToAdminPage("/admin/ingest", {
     selectedWeek: selectedWeek ?? (to ? getWeekStart(to) : undefined),
     notice: result.status === "already-running" ? "ingest-already-running" : "historical-refresh-started",
+    sortKey,
+    sortDirection,
+  });
+}
+
+export async function resumeIngestionRunAction(formData: FormData) {
+  await requireAdmin("/admin/ingest");
+  const runId = readString(formData.get("runId"));
+  const selectedWeek = readString(formData.get("selectedWeek"));
+  const { sortKey, sortDirection } = await readAdminSortState(formData);
+
+  if (!runId) {
+    redirectToAdminPage("/admin/ingest", {
+      selectedWeek,
+      notice: "ingest-resume-unavailable",
+      sortKey,
+      sortDirection,
+    });
+  }
+
+  const result = await resumeIngestionRun(runId);
+
+  revalidateAll();
+  redirectToAdminPage("/admin/ingest", {
+    selectedWeek,
+    notice:
+      result.status === "already-running"
+        ? "ingest-already-running"
+        : result.status === "not-resumable"
+          ? "ingest-resume-unavailable"
+          : "ingest-resume-started",
     sortKey,
     sortDirection,
   });
