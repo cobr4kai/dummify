@@ -57,6 +57,7 @@ import { toJsonInput } from "@/lib/utils/prisma";
 export type DailyJobMode = "PRIMARY" | "RECONCILE";
 
 const ACTIVE_MANUAL_RUN_WINDOW_MS = 6 * 60 * 60 * 1000;
+const ACTIVE_HEARTBEAT_STALE_MS = 30 * 60 * 1000;
 
 type IngestionOptions = {
   mode: "DAILY" | "HISTORICAL";
@@ -1066,7 +1067,7 @@ function appendEnrichmentWarnings(logLines: string[], warnings: string[]) {
 export async function getActiveIngestionRun(options?: { now?: Date }) {
   await closeStaleIngestionRuns(options);
 
-  const run = await prisma.ingestionRun.findFirst({
+  return prisma.ingestionRun.findFirst({
     where: {
       status: IngestionStatus.RUNNING,
     },
@@ -1080,39 +1081,61 @@ export async function getActiveIngestionRun(options?: { now?: Date }) {
       startedAt: true,
     },
   });
-
-  if (!run) {
-    return null;
-  }
-
-  const now = options?.now ?? new Date();
-  const ageMs = now.getTime() - run.startedAt.getTime();
-  return ageMs <= ACTIVE_MANUAL_RUN_WINDOW_MS ? run : null;
 }
 
 export async function closeStaleIngestionRuns(options?: { now?: Date }) {
   const now = options?.now ?? new Date();
-  const staleBefore = new Date(now.getTime() - ACTIVE_MANUAL_RUN_WINDOW_MS);
-  const staleRuns = await prisma.ingestionRun.findMany({
+  const runningRuns = await prisma.ingestionRun.findMany({
     where: {
       status: IngestionStatus.RUNNING,
-      startedAt: {
-        lt: staleBefore,
-      },
     },
     select: {
       id: true,
+      startedAt: true,
       logLines: true,
       progressJson: true,
     },
+  });
+  const staleRuns = runningRuns.flatMap((run) => {
+    const progress = parseIngestionProgress(run.progressJson);
+    const heartbeatAgeMs = progress?.lastHeartbeatAt
+      ? now.getTime() - Date.parse(progress.lastHeartbeatAt)
+      : null;
+    const startedAgeMs = now.getTime() - run.startedAt.getTime();
+
+    if (
+      heartbeatAgeMs !== null &&
+      Number.isFinite(heartbeatAgeMs) &&
+      heartbeatAgeMs > ACTIVE_HEARTBEAT_STALE_MS
+    ) {
+      return [
+        {
+          ...run,
+          progress,
+          staleMessage:
+            "Marked failed automatically after no ingest heartbeat for 30 minutes. The worker may have stopped during a deploy or restart.",
+        },
+      ];
+    }
+
+    if (!progress && startedAgeMs > ACTIVE_MANUAL_RUN_WINDOW_MS) {
+      return [
+        {
+          ...run,
+          progress,
+          staleMessage:
+            "Marked failed automatically after exceeding the 6 hour ingest activity window.",
+        },
+      ];
+    }
+
+    return [];
   });
 
   if (staleRuns.length === 0) {
     return 0;
   }
 
-  const staleMessage =
-    "Marked failed automatically after exceeding the 6 hour ingest activity window.";
   const completedAt = now;
   const completedAtIso = completedAt.toISOString();
 
@@ -1123,11 +1146,11 @@ export async function closeStaleIngestionRuns(options?: { now?: Date }) {
             .filter((line): line is string | number | boolean => line !== null)
             .map((line) => String(line))
         : [];
-      if (!logLines.includes(staleMessage)) {
-        logLines.push(staleMessage);
+      if (!logLines.includes(run.staleMessage)) {
+        logLines.push(run.staleMessage);
       }
 
-      const progress = parseIngestionProgress(run.progressJson);
+      const progress = run.progress;
       if (progress) {
         const runningPhase =
           progress.phases.find((phase) => phase.status === "running") ??
@@ -1138,10 +1161,10 @@ export async function closeStaleIngestionRuns(options?: { now?: Date }) {
         if (runningPhase) {
           runningPhase.status = "failed";
           runningPhase.completedAt = completedAtIso;
-          runningPhase.message = staleMessage;
+          runningPhase.message = run.staleMessage;
         }
 
-        progress.currentMessage = staleMessage;
+        progress.currentMessage = run.staleMessage;
         progress.lastHeartbeatAt = completedAtIso;
       }
 
@@ -1150,7 +1173,7 @@ export async function closeStaleIngestionRuns(options?: { now?: Date }) {
         data: {
           status: IngestionStatus.FAILED,
           completedAt,
-          errorMessage: staleMessage,
+          errorMessage: run.staleMessage,
           logLines: toJsonInput(logLines),
           ...(progress ? { progressJson: toJsonInput(progress) } : {}),
         },

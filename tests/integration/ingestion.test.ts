@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TriggerSource } from "@prisma/client";
+import { IngestionMode, IngestionStatus, TriggerSource } from "@prisma/client";
 import { DEFAULT_GENAI_RANKING_WEIGHTS } from "@/config/defaults";
+import { createInitialIngestionProgress } from "@/lib/ingestion/progress-shared";
 import { demoPaperFixtures } from "../../data/mock/demo-fixtures";
 
 const {
@@ -129,11 +130,13 @@ vi.mock("@/lib/db", () => {
         create: vi.fn(async ({ data }: Record<string, unknown>) => {
           const run = {
             id: `run-${dbState.nextRunId++}`,
+            startedAt: new Date(),
             ...(data as Record<string, unknown>),
           };
           dbState.runs.push(run);
           return run;
         }),
+        findMany: vi.fn(async () => dbState.runs),
         update: vi.fn(async ({ where, data }: Record<string, unknown>) => {
           const run = dbState.runs.find(
             (item) => item.id === (where as { id: string }).id,
@@ -223,7 +226,7 @@ vi.mock("@/lib/db", () => {
   };
 });
 
-import { runIngestionJob } from "@/lib/ingestion/service";
+import { closeStaleIngestionRuns, runIngestionJob } from "@/lib/ingestion/service";
 
 describe("runIngestionJob", () => {
   beforeEach(() => {
@@ -439,5 +442,62 @@ describe("runIngestionJob", () => {
     expect(dbState.runs[0]?.logLines).toContain(
       "Historical ingestion completed with warnings. 1 of 2 daily windows hit arXiv rate limits or transient API failures.",
     );
+  });
+
+  it("marks heartbeat-stale running jobs as failed even before the legacy activity window", async () => {
+    const progress = createInitialIngestionProgress(IngestionMode.HISTORICAL);
+    progress.currentPhase = "fetch_historical_window";
+    progress.currentMessage = "Fetching historical window 1 of 7.";
+    progress.lastHeartbeatAt = "2026-04-19T07:20:00.000Z";
+    progress.phases[1] = {
+      ...progress.phases[1],
+      status: "running",
+      startedAt: "2026-04-19T07:20:00.000Z",
+      message: "Fetching historical window 1 of 7.",
+    };
+    dbState.runs.push({
+      id: "stale-run",
+      status: IngestionStatus.RUNNING,
+      startedAt: new Date("2026-04-19T07:20:00.000Z"),
+      logLines: [],
+      progressJson: progress,
+    });
+
+    const count = await closeStaleIngestionRuns({
+      now: new Date("2026-04-19T07:51:00.000Z"),
+    });
+
+    expect(count).toBe(1);
+    expect(dbState.runs[0]).toMatchObject({
+      status: IngestionStatus.FAILED,
+      errorMessage:
+        "Marked failed automatically after no ingest heartbeat for 30 minutes. The worker may have stopped during a deploy or restart.",
+    });
+    expect((dbState.runs[0]?.progressJson as typeof progress).currentMessage).toContain(
+      "no ingest heartbeat",
+    );
+    expect((dbState.runs[0]?.progressJson as typeof progress).phases[1]?.status).toBe(
+      "failed",
+    );
+  });
+
+  it("keeps old but heartbeating jobs active", async () => {
+    const progress = createInitialIngestionProgress(IngestionMode.HISTORICAL);
+    progress.currentPhase = "score_papers";
+    progress.lastHeartbeatAt = "2026-04-19T13:55:00.000Z";
+    dbState.runs.push({
+      id: "active-long-run",
+      status: IngestionStatus.RUNNING,
+      startedAt: new Date("2026-04-19T07:20:00.000Z"),
+      logLines: [],
+      progressJson: progress,
+    });
+
+    const count = await closeStaleIngestionRuns({
+      now: new Date("2026-04-19T14:00:00.000Z"),
+    });
+
+    expect(count).toBe(0);
+    expect(dbState.runs[0]?.status).toBe(IngestionStatus.RUNNING);
   });
 });
