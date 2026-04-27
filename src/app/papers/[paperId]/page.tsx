@@ -495,7 +495,9 @@ export default async function PaperDetailPage({
                 </p>
                 <div className="mt-4 flex gap-3">
                   <Button asChild size="sm">
-                    <Link href={`/papers/${item.id}`}>Open</Link>
+                    <Link href={`/papers/${item.id}`} prefetch={false}>
+                      Open
+                    </Link>
                   </Button>
                   <Button asChild size="sm" variant="secondary">
                     <a href={item.abstractUrl} rel="noreferrer" target="_blank">

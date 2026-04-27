@@ -548,25 +548,70 @@ export async function getArchiveResults(options: {
 export async function getPaperDetail(paperId: string) {
   return prisma.paper.findUnique({
     where: { id: paperId },
-    include: {
+    select: {
+      id: true,
+      arxivId: true,
+      version: true,
+      title: true,
+      abstract: true,
+      authorsText: true,
+      abstractUrl: true,
+      primaryCategory: true,
+      publishedAt: true,
+      updatedAt: true,
+      announcementDay: true,
       scores: {
         where: {
           isCurrent: true,
           mode: BriefMode.GENAI,
+        },
+        select: {
+          totalScore: true,
+          breakdown: true,
+          rationale: true,
         },
       },
       technicalBriefs: {
         where: { isCurrent: true },
         orderBy: { updatedAt: "desc" },
         take: 1,
+        select: {
+          oneLineVerdict: true,
+          keyStatsJson: true,
+          affiliationsJson: true,
+          focusTagsJson: true,
+          whyItMatters: true,
+          whatToIgnore: true,
+          executiveTakeaway: true,
+          bulletsJson: true,
+          performanceImpact: true,
+          trainingImpact: true,
+          inferenceImpact: true,
+          limitationsJson: true,
+          confidenceNotesJson: true,
+          evidenceJson: true,
+          provider: true,
+          model: true,
+          sourceBasis: true,
+          usedFallbackAbstract: true,
+        },
       },
       pdfCaches: {
         where: { isCurrent: true },
         orderBy: { updatedAt: "desc" },
         take: 1,
+        select: {
+          extractionStatus: true,
+          extractionError: true,
+          pageCount: true,
+        },
       },
       enrichments: {
         where: { isCurrent: true },
+        select: {
+          provider: true,
+          payload: true,
+        },
       },
     },
   });

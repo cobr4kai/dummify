@@ -433,7 +433,9 @@ export function AdminEditionTable({
                             ) : null}
                             {row.isFocused ? <Badge variant="highlight">Just updated</Badge> : null}
                             <Button asChild size="sm" variant="ghost">
-                              <Link href={`/papers/${row.paper.id}`}>Open detail</Link>
+                              <Link href={`/papers/${row.paper.id}`} prefetch={false}>
+                                Open detail
+                              </Link>
                             </Button>
                           </div>
                           <div>
