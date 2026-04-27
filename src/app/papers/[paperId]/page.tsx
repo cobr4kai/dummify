@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import {
+  refetchPaperSourceAction,
   regeneratePaperTechnicalBriefAction,
   revertPaperTechnicalBriefAction,
   savePaperTechnicalBriefAction,
@@ -284,6 +285,17 @@ export default async function PaperDetailPage({
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-wrap gap-3">
+                <form action={refetchPaperSourceAction}>
+                  <input name="paperId" type="hidden" value={paper.id} />
+                  <input name="forcePdfRetry" type="hidden" value="1" />
+                  <AdminSubmitButton
+                    disabled={hasCachedPdfText}
+                    idleLabel="Fetch PDF text"
+                    pendingLabel="Fetching PDF..."
+                    type="submit"
+                    variant="secondary"
+                  />
+                </form>
                 <form action={regeneratePaperTechnicalBriefAction}>
                   <input name="paperId" type="hidden" value={paper.id} />
                   <input name="sourceMode" type="hidden" value="cached-pdf" />
@@ -525,6 +537,24 @@ export default async function PaperDetailPage({
                   : "No enrichment data is attached to this paper yet. The app works fully without OpenAlex."}
               </p>
             )}
+            {isAdmin ? (
+              <div className="border-t border-border/60 pt-4">
+                <form action={refetchPaperSourceAction} className="flex flex-wrap items-center gap-3">
+                  <input name="paperId" type="hidden" value={paper.id} />
+                  <input name="forcePdfRetry" type="hidden" value="1" />
+                  <AdminSubmitButton
+                    idleLabel={hasCachedPdfText ? "Refetch PDF text" : "Fetch PDF text"}
+                    pendingLabel="Fetching PDF text..."
+                    type="submit"
+                    variant="secondary"
+                  />
+                  <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                    Fetches this paper's arXiv record and caches extracted PDF text for PDF-backed
+                    brief generation on this page.
+                  </p>
+                </form>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </section>
@@ -619,6 +649,34 @@ function getPaperDetailNotice(notice: string | null): PaperDetailNotice {
         description:
           "A full-paper brief was generated from cached PDF text and is now live for this paper.",
         variant: "success",
+      };
+    case "paper-source-refetched-pdf-extracted":
+      return {
+        title: "PDF text cached",
+        description:
+          "The paper metadata was refreshed and PDF text was extracted. You can now generate a PDF-backed brief.",
+        variant: "success",
+      };
+    case "paper-source-refetched-pdf-fallback":
+      return {
+        title: "PDF fetch fell back",
+        description:
+          "The paper metadata was refreshed, but PDF extraction could not complete. The abstract fallback is still available.",
+        variant: "highlight",
+      };
+    case "paper-source-refetched":
+      return {
+        title: "Source already current",
+        description:
+          "The paper source was refreshed, and cached PDF text was already available.",
+        variant: "success",
+      };
+    case "paper-source-refetch-failed":
+      return {
+        title: "Could not fetch paper source",
+        description:
+          "The arXiv record or PDF could not be refreshed right now. Try again later, or use ingest if this keeps failing.",
+        variant: "danger",
       };
     case "brief-reverted":
       return {
