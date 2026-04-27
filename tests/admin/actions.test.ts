@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  ensurePaperTechnicalBriefMock,
   getCategoryConfigsMock,
   getAppSettingsMock,
-  getCurrentTechnicalBriefMock,
+  getCurrentTechnicalBriefStatusMock,
   headersMock,
   resumeIngestionRunMock,
   startIngestionJobMock,
@@ -17,10 +16,9 @@ const {
   updateAppSettingsMock,
   updateCategoryConfigsMock,
 } = vi.hoisted(() => ({
-  ensurePaperTechnicalBriefMock: vi.fn(),
   getCategoryConfigsMock: vi.fn(),
   getAppSettingsMock: vi.fn(),
-  getCurrentTechnicalBriefMock: vi.fn(),
+  getCurrentTechnicalBriefStatusMock: vi.fn(),
   headersMock: vi.fn(),
   resumeIngestionRunMock: vi.fn(),
   startIngestionJobMock: vi.fn(),
@@ -72,8 +70,7 @@ vi.mock("@/lib/settings/service", () => ({
 }));
 
 vi.mock("@/lib/technical/service", () => ({
-  ensurePaperTechnicalBrief: ensurePaperTechnicalBriefMock,
-  getCurrentTechnicalBrief: getCurrentTechnicalBriefMock,
+  getCurrentTechnicalBriefStatus: getCurrentTechnicalBriefStatusMock,
 }));
 
 vi.mock("@/lib/utils/dates", async () => {
@@ -107,8 +104,7 @@ describe("admin actions", () => {
     updateCategoryConfigsMock.mockReset();
     setPublishedPaperStateMock.mockReset();
     reorderPublishedPaperForWeekMock.mockReset();
-    ensurePaperTechnicalBriefMock.mockReset();
-    getCurrentTechnicalBriefMock.mockReset();
+    getCurrentTechnicalBriefStatusMock.mockReset();
     revalidatePathMock.mockReset();
     redirectMock.mockClear();
 
@@ -235,18 +231,14 @@ describe("admin actions", () => {
     expect(requireAdminMock).toHaveBeenCalledWith("/admin/edition");
   });
 
-  it("publishes a paper without blocking the redirect on brief generation", async () => {
+  it("publishes a paper without starting brief generation from the curate action", async () => {
     const formData = new FormData();
     formData.set("announcementDay", "2026-03-20");
     formData.set("paperId", "paper-1");
     formData.set("published", "true");
 
     setPublishedPaperStateMock.mockResolvedValue(undefined);
-    getCurrentTechnicalBriefMock.mockResolvedValue(null);
-    ensurePaperTechnicalBriefMock.mockImplementation(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      return "generated";
-    });
+    getCurrentTechnicalBriefStatusMock.mockResolvedValue(null);
 
     await expect(togglePublishedPaperAction(formData)).rejects.toThrow(
       "REDIRECT:/admin/edition?week=2026-03-16&notice=paper-published&focusPaper=paper-1&brief=missing",
@@ -257,9 +249,6 @@ describe("admin actions", () => {
       paperId: "paper-1",
       published: true,
     });
-    expect(getCurrentTechnicalBriefMock).toHaveBeenCalledWith("paper-1");
-    expect(ensurePaperTechnicalBriefMock).toHaveBeenCalledWith("paper-1", {
-      requirePdf: true,
-    });
+    expect(getCurrentTechnicalBriefStatusMock).toHaveBeenCalledWith("paper-1");
   });
 });

@@ -339,6 +339,19 @@ export async function getCurrentTechnicalBrief(paperId: string) {
   });
 }
 
+export async function getCurrentTechnicalBriefStatus(paperId: string) {
+  return prisma.paperTechnicalBrief.findFirst({
+    where: {
+      paperId,
+      isCurrent: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      usedFallbackAbstract: true,
+    },
+  });
+}
+
 export function isGenAiPaperReadyForPdfAnalysis(
   paper: Pick<Paper, "pdfUrl" | "abstract"> | null,
 ) {

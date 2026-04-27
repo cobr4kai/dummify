@@ -18,10 +18,7 @@ import {
   updateAppSettings,
   updateCategoryConfigs,
 } from "@/lib/settings/service";
-import {
-  ensurePaperTechnicalBrief,
-  getCurrentTechnicalBrief,
-} from "@/lib/technical/service";
+import { getCurrentTechnicalBriefStatus } from "@/lib/technical/service";
 import { getArxivAnnouncementDateString, getWeekStart } from "@/lib/utils/dates";
 
 export async function logoutAction() {
@@ -266,21 +263,12 @@ export async function togglePublishedPaperAction(formData: FormData) {
 
   let briefStatus: "ready" | "missing" | "fallback" | undefined;
   if (nextPublishedState) {
-    const currentBrief = await getCurrentTechnicalBrief(paperId);
+    const currentBrief = await getCurrentTechnicalBriefStatus(paperId);
     briefStatus = currentBrief
       ? currentBrief.usedFallbackAbstract
         ? "fallback"
         : "ready"
       : "missing";
-
-    if (!currentBrief || currentBrief.usedFallbackAbstract) {
-      void ensurePaperTechnicalBrief(paperId, { requirePdf: true }).catch((error) => {
-        console.error(
-          `Failed to warm a PDF-backed brief for curated paper ${paperId}.`,
-          error,
-        );
-      });
-    }
   }
 
   revalidateAll();
