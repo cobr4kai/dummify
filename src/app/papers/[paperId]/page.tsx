@@ -262,6 +262,38 @@ export default async function PaperDetailPage({
         </Card>
       )}
 
+      {isAdmin && !technicalBrief ? (
+        <section className="mb-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="eyebrow text-[11px] font-semibold text-muted-foreground">
+                    Admin brief generation
+                  </p>
+                  <CardTitle>Generate executive brief</CardTitle>
+                  <CardDescription>
+                    Create the first ReadAbstracted brief for this paper. This can take a moment
+                    because it may fetch or parse the source PDF before calling the model.
+                  </CardDescription>
+                </div>
+                <Badge variant="highlight">Missing brief</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <form action={regeneratePaperTechnicalBriefAction}>
+                <input name="paperId" type="hidden" value={paper.id} />
+                <AdminSubmitButton
+                  idleLabel="Generate brief"
+                  pendingLabel="Generating brief..."
+                  type="submit"
+                />
+              </form>
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
       {isAdmin && technicalBrief ? (
         <section className="mb-6">
           <Card>

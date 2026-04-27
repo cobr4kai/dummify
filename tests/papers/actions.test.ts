@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  ensurePaperTechnicalBriefMock,
+  getCurrentTechnicalBriefMock,
   redirectMock,
   refetchPaperSourceMock,
   requireAdminMock,
   revalidatePathMock,
 } = vi.hoisted(() => ({
+  ensurePaperTechnicalBriefMock: vi.fn(),
+  getCurrentTechnicalBriefMock: vi.fn(),
   redirectMock: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
@@ -37,17 +41,22 @@ vi.mock("@/lib/papers/refetch", () => ({
 }));
 
 vi.mock("@/lib/technical/service", () => ({
-  ensurePaperTechnicalBrief: vi.fn(),
-  getCurrentTechnicalBrief: vi.fn(),
+  ensurePaperTechnicalBrief: ensurePaperTechnicalBriefMock,
+  getCurrentTechnicalBrief: getCurrentTechnicalBriefMock,
   revertManualTechnicalBriefEdits: vi.fn(),
   saveManualTechnicalBriefEdits: vi.fn(),
 }));
 
-import { refetchPaperSourceAction } from "@/app/papers/[paperId]/actions";
+import {
+  refetchPaperSourceAction,
+  regeneratePaperTechnicalBriefAction,
+} from "@/app/papers/[paperId]/actions";
 
 describe("refetchPaperSourceAction", () => {
   beforeEach(() => {
     redirectMock.mockClear();
+    ensurePaperTechnicalBriefMock.mockReset();
+    getCurrentTechnicalBriefMock.mockReset();
     refetchPaperSourceMock.mockReset();
     requireAdminMock.mockReset();
     revalidatePathMock.mockClear();
@@ -83,5 +92,23 @@ describe("refetchPaperSourceAction", () => {
     await expect(refetchPaperSourceAction(formData)).rejects.toThrow(
       "REDIRECT:/papers/paper-1?notice=paper-source-refetch-failed",
     );
+  });
+
+  it("generates the first technical brief when no current brief exists", async () => {
+    const formData = new FormData();
+    formData.set("paperId", "paper-1");
+    getCurrentTechnicalBriefMock.mockResolvedValue(null);
+    ensurePaperTechnicalBriefMock.mockResolvedValue("generated");
+
+    await expect(regeneratePaperTechnicalBriefAction(formData)).rejects.toThrow(
+      "REDIRECT:/papers/paper-1?notice=brief-regenerated",
+    );
+
+    expect(requireAdminMock).toHaveBeenCalledWith("/papers/paper-1");
+    expect(ensurePaperTechnicalBriefMock).toHaveBeenCalledWith("paper-1", {
+      force: true,
+      requirePdf: false,
+    });
+    expect(revalidatePathMock).toHaveBeenCalledWith("/papers/paper-1");
   });
 });
