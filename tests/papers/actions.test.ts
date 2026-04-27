@@ -94,21 +94,41 @@ describe("refetchPaperSourceAction", () => {
     );
   });
 
-  it("generates the first technical brief when no current brief exists", async () => {
+  it("generates the first technical brief in web-safe abstract mode", async () => {
     const formData = new FormData();
     formData.set("paperId", "paper-1");
+    formData.set("sourceMode", "abstract");
     getCurrentTechnicalBriefMock.mockResolvedValue(null);
     ensurePaperTechnicalBriefMock.mockResolvedValue("generated");
 
     await expect(regeneratePaperTechnicalBriefAction(formData)).rejects.toThrow(
-      "REDIRECT:/papers/paper-1?notice=brief-regenerated",
+      "REDIRECT:/papers/paper-1?notice=brief-generated-abstract",
     );
 
     expect(requireAdminMock).toHaveBeenCalledWith("/papers/paper-1");
     expect(ensurePaperTechnicalBriefMock).toHaveBeenCalledWith("paper-1", {
       force: true,
       requirePdf: false,
+      pdfFetchMode: "disabled",
     });
     expect(revalidatePathMock).toHaveBeenCalledWith("/papers/paper-1");
+  });
+
+  it("generates a PDF-backed technical brief from cached PDF text", async () => {
+    const formData = new FormData();
+    formData.set("paperId", "paper-1");
+    formData.set("sourceMode", "cached-pdf");
+    getCurrentTechnicalBriefMock.mockResolvedValue(null);
+    ensurePaperTechnicalBriefMock.mockResolvedValue("generated");
+
+    await expect(regeneratePaperTechnicalBriefAction(formData)).rejects.toThrow(
+      "REDIRECT:/papers/paper-1?notice=brief-generated-pdf",
+    );
+
+    expect(ensurePaperTechnicalBriefMock).toHaveBeenCalledWith("paper-1", {
+      force: true,
+      requirePdf: true,
+      pdfFetchMode: "disabled",
+    });
   });
 });

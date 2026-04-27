@@ -57,22 +57,37 @@ export async function revertPaperTechnicalBriefAction(formData: FormData) {
 
 export async function regeneratePaperTechnicalBriefAction(formData: FormData) {
   const paperId = readString(formData.get("paperId"));
+  const sourceMode = readString(formData.get("sourceMode"));
   if (!paperId) {
     redirect("/admin");
   }
 
   await requireAdmin(await getCanonicalPaperPathById(paperId));
   const currentBrief = await getCurrentTechnicalBrief(paperId);
+  const useWebSafeAbstractMode = sourceMode === "abstract";
+  const useCachedPdfMode = sourceMode === "cached-pdf";
   const result = await ensurePaperTechnicalBrief(paperId, {
     force: true,
-    requirePdf: currentBrief ? !currentBrief.usedFallbackAbstract : false,
+    requirePdf: useCachedPdfMode
+      ? true
+      : useWebSafeAbstractMode
+      ? false
+      : currentBrief
+        ? !currentBrief.usedFallbackAbstract
+        : false,
+    pdfFetchMode:
+      useWebSafeAbstractMode || useCachedPdfMode ? "disabled" : undefined,
   });
 
   await revalidatePaperViews(paperId);
   await redirectToPaperDetail(
     paperId,
     result === "generated"
-      ? "brief-regenerated"
+      ? useCachedPdfMode
+        ? "brief-generated-pdf"
+        : useWebSafeAbstractMode
+        ? "brief-generated-abstract"
+        : "brief-regenerated"
       : result === "pdf-required"
         ? "brief-pdf-required"
         : "brief-regenerate-unavailable",

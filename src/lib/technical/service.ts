@@ -48,7 +48,11 @@ const manualTechnicalBriefEditSchema = z.object({
 
 export async function ensurePaperTechnicalBrief(
   paperId: string,
-  options: { force?: boolean; requirePdf?: boolean } = {},
+  options: {
+    force?: boolean;
+    requirePdf?: boolean;
+    pdfFetchMode?: "personal-research-cache" | "disabled";
+  } = {},
 ): Promise<EnsurePaperTechnicalBriefResult> {
   const existing = await prisma.paperTechnicalBrief.findFirst({
     where: {
@@ -81,7 +85,7 @@ export async function ensurePaperTechnicalBrief(
   const settings = await getAppSettings();
   const pdfResult = await ensurePaperPdfExtraction(paper, settings.pdfCacheDir, {
     fallbackRetryCooldownMinutes: settings.pdfFallbackRetryCooldownMinutes,
-    fetchMode: settings.pdfFetchMode,
+    fetchMode: options.pdfFetchMode ?? settings.pdfFetchMode,
   });
   if (options.requirePdf && pdfResult.usedFallbackAbstract) {
     return "pdf-required";

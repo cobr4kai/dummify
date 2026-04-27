@@ -129,6 +129,8 @@ export default async function PaperDetailPage({
         }));
   const hasAffiliations = institutionEntries.length > 0;
   const pdfCache = paper.pdfCaches[0] ?? null;
+  const hasCachedPdfText =
+    pdfCache?.extractionStatus === "EXTRACTED" && (pdfCache.pageCount ?? 0) > 0;
 
   return (
     <PageShell
@@ -273,22 +275,47 @@ export default async function PaperDetailPage({
                   </p>
                   <CardTitle>Generate executive brief</CardTitle>
                   <CardDescription>
-                    Create the first ReadAbstracted brief for this paper. This can take a moment
-                    because it may fetch or parse the source PDF before calling the model.
+                    Create the first ReadAbstracted brief here. PDF-backed generation is available
+                    when this paper already has cached extracted PDF text.
                   </CardDescription>
                 </div>
                 <Badge variant="highlight">Missing brief</Badge>
               </div>
             </CardHeader>
-            <CardContent>
-              <form action={regeneratePaperTechnicalBriefAction}>
-                <input name="paperId" type="hidden" value={paper.id} />
-                <AdminSubmitButton
-                  idleLabel="Generate brief"
-                  pendingLabel="Generating brief..."
-                  type="submit"
-                />
-              </form>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-3">
+                <form action={regeneratePaperTechnicalBriefAction}>
+                  <input name="paperId" type="hidden" value={paper.id} />
+                  <input name="sourceMode" type="hidden" value="cached-pdf" />
+                  <AdminSubmitButton
+                    disabled={!hasCachedPdfText}
+                    idleLabel="Generate PDF-backed brief"
+                    pendingLabel="Generating PDF brief..."
+                    type="submit"
+                  />
+                </form>
+                <form action={regeneratePaperTechnicalBriefAction}>
+                  <input name="paperId" type="hidden" value={paper.id} />
+                  <input name="sourceMode" type="hidden" value="abstract" />
+                  <AdminSubmitButton
+                    idleLabel="Generate abstract brief"
+                    pendingLabel="Generating abstract brief..."
+                    type="submit"
+                    variant="secondary"
+                  />
+                </form>
+              </div>
+              {!hasCachedPdfText ? (
+                <p className="text-sm leading-6 text-muted-foreground">
+                  PDF-backed generation needs cached extracted PDF text first. Use ingest or source
+                  refetch to cache the PDF, then return here to generate the full-paper brief.
+                </p>
+              ) : (
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Cached PDF text is ready, so the PDF-backed action can run without fetching or
+                  parsing the PDF in this page request.
+                </p>
+              )}
             </CardContent>
           </Card>
         </section>
@@ -577,6 +604,20 @@ function getPaperDetailNotice(notice: string | null): PaperDetailNotice {
         title: "Brief regenerated",
         description:
           "A fresh generated version is now live for this paper.",
+        variant: "success",
+      };
+    case "brief-generated-abstract":
+      return {
+        title: "Abstract brief generated",
+        description:
+          "A web-safe abstract-based brief is now live. Run ingest brief generation later if you want to replace it with a full PDF-backed brief.",
+        variant: "success",
+      };
+    case "brief-generated-pdf":
+      return {
+        title: "PDF-backed brief generated",
+        description:
+          "A full-paper brief was generated from cached PDF text and is now live for this paper.",
         variant: "success",
       };
     case "brief-reverted":
