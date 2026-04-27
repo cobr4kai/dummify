@@ -61,12 +61,15 @@ describe("ensurePaperPdfExtraction", () => {
     getDocumentMock.mockReturnValue({
       promise: Promise.resolve({
         numPages: 1,
+        cleanup: vi.fn(),
         getPage: async () => ({
+          cleanup: vi.fn(),
           getTextContent: async () => ({
             items: [{ str: "Recovered PDF page text" }],
           }),
         }),
       }),
+      destroy: vi.fn(),
     });
   });
 
@@ -168,6 +171,51 @@ describe("ensurePaperPdfExtraction", () => {
       extractionStatus: "FALLBACK",
       usedFallbackAbstract: true,
       extractionError: "arXiv PDF request failed with 404.",
+    });
+  });
+
+  it("falls back instead of parsing PDFs that exceed the web memory guard", async () => {
+    const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "paperbrief-pdf-"));
+    cacheRoots.push(cacheRoot);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("too large", {
+        status: 200,
+        headers: {
+          "Content-Length": String(9 * 1024 * 1024),
+          "Content-Type": "application/pdf",
+        },
+      }),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await ensurePaperPdfExtraction(
+      {
+        id: "paper-1",
+        arxivId: "2603.15341",
+        version: 1,
+        pdfUrl: "https://arxiv.org/pdf/2603.15341v1",
+        abstract: "Test abstract",
+      },
+      cacheRoot,
+      {
+        forceRetry: true,
+      },
+    );
+
+    expect(getDocumentMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      extractionStatus: "FALLBACK",
+      usedFallbackAbstract: true,
+      extractionError: expect.stringContaining("too large to fetch safely"),
+    });
+    expect(updatePdfCacheMock).toHaveBeenCalledWith({
+      where: { id: "pdf-cache-1" },
+      data: expect.objectContaining({
+        extractionStatus: "FALLBACK",
+        extractionError: expect.stringContaining("too large to fetch safely"),
+        usedFallbackAbstract: true,
+      }),
     });
   });
 });

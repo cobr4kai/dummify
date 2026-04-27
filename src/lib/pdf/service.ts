@@ -10,6 +10,7 @@ import type { PdfExtractionResult, PdfPageText } from "@/lib/types";
 import { normalizeWhitespace } from "@/lib/utils/strings";
 
 const PDF_CHUNK_MAX_CHARS = 18000;
+const DEFAULT_MAX_PDF_BYTES = 8 * 1024 * 1024;
 const pdfjsGlobal = globalThis as typeof globalThis & {
   pdfjsWorker?: {
     WorkerMessageHandler: typeof import("pdfjs-dist/legacy/build/pdf.worker.mjs").WorkerMessageHandler;
@@ -115,11 +116,11 @@ export async function ensurePaperPdfExtraction(
       arxivId: paper.arxivId,
       version: paper.version,
     });
-    const pdfBuffer = Buffer.from(resolvedFetch.arrayBuffer);
+    const pdfBytes = resolvedFetch.bytes;
     const finalSourceUrl = resolvedFetch.responseUrl || resolvedFetch.sourceUrl;
-    await fs.writeFile(cachePaths.pdfPath, pdfBuffer);
+    await fs.writeFile(cachePaths.pdfPath, pdfBytes);
 
-    const pages = await extractPdfPages(pdfBuffer);
+    const pages = await extractPdfPages(pdfBytes);
     await fs.writeFile(cachePaths.pagesPath, JSON.stringify(pages, null, 2), "utf8");
 
     await upsertPdfCacheRecord(existing?.id, {
@@ -127,7 +128,7 @@ export async function ensurePaperPdfExtraction(
       sourceUrl: finalSourceUrl,
       filePath: cachePaths.pdfPath,
       extractedJsonPath: cachePaths.pagesPath,
-      fileSizeBytes: pdfBuffer.byteLength,
+      fileSizeBytes: pdfBytes.byteLength,
       pageCount: pages.length,
       extractionStatus: PdfExtractionStatus.EXTRACTED,
       extractionError: null,
@@ -141,7 +142,7 @@ export async function ensurePaperPdfExtraction(
       filePath: cachePaths.pdfPath,
       extractedJsonPath: cachePaths.pagesPath,
       pageCount: pages.length,
-      fileSizeBytes: pdfBuffer.byteLength,
+      fileSizeBytes: pdfBytes.byteLength,
       pages,
       usedFallbackAbstract: false,
       extractionStatus: "EXTRACTED",
@@ -223,10 +224,18 @@ async function fetchArxivPdfBuffer(input: {
     });
 
     if (response.ok) {
+      const maxPdfBytes = getMaxPdfFetchBytes();
+      const contentLength = readContentLength(response);
+      if (contentLength !== null && contentLength > maxPdfBytes) {
+        throw new Error(
+          `PDF is too large to fetch safely in the web service (${formatBytes(contentLength)} > ${formatBytes(maxPdfBytes)}).`,
+        );
+      }
+
       return {
         sourceUrl: candidate,
         responseUrl: response.url,
-        arrayBuffer: await response.arrayBuffer(),
+        bytes: await readResponseBytesWithLimit(response, maxPdfBytes),
       };
     }
 
@@ -241,32 +250,106 @@ async function fetchArxivPdfBuffer(input: {
   throw lastNotFound ?? new Error("Unknown PDF extraction error.");
 }
 
-async function extractPdfPages(pdfBuffer: Buffer): Promise<PdfPageText[]> {
+async function extractPdfPages(pdfBytes: Uint8Array): Promise<PdfPageText[]> {
   const { getDocument } = await loadPdfJsRuntime();
-  const document = await getDocument({
-    data: new Uint8Array(pdfBuffer),
+  const loadingTask = getDocument({
+    data: pdfBytes,
     useSystemFonts: false,
     isEvalSupported: false,
-  }).promise;
+  });
+  const document = await loadingTask.promise;
 
   const pages: PdfPageText[] = [];
 
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    const textContent = await page.getTextContent();
-    const pageText = normalizeWhitespace(
-      textContent.items
-        .map((item) => ("str" in item ? item.str : ""))
-        .join(" "),
-    );
+  try {
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      try {
+        const textContent = await page.getTextContent();
+        const pageText = normalizeWhitespace(
+          textContent.items
+            .map((item) => ("str" in item ? item.str : ""))
+            .join(" "),
+        );
 
-    pages.push({
-      pageNumber,
-      text: pageText,
-    });
+        pages.push({
+          pageNumber,
+          text: pageText,
+        });
+      } finally {
+        page.cleanup();
+      }
+    }
+  } finally {
+    await document.cleanup();
+    await loadingTask.destroy();
   }
 
   return pages.filter((page) => page.text.length > 0);
+}
+
+async function readResponseBytesWithLimit(response: Response, maxBytes: number) {
+  if (!response.body) {
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > maxBytes) {
+      throw new Error(
+        `PDF is too large to fetch safely in the web service (${formatBytes(arrayBuffer.byteLength)} > ${formatBytes(maxBytes)}).`,
+      );
+    }
+
+    return new Uint8Array(arrayBuffer);
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        throw new Error(
+          `PDF is too large to fetch safely in the web service (${formatBytes(totalBytes)} > ${formatBytes(maxBytes)}).`,
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return bytes;
+}
+
+function readContentLength(response: Response) {
+  const header = response.headers.get("content-length");
+  if (!header) {
+    return null;
+  }
+
+  const parsed = Number(header);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function getMaxPdfFetchBytes() {
+  const raw = Number(process.env.PAPERBRIEF_MAX_PDF_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_PDF_BYTES;
+}
+
+function formatBytes(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function buildPaperCachePaths(cacheRoot: string, arxivId: string, version: number) {
