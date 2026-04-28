@@ -17,10 +17,6 @@ import { ScoreBreakdownCard } from "@/components/score-breakdown";
 import { TechnicalBriefView } from "@/components/technical-brief-view";
 import { isAdminAuthenticated } from "@/lib/auth";
 import {
-  ensurePaperEnrichment,
-  ensurePaperPdfAffiliations,
-} from "@/lib/ingestion/service";
-import {
   getOpenAlexPayload,
   getPdfAffiliationPayload,
 } from "@/lib/metadata/service";
@@ -70,9 +66,6 @@ export default async function PaperDetailPage({
 }) {
   const { paperId } = await params;
   const query = await searchParams;
-
-  await ensurePaperEnrichment(paperId);
-  await ensurePaperPdfAffiliations(paperId);
 
   const paper = await getPaperDetail(paperId);
   if (!paper) {
