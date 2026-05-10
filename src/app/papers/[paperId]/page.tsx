@@ -654,7 +654,7 @@ function getPaperDetailNotice(notice: string | null): PaperDetailNotice {
       return {
         title: "PDF fetch fell back",
         description:
-          "The paper metadata was refreshed, but PDF extraction could not complete. The abstract fallback is still available.",
+          "The paper metadata was refreshed, but PDF extraction could not complete safely. The source card below shows the specific reason, and abstract fallback is still available.",
         variant: "highlight",
       };
     case "paper-source-refetched":

@@ -16,6 +16,8 @@ services:
         value: file:/var/data/paperbrief.db
       - key: PAPERBRIEF_CACHE_DIR
         value: /var/data/paperbrief-cache
+      - key: PAPERBRIEF_MAX_PDF_BYTES
+        value: "33554432"
       - key: ENABLE_LOCAL_CRON
         value: "false"
       - key: OPENAI_MODEL

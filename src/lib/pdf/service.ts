@@ -10,7 +10,7 @@ import type { PdfExtractionResult, PdfPageText } from "@/lib/types";
 import { normalizeWhitespace } from "@/lib/utils/strings";
 
 const PDF_CHUNK_MAX_CHARS = 18000;
-const DEFAULT_MAX_PDF_BYTES = 8 * 1024 * 1024;
+const DEFAULT_MAX_PDF_BYTES = 32 * 1024 * 1024;
 const pdfjsGlobal = globalThis as typeof globalThis & {
   pdfjsWorker?: {
     WorkerMessageHandler: typeof import("pdfjs-dist/legacy/build/pdf.worker.mjs").WorkerMessageHandler;

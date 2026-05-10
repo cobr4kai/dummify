@@ -53,6 +53,7 @@ describe("ensurePaperPdfExtraction", () => {
     updatePdfCacheMock.mockReset();
     delete (globalThis as Record<string, unknown>).pdfjsRuntime;
     delete (globalThis as Record<string, unknown>).pdfjsWorker;
+    delete process.env.PAPERBRIEF_MAX_PDF_BYTES;
 
     findPdfCacheMock.mockResolvedValue({
       id: "pdf-cache-1",
@@ -175,6 +176,7 @@ describe("ensurePaperPdfExtraction", () => {
   });
 
   it("falls back instead of parsing PDFs that exceed the web memory guard", async () => {
+    process.env.PAPERBRIEF_MAX_PDF_BYTES = String(8 * 1024 * 1024);
     const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "paperbrief-pdf-"));
     cacheRoots.push(cacheRoot);
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
