@@ -219,6 +219,66 @@ describe("refetchPaperSource", () => {
     );
   });
 
+  it("uses the existing paper record for forced PDF extraction when arXiv metadata is unavailable", async () => {
+    fetchByArxivIdMock.mockRejectedValue(new Error("arXiv timeout"));
+    ensurePaperPdfExtractionMock.mockResolvedValue({
+      sourceUrl: "https://arxiv.org/pdf/2603.15341v1",
+      filePath: ".paperbrief-cache/2603.15341/2603.15341v1.pdf",
+      extractedJsonPath: ".paperbrief-cache/2603.15341/2603.15341v1.pages.json",
+      pageCount: 25,
+      fileSizeBytes: 123,
+      pages: [{ pageNumber: 1, text: "Page text" }],
+      usedFallbackAbstract: false,
+      extractionStatus: "EXTRACTED",
+    });
+
+    const result = await refetchPaperSource("paper-1", { forcePdfRetry: true });
+
+    expect(updatePaperMock).not.toHaveBeenCalled();
+    expect(ensurePaperPdfExtractionMock).toHaveBeenCalledWith(
+      paperRecord,
+      ".paperbrief-cache",
+      expect.objectContaining({
+        forceRetry: true,
+      }),
+    );
+    expect(result).toEqual({
+      status: "metadata-stale-pdf-extracted",
+      versionChanged: false,
+    });
+  });
+
+  it("force retries PDF extraction even when the current cache is already extracted", async () => {
+    findPdfCacheMock.mockResolvedValue({
+      id: "pdf-1",
+      extractionStatus: PdfExtractionStatus.EXTRACTED,
+    });
+    ensurePaperPdfExtractionMock.mockResolvedValue({
+      sourceUrl: "https://arxiv.org/pdf/2603.15341v1",
+      filePath: ".paperbrief-cache/2603.15341/2603.15341v1.pdf",
+      extractedJsonPath: ".paperbrief-cache/2603.15341/2603.15341v1.pages.json",
+      pageCount: 25,
+      fileSizeBytes: 123,
+      pages: [{ pageNumber: 1, text: "Page text" }],
+      usedFallbackAbstract: false,
+      extractionStatus: "EXTRACTED",
+    });
+
+    const result = await refetchPaperSource("paper-1", { forcePdfRetry: true });
+
+    expect(ensurePaperPdfExtractionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      ".paperbrief-cache",
+      expect.objectContaining({
+        forceRetry: true,
+      }),
+    );
+    expect(result).toEqual({
+      status: "metadata-refreshed-pdf-extracted",
+      versionChanged: false,
+    });
+  });
+
   it("returns arxiv-record-missing without mutating the paper when arXiv has no record", async () => {
     fetchByArxivIdMock.mockResolvedValue(null);
 

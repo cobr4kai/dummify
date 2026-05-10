@@ -650,11 +650,25 @@ function getPaperDetailNotice(notice: string | null): PaperDetailNotice {
           "The paper metadata was refreshed and PDF text was extracted. You can now generate a PDF-backed brief.",
         variant: "success",
       };
+    case "paper-source-refetched-pdf-extracted-metadata-stale":
+      return {
+        title: "PDF text cached",
+        description:
+          "The arXiv metadata endpoint did not respond in time, but PDF text was extracted from the existing paper record. You can now generate a PDF-backed brief.",
+        variant: "success",
+      };
     case "paper-source-refetched-pdf-fallback":
       return {
         title: "PDF fetch fell back",
         description:
           "The paper metadata was refreshed, but PDF extraction could not complete safely. The source card below shows the specific reason, and abstract fallback is still available.",
+        variant: "highlight",
+      };
+    case "paper-source-refetched-pdf-fallback-metadata-stale":
+      return {
+        title: "PDF fetch fell back",
+        description:
+          "The arXiv metadata endpoint did not respond in time, and PDF extraction could not complete safely. The source card below shows the specific reason, and abstract fallback is still available.",
         variant: "highlight",
       };
     case "paper-source-refetched":

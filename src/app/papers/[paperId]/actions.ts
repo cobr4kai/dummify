@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getCanonicalPaperPathById, getPublicBriefByPaperId, getWeekPath } from "@/lib/briefs";
-import { refetchPaperSource } from "@/lib/papers/refetch";
+import {
+  refetchPaperSource,
+  type RefetchPaperSourceResult,
+} from "@/lib/papers/refetch";
 import {
   ensurePaperTechnicalBrief,
   getCurrentTechnicalBrief,
@@ -107,15 +110,28 @@ export async function refetchPaperSourceAction(formData: FormData) {
   await revalidatePaperViews(paperId);
   await redirectToPaperDetail(
     paperId,
-    result.status === "metadata-refreshed-pdf-extracted"
-      ? "paper-source-refetched-pdf-extracted"
-      : result.status === "metadata-refreshed-pdf-fallback"
-        ? "paper-source-refetched-pdf-fallback"
-        : result.status === "metadata-refreshed-no-pdf-retry-needed"
-          ? "paper-source-refetched"
-        : "paper-source-refetch-failed",
+    getRefetchNotice(result.status),
     result.versionChanged,
   );
+}
+
+function getRefetchNotice(status: RefetchPaperSourceResult["status"]) {
+  switch (status) {
+    case "metadata-refreshed-pdf-extracted":
+      return "paper-source-refetched-pdf-extracted";
+    case "metadata-stale-pdf-extracted":
+      return "paper-source-refetched-pdf-extracted-metadata-stale";
+    case "metadata-refreshed-pdf-fallback":
+      return "paper-source-refetched-pdf-fallback";
+    case "metadata-stale-pdf-fallback":
+      return "paper-source-refetched-pdf-fallback-metadata-stale";
+    case "metadata-refreshed-no-pdf-retry-needed":
+      return "paper-source-refetched";
+    case "paper-missing":
+    case "arxiv-record-missing":
+    case "arxiv-fetch-failed":
+      return "paper-source-refetch-failed";
+  }
 }
 
 async function revalidatePaperViews(paperId: string) {

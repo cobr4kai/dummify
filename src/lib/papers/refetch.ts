@@ -15,7 +15,9 @@ export type RefetchPaperSourceResult =
       status:
         | "metadata-refreshed-pdf-extracted"
         | "metadata-refreshed-pdf-fallback"
-        | "metadata-refreshed-no-pdf-retry-needed";
+        | "metadata-refreshed-no-pdf-retry-needed"
+        | "metadata-stale-pdf-extracted"
+        | "metadata-stale-pdf-fallback";
       versionChanged: boolean;
     }
   | {
@@ -56,6 +58,10 @@ export async function refetchPaperSource(
       bypassCache: true,
     });
   } catch {
+    if (options.forcePdfRetry) {
+      return await extractPdfFromExistingPaper(existingPaper, settings);
+    }
+
     return {
       status: "arxiv-fetch-failed",
       versionChanged: false,
@@ -63,6 +69,10 @@ export async function refetchPaperSource(
   }
 
   if (!refreshedPaper) {
+    if (options.forcePdfRetry) {
+      return await extractPdfFromExistingPaper(existingPaper, settings);
+    }
+
     return {
       status: "arxiv-record-missing",
       versionChanged: false,
@@ -98,7 +108,10 @@ export async function refetchPaperSource(
     orderBy: { updatedAt: "desc" },
   });
 
-  if (currentPdfCache?.extractionStatus === PdfExtractionStatus.EXTRACTED) {
+  if (
+    currentPdfCache?.extractionStatus === PdfExtractionStatus.EXTRACTED &&
+    !options.forcePdfRetry
+  ) {
     return {
       status: "metadata-refreshed-no-pdf-retry-needed",
       versionChanged,
@@ -134,4 +147,47 @@ export async function refetchPaperSource(
         : "metadata-refreshed-pdf-fallback",
     versionChanged,
   };
+}
+
+async function extractPdfFromExistingPaper(
+  paper: NonNullable<Awaited<ReturnType<typeof prisma.paper.findUnique>>>,
+  settings: Awaited<ReturnType<typeof getAppSettings>>,
+): Promise<RefetchPaperSourceResult> {
+  const pdfResult = await ensurePaperPdfExtraction(paper, settings.pdfCacheDir, {
+    fallbackRetryCooldownMinutes: settings.pdfFallbackRetryCooldownMinutes,
+    fetchMode: settings.pdfFetchMode,
+    forceRetry: true,
+  });
+
+  if (
+    pdfResult.extractionStatus === "EXTRACTED" &&
+    pdfResult.sourceUrl !== paper.pdfUrl
+  ) {
+    await prisma.paper.update({
+      where: { id: paper.id },
+      data: {
+        pdfUrl: pdfResult.sourceUrl,
+        links: toJsonInput({
+          ...readObject(paper.links),
+          pdf: pdfResult.sourceUrl,
+        }),
+      },
+    });
+  }
+
+  return {
+    status:
+      pdfResult.extractionStatus === "EXTRACTED"
+        ? "metadata-stale-pdf-extracted"
+        : "metadata-stale-pdf-fallback",
+    versionChanged: false,
+  };
+}
+
+function readObject(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
 }
