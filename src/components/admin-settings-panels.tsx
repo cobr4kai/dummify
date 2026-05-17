@@ -137,7 +137,7 @@ export function AdminSettingsPanels({
                   <p className="text-sm font-semibold text-foreground">Editorial scoring</p>
                   <p className="text-xs leading-5 text-muted-foreground">
                     Use these only if you need to fine-tune the active preset. Changing the preset
-                    and saving will reset these weights to that preset's defaults.
+                    and saving will reset these weights to that preset&apos;s defaults.
                   </p>
                 </div>
                 <label className="space-y-2 text-sm font-medium">

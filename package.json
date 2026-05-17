@@ -13,6 +13,7 @@
     "start:render": "node scripts/render-start.mjs",
     "bootstrap:backfill": "tsx scripts/bootstrap-backfill.ts",
     "metadata:backfill": "tsx scripts/backfill-structured-metadata.ts",
+    "edition:fill-pdf-briefs": "tsx scripts/fill-edition-pdf-briefs.ts",
     "openalex:backfill:published": "tsx scripts/backfill-openalex-published.ts",
     "pdf-affiliations:backfill:published": "tsx scripts/backfill-pdf-affiliations-published.ts",
     "cron:primary": "node scripts/render-trigger-cron.mjs primary",

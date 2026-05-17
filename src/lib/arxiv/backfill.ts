@@ -25,6 +25,19 @@ export type HistoricalBackfillProgressEvent =
       totalWindows: number;
       from: string;
       to: string;
+      attempt?: number;
+      maxAttempts?: number;
+    }
+  | {
+      type: "window-retry";
+      index: number;
+      totalWindows: number;
+      from: string;
+      to: string;
+      attempt: number;
+      maxAttempts: number;
+      delayMs: number;
+      warnings: string[];
     }
   | {
       type: "window-complete";
@@ -50,6 +63,9 @@ export type HistoricalBackfillWindowRecordsEvent = {
   to: string;
   records: PaperSourceRecord[];
 };
+
+const DEFAULT_HISTORICAL_WINDOW_MAX_ATTEMPTS = 3;
+const DEFAULT_HISTORICAL_WINDOW_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 export async function fetchHistoricalRecords(input: {
   client: ArxivClient;
@@ -81,6 +97,9 @@ export async function fetchHistoricalRecordsByWindow(input: {
   provider?: ArxivBackfillProvider | null;
   onProgress?: (event: HistoricalBackfillProgressEvent) => Promise<void> | void;
   onWindowRecords?: (event: HistoricalBackfillWindowRecordsEvent) => Promise<void> | void;
+  windowMaxAttempts?: number;
+  windowRetryDelayMs?: number;
+  sleepFn?: (ms: number) => Promise<void>;
 }): Promise<Omit<HistoricalRecordsResult, "records">> {
   if (input.provider) {
     const records = await input.provider.fetchRange({
@@ -107,22 +126,62 @@ export async function fetchHistoricalRecordsByWindow(input: {
   const warnings: string[] = [];
   const windows = buildDailyWindows(input.from, input.to);
   let failedWindows = 0;
+  const windowMaxAttempts = readPositiveInteger(
+    process.env.PAPERBRIEF_HISTORICAL_WINDOW_MAX_ATTEMPTS,
+    input.windowMaxAttempts ?? DEFAULT_HISTORICAL_WINDOW_MAX_ATTEMPTS,
+  );
+  const windowRetryDelayMs = readPositiveInteger(
+    process.env.PAPERBRIEF_HISTORICAL_WINDOW_RETRY_DELAY_MS,
+    input.windowRetryDelayMs ?? DEFAULT_HISTORICAL_WINDOW_RETRY_DELAY_MS,
+  );
+  const sleepFn = input.sleepFn ?? sleep;
 
   for (const [index, window] of windows.entries()) {
-    await input.onProgress?.({
-      type: "window-start",
-      index: index + 1,
-      totalWindows: windows.length,
-      from: window.from,
-      to: window.to,
-    });
-    const result: HistoricalFetchResult = await input.client.fetchHistorical(
-      input.categories,
-      window.from,
-      window.to,
-    );
+    const windowRecordsById = new Map<string, PaperSourceRecord>();
+    let result: HistoricalFetchResult = {
+      records: [],
+      warnings: [],
+    };
 
-    const uniqueRecords = result.records.filter((record) => {
+    for (let attempt = 1; attempt <= windowMaxAttempts; attempt += 1) {
+      await input.onProgress?.({
+        type: "window-start",
+        index: index + 1,
+        totalWindows: windows.length,
+        from: window.from,
+        to: window.to,
+        attempt,
+        maxAttempts: windowMaxAttempts,
+      });
+      result = await input.client.fetchHistorical(
+        input.categories,
+        window.from,
+        window.to,
+      );
+
+      for (const record of result.records) {
+        windowRecordsById.set(record.arxivId, record);
+      }
+
+      if (result.warnings.length === 0 || attempt === windowMaxAttempts) {
+        break;
+      }
+
+      await input.onProgress?.({
+        type: "window-retry",
+        index: index + 1,
+        totalWindows: windows.length,
+        from: window.from,
+        to: window.to,
+        attempt,
+        maxAttempts: windowMaxAttempts,
+        delayMs: windowRetryDelayMs,
+        warnings: result.warnings,
+      });
+      await sleepFn(windowRetryDelayMs);
+    }
+
+    const uniqueRecords = Array.from(windowRecordsById.values()).filter((record) => {
       if (seenIds.has(record.arxivId)) {
         return false;
       }
@@ -178,4 +237,15 @@ function buildDailyWindows(from: string, to: string) {
   }
 
   return windows;
+}
+
+function readPositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

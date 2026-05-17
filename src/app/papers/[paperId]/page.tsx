@@ -542,7 +542,7 @@ export default async function PaperDetailPage({
                     variant="secondary"
                   />
                   <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Fetches this paper's arXiv record and caches extracted PDF text for PDF-backed
+                    Fetches this paper&apos;s arXiv record and caches extracted PDF text for PDF-backed
                     brief generation on this page.
                   </p>
                 </form>

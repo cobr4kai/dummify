@@ -329,6 +329,16 @@ async function executePreparedIngestionJob(
             return;
           }
 
+          if (event.type === "window-retry") {
+            await tracker.updatePhase("fetch_historical_window", {
+              processed: event.index - 1,
+              total: event.totalWindows,
+              message: `Historical window ${event.index} of ${event.totalWindows} hit an arXiv warning. Waiting ${formatDelay(event.delayMs)} before retry ${event.attempt + 1} of ${event.maxAttempts}.`,
+              force: true,
+            });
+            return;
+          }
+
           await tracker.updatePhase("fetch_historical_window", {
             processed: event.index,
             total: event.totalWindows,
@@ -382,6 +392,36 @@ async function executePreparedIngestionJob(
         historicalResult.warnings.length,
         "Historical fetch completed with warnings.",
       );
+    }
+
+    if (options.mode === "HISTORICAL" && historicalResult?.warnings.length) {
+      const partialMessage =
+        "Historical fetch was partial, so enrichment and scoring were skipped. Retry the same range after the arXiv cooldown to fill the missing windows without duplicating saved papers.";
+      logLines.push(partialMessage);
+      await tracker.addWarnings(0, partialMessage);
+      await tracker.finish("Ingest stopped after a partial historical fetch.");
+      await prisma.ingestionRun.update({
+        where: { id: run.id },
+        data: {
+          status: IngestionStatus.PARTIAL,
+          fetchedCount,
+          upsertedCount: upsertedPaperIds.length,
+          scoreCount: 0,
+          summaryCount: 0,
+          completedAt: new Date(),
+          logLines: toJsonInput(logLines),
+        },
+      });
+
+      return {
+        runId: run.id,
+        status: IngestionStatus.PARTIAL,
+        fetchedCount,
+        upsertedCount: upsertedPaperIds.length,
+        scoreCount: 0,
+        summaryCount: 0,
+        briefCount: 0,
+      };
     }
 
     let briefCount = 0;
@@ -1921,6 +1961,19 @@ function buildArxivWaitMessage(
     return `Backing off ${laneLabel} after a retryable response (${seconds}s).`;
   }
   return `Respecting ${laneLabel} pacing window (${seconds}s).`;
+}
+
+function formatDelay(delayMs: number) {
+  const seconds = Math.max(1, Math.ceil(delayMs / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds > 0
+    ? `${minutes}m ${remainingSeconds}s`
+    : `${minutes}m`;
 }
 
 async function mapWithConcurrency<T, TResult>(

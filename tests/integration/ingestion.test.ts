@@ -524,31 +524,45 @@ describe("runIngestionJob", () => {
   });
 
   it("marks historical runs partial when some daily windows fail", async () => {
-    fetchHistoricalMock
-      .mockResolvedValueOnce({
-        records: [demoPaperFixtures[0].paper],
-        warnings: [],
-      })
-      .mockResolvedValueOnce({
+    const previousRetryDelay = process.env.PAPERBRIEF_HISTORICAL_WINDOW_RETRY_DELAY_MS;
+    const previousMaxAttempts = process.env.PAPERBRIEF_HISTORICAL_WINDOW_MAX_ATTEMPTS;
+    process.env.PAPERBRIEF_HISTORICAL_WINDOW_RETRY_DELAY_MS = "1";
+    process.env.PAPERBRIEF_HISTORICAL_WINDOW_MAX_ATTEMPTS = "2";
+    fetchHistoricalMock.mockResolvedValue({
         records: [],
         warnings: [
           "Historical metadata request for 2026-03-12 to 2026-03-12 stopped at offset 0: arXiv returned 429.",
         ],
       });
-
-    const result = await runIngestionJob({
-      mode: "HISTORICAL",
-      triggerSource: TriggerSource.MANUAL,
-      from: "2026-03-11",
-      to: "2026-03-12",
+    fetchHistoricalMock.mockResolvedValueOnce({
+      records: [demoPaperFixtures[0].paper],
+      warnings: [],
     });
 
-    expect(result.status).toBe("PARTIAL");
-    expect(result.fetchedCount).toBe(1);
-    expect(dbState.runs[0]?.status).toBe("PARTIAL");
-    expect(dbState.runs[0]?.logLines).toContain(
-      "Historical ingestion completed with warnings. 1 of 2 daily windows hit arXiv rate limits or transient API failures.",
-    );
+    try {
+      const result = await runIngestionJob({
+        mode: "HISTORICAL",
+        triggerSource: TriggerSource.MANUAL,
+        from: "2026-03-11",
+        to: "2026-03-12",
+      });
+
+      expect(result.status).toBe("PARTIAL");
+      expect(result.fetchedCount).toBe(1);
+      expect(dbState.runs[0]?.status).toBe("PARTIAL");
+      expect(result.scoreCount).toBe(0);
+      expect(dbState.scores).toHaveLength(0);
+      expect(fetchHistoricalMock).toHaveBeenCalledTimes(3);
+      expect(dbState.runs[0]?.logLines).toContain(
+        "Historical ingestion completed with warnings. 1 of 2 daily windows hit arXiv rate limits or transient API failures.",
+      );
+      expect(dbState.runs[0]?.logLines).toContain(
+        "Historical fetch was partial, so enrichment and scoring were skipped. Retry the same range after the arXiv cooldown to fill the missing windows without duplicating saved papers.",
+      );
+    } finally {
+      restoreEnv("PAPERBRIEF_HISTORICAL_WINDOW_RETRY_DELAY_MS", previousRetryDelay);
+      restoreEnv("PAPERBRIEF_HISTORICAL_WINDOW_MAX_ATTEMPTS", previousMaxAttempts);
+    }
   });
 
   it("marks heartbeat-stale running jobs as failed even before the legacy activity window", async () => {
@@ -826,4 +840,13 @@ function createInitialIngestionProgressForScoringResume() {
     return phase;
   });
   return progress;
+}
+
+function restoreEnv(name: string, previousValue: string | undefined) {
+  if (typeof previousValue === "string") {
+    process.env[name] = previousValue;
+    return;
+  }
+
+  delete process.env[name];
 }

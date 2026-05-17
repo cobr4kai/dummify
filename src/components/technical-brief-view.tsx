@@ -107,7 +107,7 @@ export function TechnicalBriefView({
           <CardHeader>
             <CardTitle>Affiliations</CardTitle>
             <CardDescription>
-              Institution names extracted from the brief's PDF summary call.
+              Institution names extracted from the brief&apos;s PDF summary call.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
