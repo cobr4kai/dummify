@@ -37,7 +37,7 @@ export class StructuredMetadataProvider {
       openAlexTopics: context.currentOpenAlexTopics,
     });
 
-    if (!client) {
+    if (!client || context.structuredMetadataMode === "deterministic") {
       return {
         provider: this.provider,
         providerRecordId: null,

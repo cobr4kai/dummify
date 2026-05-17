@@ -48,6 +48,7 @@ export type EnrichmentContext = {
   announcementDay: string;
   isEditorial: boolean;
   hasPdfBackedBrief: boolean;
+  structuredMetadataMode?: "hybrid" | "deterministic";
   currentOpenAlexTopics: string[];
   currentEnrichments: Array<{
     provider: string;

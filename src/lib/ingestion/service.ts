@@ -61,8 +61,11 @@ export type DailyJobMode = "PRIMARY" | "RECONCILE";
 
 const ACTIVE_MANUAL_RUN_WINDOW_MS = 6 * 60 * 60 * 1000;
 const ACTIVE_HEARTBEAT_STALE_MS = 5 * 60 * 1000;
-const MAX_AUTO_RESUME_ATTEMPTS = 2;
-const RESUME_SCORE_CHUNK_SIZE = 125;
+const MAX_AUTO_RESUME_ATTEMPTS = 4;
+const RESUME_SCORE_CHUNK_SIZE = readPositiveIntegerEnv(
+  "PAPERBRIEF_RESUME_SCORE_CHUNK_SIZE",
+  0,
+);
 
 type IngestionOptions = {
   mode: "DAILY" | "HISTORICAL";
@@ -91,6 +94,7 @@ type PreparedIngestionJob = {
 type HydrateEnrichmentOptions = {
   force?: boolean;
   providers?: string[];
+  structuredMetadataMode?: "hybrid" | "deterministic";
 };
 
 type HydrateEnrichmentResult = {
@@ -111,6 +115,10 @@ type IngestionResumeContext = {
 const ENRICHMENT_CONCURRENCY = readPositiveIntegerEnv(
   "PAPERBRIEF_ENRICHMENT_CONCURRENCY",
   2,
+);
+const BULK_STRUCTURED_METADATA_MODEL_LIMIT = readPositiveIntegerEnv(
+  "PAPERBRIEF_STRUCTURED_METADATA_MODEL_LIMIT",
+  500,
 );
 const ENRICHMENT_WARNING_LOG_LIMIT = 20;
 
@@ -578,6 +586,11 @@ async function executePreparedIngestionJob(
     let structuredProcessed = 0;
     let structuredMetadataCount = 0;
     const structuredMetadataUpdatedPaperIds = new Set<string>();
+    const structuredMetadataMode =
+      options.mode === "HISTORICAL" &&
+      upsertedPaperIds.length > BULK_STRUCTURED_METADATA_MODEL_LIMIT
+        ? "deterministic"
+        : "hybrid";
 
     if (resumeContext?.completedPhases.has("enrich_structured_metadata")) {
       structuredProcessed = upsertedPaperIds.length;
@@ -589,11 +602,18 @@ async function executePreparedIngestionJob(
       await tracker.startPhase("enrich_structured_metadata", {
         message:
           upsertedPaperIds.length > 0
-            ? `Generating structured metadata for ${upsertedPaperIds.length} papers.`
+            ? structuredMetadataMode === "deterministic"
+              ? `Generating deterministic structured metadata for ${upsertedPaperIds.length} bulk historical papers.`
+              : `Generating structured metadata for ${upsertedPaperIds.length} papers.`
             : "No papers needed structured metadata.",
         total: upsertedPaperIds.length,
         processed: 0,
       });
+      if (structuredMetadataMode === "deterministic" && upsertedPaperIds.length > 0) {
+        logLines.push(
+          `Using deterministic structured metadata for ${upsertedPaperIds.length} bulk historical papers to keep the ingest memory- and cost-bounded.`,
+        );
+      }
       await forEachWithConcurrency(
         upsertedPaperIds,
         ENRICHMENT_CONCURRENCY,
@@ -601,6 +621,7 @@ async function executePreparedIngestionJob(
           const result = await hydratePaperEnrichments(paperId, {
             force: openAlexUpdatedPaperIds.has(paperId),
             providers: [STRUCTURED_METADATA_PROVIDER],
+            structuredMetadataMode,
           });
           if (result.updatedProviders.includes(STRUCTURED_METADATA_PROVIDER)) {
             structuredMetadataCount += 1;
@@ -613,7 +634,10 @@ async function executePreparedIngestionJob(
           await tracker.updatePhase("enrich_structured_metadata", {
             processed: structuredProcessed,
             total: upsertedPaperIds.length,
-            message: `Generated structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`,
+            message:
+              structuredMetadataMode === "deterministic"
+                ? `Generated deterministic structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`
+                : `Generated structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`,
             force:
               structuredProcessed === 1 ||
               structuredProcessed === upsertedPaperIds.length ||
@@ -624,7 +648,9 @@ async function executePreparedIngestionJob(
       await tracker.completePhase(
         "enrich_structured_metadata",
         upsertedPaperIds.length > 0
-          ? `Processed structured metadata for ${upsertedPaperIds.length} papers.`
+          ? structuredMetadataMode === "deterministic"
+            ? `Processed deterministic structured metadata for ${upsertedPaperIds.length} bulk historical papers.`
+            : `Processed structured metadata for ${upsertedPaperIds.length} papers.`
           : "No papers needed structured metadata.",
       );
     }
@@ -640,7 +666,8 @@ async function executePreparedIngestionJob(
     let scoreCount = 0;
     let scoredProcessed = 0;
     let scoreSkippedFromResume = 0;
-    let resumeScoreBudgetRemaining = resumeContext ? RESUME_SCORE_CHUNK_SIZE : null;
+    let resumeScoreBudgetRemaining =
+      resumeContext && RESUME_SCORE_CHUNK_SIZE > 0 ? RESUME_SCORE_CHUNK_SIZE : null;
 
     if (resumeContext?.completedPhases.has("score_papers")) {
       await tracker.completePhase(
@@ -1108,7 +1135,11 @@ async function hydratePaperEnrichments(
     try {
       const result = await provider.enrich(
         paperRecord,
-        buildEnrichmentContext(paper, currentEnrichments),
+        buildEnrichmentContext(
+          paper,
+          currentEnrichments,
+          options.structuredMetadataMode,
+        ),
       );
       if (!result) {
         continue;
@@ -1182,12 +1213,14 @@ async function hydratePaperEnrichments(
 function buildEnrichmentContext(
   paper: PaperWithEnrichmentContext,
   currentEnrichments: Array<{ provider: string; payload: Record<string, unknown> }>,
+  structuredMetadataMode: HydrateEnrichmentOptions["structuredMetadataMode"],
 ): EnrichmentContext {
   return {
     paperId: paper.id,
     announcementDay: paper.announcementDay,
     isEditorial: paper.publishedItems.length > 0 && hasPdfBackedBrief(paper),
     hasPdfBackedBrief: hasPdfBackedBrief(paper),
+    structuredMetadataMode,
     currentOpenAlexTopics: getOpenAlexTopics(currentEnrichments),
     currentEnrichments,
   };

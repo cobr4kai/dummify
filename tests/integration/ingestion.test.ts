@@ -744,7 +744,7 @@ describe("runIngestionJob", () => {
     );
   });
 
-  it("pauses checkpoint resume after a bounded scoring chunk", async () => {
+  it("keeps checkpoint scoring moving instead of requiring manual chunk resumes", async () => {
     const papers = Array.from({ length: 130 }, (_, index) => ({
       ...demoPaperFixtures[0].paper,
       arxivId: `2603.${String(index).padStart(5, "0")}`,
@@ -791,16 +791,14 @@ describe("runIngestionJob", () => {
 
     expect(fetchHistoricalMock).not.toHaveBeenCalled();
     expect(result).toMatchObject({
-      status: IngestionStatus.FAILED,
+      status: IngestionStatus.COMPLETED,
       fetchedCount: 130,
       upsertedCount: 130,
-      scoreCount: 125,
+      scoreCount: 130,
     });
-    expect(dbState.scores).toHaveLength(125);
+    expect(dbState.scores).toHaveLength(130);
     expect(dbState.runs.at(-1)).toMatchObject({
-      status: IngestionStatus.FAILED,
-      errorMessage:
-        "Paused checkpoint resume after scoring 125 papers in this pass. Use Resume from checkpoint to continue without repeating completed work.",
+      status: IngestionStatus.COMPLETED,
     });
   });
 });
