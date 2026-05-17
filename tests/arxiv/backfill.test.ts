@@ -45,8 +45,7 @@ describe("fetchHistoricalRecordsByWindow", () => {
       warnings: [],
     });
     expect(events).toContain("window-retry");
-    expect(windowRecords).toHaveLength(1);
-    expect(windowRecords[0]?.map((record) => record.arxivId)).toEqual([
+    expect(windowRecords.flat().map((record) => record.arxivId)).toEqual([
       "2605.00001",
       "2605.00002",
     ]);

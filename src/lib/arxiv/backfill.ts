@@ -137,7 +137,8 @@ export async function fetchHistoricalRecordsByWindow(input: {
   const sleepFn = input.sleepFn ?? sleep;
 
   for (const [index, window] of windows.entries()) {
-    const windowRecordsById = new Map<string, PaperSourceRecord>();
+    const windowSeenIds = new Set<string>();
+    let fetchedInWindow = 0;
     let result: HistoricalFetchResult = {
       records: [],
       warnings: [],
@@ -153,14 +154,46 @@ export async function fetchHistoricalRecordsByWindow(input: {
         attempt,
         maxAttempts: windowMaxAttempts,
       });
-      result = await input.client.fetchHistorical(
-        input.categories,
-        window.from,
-        window.to,
-      );
+      result = await input.client.fetchHistorical(input.categories, window.from, window.to, {
+        onRecords: async (records) => {
+          const uniqueRecords = filterUniqueWindowRecords({
+            records,
+            seenIds,
+            windowSeenIds,
+          });
 
-      for (const record of result.records) {
-        windowRecordsById.set(record.arxivId, record);
+          if (uniqueRecords.length === 0) {
+            return;
+          }
+
+          fetchedInWindow += uniqueRecords.length;
+          await input.onWindowRecords?.({
+            index: index + 1,
+            totalWindows: windows.length,
+            from: window.from,
+            to: window.to,
+            records: uniqueRecords,
+          });
+        },
+      });
+
+      if (result.records.length > 0) {
+        const uniqueRecords = filterUniqueWindowRecords({
+          records: result.records,
+          seenIds,
+          windowSeenIds,
+        });
+
+        if (uniqueRecords.length > 0) {
+          fetchedInWindow += uniqueRecords.length;
+          await input.onWindowRecords?.({
+            index: index + 1,
+            totalWindows: windows.length,
+            from: window.from,
+            to: window.to,
+            records: uniqueRecords,
+          });
+        }
       }
 
       if (result.warnings.length === 0 || attempt === windowMaxAttempts) {
@@ -181,14 +214,6 @@ export async function fetchHistoricalRecordsByWindow(input: {
       await sleepFn(windowRetryDelayMs);
     }
 
-    const uniqueRecords = Array.from(windowRecordsById.values()).filter((record) => {
-      if (seenIds.has(record.arxivId)) {
-        return false;
-      }
-      seenIds.add(record.arxivId);
-      return true;
-    });
-
     if (result.warnings.length > 0) {
       failedWindows += 1;
       warnings.push(...result.warnings);
@@ -202,21 +227,13 @@ export async function fetchHistoricalRecordsByWindow(input: {
       });
     }
 
-    await input.onWindowRecords?.({
-      index: index + 1,
-      totalWindows: windows.length,
-      from: window.from,
-      to: window.to,
-      records: uniqueRecords,
-    });
-
     await input.onProgress?.({
       type: "window-complete",
       index: index + 1,
       totalWindows: windows.length,
       from: window.from,
       to: window.to,
-      fetchedCount: uniqueRecords.length,
+      fetchedCount: fetchedInWindow,
     });
   }
 
@@ -237,6 +254,26 @@ function buildDailyWindows(from: string, to: string) {
   }
 
   return windows;
+}
+
+function filterUniqueWindowRecords(input: {
+  records: PaperSourceRecord[];
+  seenIds: Set<string>;
+  windowSeenIds: Set<string>;
+}) {
+  const uniqueRecords: PaperSourceRecord[] = [];
+
+  for (const record of input.records) {
+    if (input.windowSeenIds.has(record.arxivId) || input.seenIds.has(record.arxivId)) {
+      continue;
+    }
+
+    input.windowSeenIds.add(record.arxivId);
+    input.seenIds.add(record.arxivId);
+    uniqueRecords.push(record);
+  }
+
+  return uniqueRecords;
 }
 
 function readPositiveInteger(value: string | undefined, fallback: number) {

@@ -73,6 +73,11 @@ export type HistoricalFetchResult = {
   warnings: string[];
 };
 
+type HistoricalFetchOptions = {
+  maxResults?: number;
+  onRecords?: (records: PaperSourceRecord[]) => Promise<void> | void;
+};
+
 export class ArxivClient {
   private readonly options: ResolvedArxivClientOptions;
   private nextApiAllowedAt = 0;
@@ -189,12 +194,17 @@ export class ArxivClient {
     });
   }
 
-  async fetchHistorical(categories: string[], from: string, to: string) {
+  async fetchHistorical(
+    categories: string[],
+    from: string,
+    to: string,
+    options: HistoricalFetchOptions = {},
+  ) {
     const query = buildHistoricalQuery(categories, from, to);
     const records: PaperSourceRecord[] = [];
     const warnings: string[] = [];
     let start = 0;
-    const maxResults = 100;
+    const maxResults = readHistoricalPageSize(options.maxResults);
 
     while (true) {
       let xml: string;
@@ -231,7 +241,11 @@ export class ArxivClient {
         },
       }));
 
-      records.push(...papers);
+      if (options.onRecords) {
+        await options.onRecords(papers);
+      } else {
+        records.push(...papers);
+      }
 
       if (papers.length < maxResults) {
         break;
@@ -485,6 +499,17 @@ export class ArxivClient {
   private async emitProgress(event: ArxivProgressEvent) {
     await this.options.onProgress?.(event);
   }
+}
+
+function readHistoricalPageSize(value?: number) {
+  const configured = Number(process.env.PAPERBRIEF_HISTORICAL_PAGE_SIZE);
+  const pageSize = Number.isInteger(value) && value && value > 0 ? value : configured;
+
+  if (Number.isInteger(pageSize) && pageSize > 0) {
+    return Math.min(Number(pageSize), 100);
+  }
+
+  return 25;
 }
 
 function chunk<T>(items: T[], size: number) {

@@ -108,25 +108,67 @@ type IngestionResumeContext = {
   lastPhase: IngestionPhaseKey | null;
 };
 
-const ENRICHMENT_CONCURRENCY = 4;
+const ENRICHMENT_CONCURRENCY = readPositiveIntegerEnv(
+  "PAPERBRIEF_ENRICHMENT_CONCURRENCY",
+  2,
+);
 const ENRICHMENT_WARNING_LOG_LIMIT = 20;
 
-const paperEnrichmentInclude = Prisma.validator<Prisma.PaperInclude>()({
+const paperSourceRecordSelect = Prisma.validator<Prisma.PaperSelect>()({
+  id: true,
+  arxivId: true,
+  version: true,
+  versionedId: true,
+  title: true,
+  abstract: true,
+  authorsJson: true,
+  categoriesJson: true,
+  sourceFeedCategoriesJson: true,
+  primaryCategory: true,
+  publishedAt: true,
+  updatedAt: true,
+  announcementDay: true,
+  announceType: true,
+  comment: true,
+  journalRef: true,
+  doi: true,
+  abstractUrl: true,
+  pdfUrl: true,
+  links: true,
+  sourceMetadata: true,
+});
+
+type PaperSourceRecordRow = Prisma.PaperGetPayload<{
+  select: typeof paperSourceRecordSelect;
+}>;
+
+const paperEnrichmentSelect = Prisma.validator<Prisma.PaperSelect>()({
+  ...paperSourceRecordSelect,
   technicalBriefs: {
     where: { isCurrent: true },
     orderBy: { updatedAt: "desc" },
     take: 1,
+    select: {
+      usedFallbackAbstract: true,
+    },
   },
   enrichments: {
     where: { isCurrent: true },
+    select: {
+      provider: true,
+      payload: true,
+    },
   },
   publishedItems: {
     take: 1,
+    select: {
+      id: true,
+    },
   },
 });
 
 type PaperWithEnrichmentContext = Prisma.PaperGetPayload<{
-  include: typeof paperEnrichmentInclude;
+  select: typeof paperEnrichmentSelect;
 }>;
 
 export async function startIngestionJob(
@@ -1027,7 +1069,7 @@ async function hydratePaperEnrichments(
 ): Promise<HydrateEnrichmentResult> {
   const paper = await prisma.paper.findUnique({
     where: { id: paperId },
-    include: paperEnrichmentInclude,
+    select: paperEnrichmentSelect,
   });
 
   if (!paper) {
@@ -1039,7 +1081,7 @@ async function hydratePaperEnrichments(
     };
   }
 
-  const paperRecord = paperToSourceRecord(paper);
+  const paperRecord = selectedPaperToSourceRecord(paper);
   let currentEnrichments = paper.enrichments.map((enrichment) => ({
     provider: enrichment.provider,
     payload: toRecordPayload(enrichment.payload),
@@ -1369,9 +1411,43 @@ async function getCurrentStructuredMetadata(paperId: string) {
 async function getPaperSourceRecordById(paperId: string) {
   const paper = await prisma.paper.findUnique({
     where: { id: paperId },
+    select: paperSourceRecordSelect,
   });
 
-  return paper ? paperToSourceRecord(paper) : null;
+  return paper ? selectedPaperToSourceRecord(paper) : null;
+}
+
+function selectedPaperToSourceRecord(paper: PaperSourceRecordRow): PaperSourceRecord {
+  return {
+    arxivId: paper.arxivId,
+    version: paper.version,
+    versionedId: paper.versionedId,
+    title: paper.title,
+    abstract: paper.abstract,
+    authors: parseJsonStringList(paper.authorsJson),
+    categories: parseJsonStringList(paper.categoriesJson),
+    sourceFeedCategories: parseJsonStringList(paper.sourceFeedCategoriesJson),
+    primaryCategory: paper.primaryCategory ?? undefined,
+    publishedAt: paper.publishedAt,
+    updatedAt: paper.updatedAt,
+    announcementDay: paper.announcementDay,
+    announceType: paper.announceType ?? undefined,
+    comment: paper.comment,
+    journalRef: paper.journalRef,
+    doi: paper.doi,
+    links:
+      typeof paper.links === "object" && paper.links
+        ? (paper.links as PaperSourceRecord["links"])
+        : {
+            abs: paper.abstractUrl,
+            pdf: paper.pdfUrl ?? undefined,
+          },
+    sourceMetadata:
+      typeof paper.sourceMetadata === "object" && paper.sourceMetadata
+        ? (paper.sourceMetadata as Record<string, unknown>)
+        : {},
+    sourcePayload: {},
+  };
 }
 
 async function replaceCurrentScore(
@@ -1876,6 +1952,11 @@ function parseJsonStringList(value: Prisma.JsonValue | null | undefined) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number) {
+  const parsed = Number(process.env[name]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function sameStringSet(left: string[], right: string[]) {
