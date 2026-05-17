@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
 
   const action = request.nextUrl.searchParams.get("action") ?? "status";
   const forceFetch = request.nextUrl.searchParams.get("forceFetch") === "1";
+  const maxPdfBytes = readMaxPdfBytes(request.nextUrl.searchParams.get("maxPdfMb"));
   const papers = await loadEditionPapers(weekStart);
 
   if (action === "status") {
@@ -39,7 +40,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   }
 
-  const nextPaper = findNextProcessablePaper(papers, { retryFallbacks: forceFetch });
+  const nextPaper = findNextProcessablePaper(papers, {
+    retryFallbacks: forceFetch || Boolean(maxPdfBytes),
+  });
   if (!nextPaper) {
     return NextResponse.json({
       ...(await buildStatusPayload(weekStart, papers)),
@@ -50,7 +53,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const processed = await fillPdfBriefForPaper(nextPaper, { forceFetch });
+  const processed = await fillPdfBriefForPaper(nextPaper, { forceFetch, maxPdfBytes });
   const refreshedPapers = await loadEditionPapers(weekStart);
 
   return NextResponse.json({
@@ -106,6 +109,7 @@ async function buildStatusPayload(weekStart: string, papers: EditionPaper[]) {
           : "full-pdf"
         : "missing",
       pdfExtractionStatus: currentPdfCache?.extractionStatus ?? "missing",
+      pdfExtractionError: currentPdfCache?.extractionError ?? null,
       pdfTextCached: Boolean(currentPdfCache?.extractedJsonPath),
     };
   });
@@ -123,7 +127,7 @@ async function buildStatusPayload(weekStart: string, papers: EditionPaper[]) {
 
 async function fillPdfBriefForPaper(
   paper: EditionPaper,
-  options: { forceFetch: boolean },
+  options: { forceFetch: boolean; maxPdfBytes?: number },
 ) {
   if (hasPdfBackedBrief(paper.technicalBriefs)) {
     return describePaperResult(paper, "existing", "Paper already has a PDF-backed brief.");
@@ -137,6 +141,7 @@ async function fillPdfBriefForPaper(
   if (!hasExtractedPdf || options.forceFetch) {
     const refetchResult = await refetchPaperSource(paper.id, {
       forcePdfRetry: true,
+      maxPdfBytes: options.maxPdfBytes,
     });
     refetchStatus = refetchResult.status;
 
@@ -159,6 +164,7 @@ async function fillPdfBriefForPaper(
   if (result === "pdf-required" && hasExtractedPdf && !options.forceFetch) {
     const refetchResult = await refetchPaperSource(paper.id, {
       forcePdfRetry: true,
+      maxPdfBytes: options.maxPdfBytes,
     });
     refetchStatus = refetchResult.status;
 
@@ -204,6 +210,20 @@ function isPdfAvailableAfterRefetch(status: string) {
     status === "metadata-stale-pdf-extracted" ||
     status === "metadata-refreshed-no-pdf-retry-needed"
   );
+}
+
+function readMaxPdfBytes(value: string | null) {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  const clampedMb = Math.min(Math.max(parsed, 1), 128);
+  return Math.floor(clampedMb * 1024 * 1024);
 }
 
 function describePaperResult(

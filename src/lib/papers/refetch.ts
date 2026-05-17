@@ -29,6 +29,7 @@ export async function refetchPaperSource(
   paperId: string,
   options: {
     forcePdfRetry?: boolean;
+    maxPdfBytes?: number;
   } = {},
 ): Promise<RefetchPaperSourceResult> {
   const existingPaper = await prisma.paper.findUnique({
@@ -59,7 +60,7 @@ export async function refetchPaperSource(
     });
   } catch {
     if (options.forcePdfRetry) {
-      return await extractPdfFromExistingPaper(existingPaper, settings);
+      return await extractPdfFromExistingPaper(existingPaper, settings, options);
     }
 
     return {
@@ -70,7 +71,7 @@ export async function refetchPaperSource(
 
   if (!refreshedPaper) {
     if (options.forcePdfRetry) {
-      return await extractPdfFromExistingPaper(existingPaper, settings);
+      return await extractPdfFromExistingPaper(existingPaper, settings, options);
     }
 
     return {
@@ -122,6 +123,7 @@ export async function refetchPaperSource(
     fallbackRetryCooldownMinutes: settings.pdfFallbackRetryCooldownMinutes,
     fetchMode: settings.pdfFetchMode,
     forceRetry: options.forcePdfRetry,
+    maxPdfBytes: options.maxPdfBytes,
   });
 
   if (
@@ -152,11 +154,15 @@ export async function refetchPaperSource(
 async function extractPdfFromExistingPaper(
   paper: NonNullable<Awaited<ReturnType<typeof prisma.paper.findUnique>>>,
   settings: Awaited<ReturnType<typeof getAppSettings>>,
+  options: {
+    maxPdfBytes?: number;
+  } = {},
 ): Promise<RefetchPaperSourceResult> {
   const pdfResult = await ensurePaperPdfExtraction(paper, settings.pdfCacheDir, {
     fallbackRetryCooldownMinutes: settings.pdfFallbackRetryCooldownMinutes,
     fetchMode: settings.pdfFetchMode,
     forceRetry: true,
+    maxPdfBytes: options.maxPdfBytes,
   });
 
   if (

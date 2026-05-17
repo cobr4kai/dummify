@@ -28,6 +28,7 @@ export async function ensurePaperPdfExtraction(
     fallbackRetryCooldownMinutes?: number;
     fetchMode?: "personal-research-cache" | "disabled";
     forceRetry?: boolean;
+    maxPdfBytes?: number;
   } = {},
 ): Promise<PdfExtractionResult> {
   const fallbackRetryCooldownMinutes =
@@ -115,6 +116,7 @@ export async function ensurePaperPdfExtraction(
       pdfUrl: paper.pdfUrl,
       arxivId: paper.arxivId,
       version: paper.version,
+      maxPdfBytes: options.maxPdfBytes,
     });
     const pdfBytes = resolvedFetch.bytes;
     const finalSourceUrl = resolvedFetch.responseUrl || resolvedFetch.sourceUrl;
@@ -207,12 +209,14 @@ async function fetchArxivPdfBuffer(input: {
   pdfUrl: string | null;
   arxivId: string;
   version: number;
+  maxPdfBytes?: number;
 }) {
   const candidates = buildArxivPdfCandidateUrls(
     input.pdfUrl,
     input.arxivId,
     input.version,
   );
+  const maxPdfBytes = input.maxPdfBytes ?? getMaxPdfFetchBytes();
   let lastNotFound: Error | null = null;
 
   for (const candidate of candidates) {
@@ -224,7 +228,6 @@ async function fetchArxivPdfBuffer(input: {
     });
 
     if (response.ok) {
-      const maxPdfBytes = getMaxPdfFetchBytes();
       const contentLength = readContentLength(response);
       if (contentLength !== null && contentLength > maxPdfBytes) {
         throw new Error(
