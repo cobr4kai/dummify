@@ -4,7 +4,7 @@ import { technicalBriefAffiliationSchema } from "@repo-types/content";
 const citationSchema = z.object({
   page: z.number().int().min(1),
   section: z.union([z.string().min(1).max(120), z.null()]),
-  quote: z.union([z.string().min(3).max(220), z.null()]),
+  quote: z.union([z.string().min(3).max(500), z.null()]),
 });
 
 const focusTagSchema = z.enum([
