@@ -39,12 +39,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   }
 
-  const nextPaper = papers.find((paper) => !hasPdfBackedBrief(paper.technicalBriefs));
+  const nextPaper = findNextProcessablePaper(papers, { retryFallbacks: forceFetch });
   if (!nextPaper) {
     return NextResponse.json({
       ...(await buildStatusPayload(weekStart, papers)),
       processed: null,
-      status: "ready",
+      status: papers.some((paper) => !hasPdfBackedBrief(paper.technicalBriefs))
+        ? "blocked"
+        : "ready",
     });
   }
 
@@ -177,6 +179,23 @@ async function fillPdfBriefForPaper(
       : "PDF-backed brief generation did not complete.",
     refetchStatus,
   );
+}
+
+function findNextProcessablePaper(
+  papers: EditionPaper[],
+  options: { retryFallbacks: boolean },
+) {
+  return papers.find((paper) => {
+    if (hasPdfBackedBrief(paper.technicalBriefs)) {
+      return false;
+    }
+
+    if (options.retryFallbacks) {
+      return true;
+    }
+
+    return !paper.pdfCaches.some((cache) => cache.extractionStatus === "FALLBACK");
+  });
 }
 
 function isPdfAvailableAfterRefetch(status: string) {
