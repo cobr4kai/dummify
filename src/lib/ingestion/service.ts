@@ -586,11 +586,12 @@ async function executePreparedIngestionJob(
     let structuredProcessed = 0;
     let structuredMetadataCount = 0;
     const structuredMetadataUpdatedPaperIds = new Set<string>();
-    const structuredMetadataMode =
+    const shouldSkipBulkStructuredMetadata =
       options.mode === "HISTORICAL" &&
-      upsertedPaperIds.length > BULK_STRUCTURED_METADATA_MODEL_LIMIT
-        ? "deterministic"
-        : "hybrid";
+      upsertedPaperIds.length > BULK_STRUCTURED_METADATA_MODEL_LIMIT;
+    const structuredMetadataMode = shouldSkipBulkStructuredMetadata
+      ? "deterministic"
+      : "hybrid";
 
     if (resumeContext?.completedPhases.has("enrich_structured_metadata")) {
       structuredProcessed = upsertedPaperIds.length;
@@ -598,22 +599,28 @@ async function executePreparedIngestionJob(
         "enrich_structured_metadata",
         "Skipped structured metadata because the interrupted run already completed this phase.",
       );
+    } else if (shouldSkipBulkStructuredMetadata) {
+      await tracker.startPhase("enrich_structured_metadata", {
+        message: `Skipping structured metadata writes for ${upsertedPaperIds.length} bulk historical papers to keep the web service memory-bounded.`,
+        total: upsertedPaperIds.length,
+        processed: upsertedPaperIds.length,
+      });
+      logLines.push(
+        `Skipped structured metadata writes for ${upsertedPaperIds.length} bulk historical papers to keep the ingest memory-bounded. Scores will use existing structured metadata when present and fall back to arXiv/OpenAlex signals otherwise.`,
+      );
+      await tracker.completePhase(
+        "enrich_structured_metadata",
+        `Skipped structured metadata writes for ${upsertedPaperIds.length} bulk historical papers.`,
+      );
     } else {
       await tracker.startPhase("enrich_structured_metadata", {
         message:
           upsertedPaperIds.length > 0
-            ? structuredMetadataMode === "deterministic"
-              ? `Generating deterministic structured metadata for ${upsertedPaperIds.length} bulk historical papers.`
-              : `Generating structured metadata for ${upsertedPaperIds.length} papers.`
+            ? `Generating structured metadata for ${upsertedPaperIds.length} papers.`
             : "No papers needed structured metadata.",
         total: upsertedPaperIds.length,
         processed: 0,
       });
-      if (structuredMetadataMode === "deterministic" && upsertedPaperIds.length > 0) {
-        logLines.push(
-          `Using deterministic structured metadata for ${upsertedPaperIds.length} bulk historical papers to keep the ingest memory- and cost-bounded.`,
-        );
-      }
       await forEachWithConcurrency(
         upsertedPaperIds,
         ENRICHMENT_CONCURRENCY,
@@ -634,10 +641,7 @@ async function executePreparedIngestionJob(
           await tracker.updatePhase("enrich_structured_metadata", {
             processed: structuredProcessed,
             total: upsertedPaperIds.length,
-            message:
-              structuredMetadataMode === "deterministic"
-                ? `Generated deterministic structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`
-                : `Generated structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`,
+            message: `Generated structured metadata for ${structuredProcessed} of ${upsertedPaperIds.length} papers.`,
             force:
               structuredProcessed === 1 ||
               structuredProcessed === upsertedPaperIds.length ||
@@ -648,9 +652,7 @@ async function executePreparedIngestionJob(
       await tracker.completePhase(
         "enrich_structured_metadata",
         upsertedPaperIds.length > 0
-          ? structuredMetadataMode === "deterministic"
-            ? `Processed deterministic structured metadata for ${upsertedPaperIds.length} bulk historical papers.`
-            : `Processed structured metadata for ${upsertedPaperIds.length} papers.`
+          ? `Processed structured metadata for ${upsertedPaperIds.length} papers.`
           : "No papers needed structured metadata.",
       );
     }
